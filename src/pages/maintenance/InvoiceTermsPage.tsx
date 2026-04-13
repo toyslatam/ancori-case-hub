@@ -10,7 +10,7 @@ import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function InvoiceTermsPage() {
-  const { invoiceTerms, setInvoiceTerms } = useApp();
+  const { invoiceTerms, saveInvoiceTerm, deleteInvoiceTerm } = useApp();
   const [editItem, setEditItem] = useState<InvoiceTerm | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<Partial<InvoiceTerm>>({});
@@ -18,20 +18,21 @@ export default function InvoiceTermsPage() {
   const openNew = () => { setForm({ activo: true }); setEditItem(null); setShowForm(true); };
   const openEdit = (t: InvoiceTerm) => { setForm({ ...t }); setEditItem(t); setShowForm(true); };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.nombre) { toast.error('Nombre requerido'); return; }
-    if (editItem) {
-      setInvoiceTerms(prev => prev.map(t => t.id === editItem.id ? { ...editItem, ...form } as InvoiceTerm : t));
-      toast.success('Término actualizado');
-    } else {
-      setInvoiceTerms(prev => [...prev, { ...form, id: crypto.randomUUID() } as InvoiceTerm]);
-      toast.success('Término creado');
-    }
+    const term = editItem
+      ? { ...editItem, ...form } as InvoiceTerm
+      : { ...form, id: crypto.randomUUID() } as InvoiceTerm;
+    const ok = await saveInvoiceTerm(term, !!editItem);
+    if (!ok) return;
+    toast.success(editItem ? 'Término actualizado' : 'Término creado');
     setShowForm(false);
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('¿Eliminar?')) { setInvoiceTerms(prev => prev.filter(t => t.id !== id)); toast.success('Eliminado'); }
+  const handleDelete = async (id: string) => {
+    if (!confirm('¿Eliminar?')) return;
+    const ok = await deleteInvoiceTerm(id);
+    if (ok) toast.success('Eliminado');
   };
 
   return (

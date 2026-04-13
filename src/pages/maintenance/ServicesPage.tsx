@@ -11,7 +11,7 @@ import { Plus, Pencil, Trash2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function ServicesPage() {
-  const { services, setServices } = useApp();
+  const { services, saveService, deleteService } = useApp();
   const [search, setSearch] = useState('');
   const [editItem, setEditItem] = useState<Service | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -20,23 +20,21 @@ export default function ServicesPage() {
   const openNew = () => { setForm({ activo: true }); setEditItem(null); setShowForm(true); };
   const openEdit = (s: Service) => { setForm({ ...s }); setEditItem(s); setShowForm(true); };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.nombre) { toast.error('Nombre requerido'); return; }
-    if (editItem) {
-      setServices(prev => prev.map(s => s.id === editItem.id ? { ...editItem, ...form } as Service : s));
-      toast.success('Servicio actualizado');
-    } else {
-      setServices(prev => [...prev, { ...form, id: crypto.randomUUID() } as Service]);
-      toast.success('Servicio creado');
-    }
+    const service = editItem
+      ? { ...editItem, ...form } as Service
+      : { ...form, id: crypto.randomUUID() } as Service;
+    const ok = await saveService(service, !!editItem);
+    if (!ok) return;
+    toast.success(editItem ? 'Servicio actualizado' : 'Servicio creado');
     setShowForm(false);
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('¿Eliminar este servicio?')) {
-      setServices(prev => prev.filter(s => s.id !== id));
-      toast.success('Servicio eliminado');
-    }
+  const handleDelete = async (id: string) => {
+    if (!confirm('¿Eliminar este servicio?')) return;
+    const ok = await deleteService(id);
+    if (ok) toast.success('Servicio eliminado');
   };
 
   const filtered = services.filter(s => !search || s.nombre.toLowerCase().includes(search.toLowerCase()));

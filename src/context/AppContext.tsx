@@ -1,9 +1,17 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
+import { toast } from 'sonner';
 import {
-  Case, Client, Society, Service, InvoiceTerm, QBItem,
-  mockCases, mockClients, mockSocieties, mockServices, mockInvoiceTerms, mockQBItems,
-  CaseComment, CaseExpense, CaseInvoice,
+  Case, Client, Director, Society, Service, InvoiceTerm, QBItem,
+  mockCases, mockClients, mockDirectores, mockSocieties, mockServices, mockInvoiceTerms, mockQBItems,
+  CaseComment, CaseExpense,
 } from '@/data/mockData';
+import { getSupabase, isSupabaseConfigured } from '@/lib/supabaseClient';
+import {
+  isQboSocietyPushConfigured,
+  pushSocietyToQuickbooksDelete,
+  pushSocietyToQuickbooksUpsert,
+} from '@/lib/qboIntegration';
+import * as db from '@/lib/supabaseDb';
 
 interface AppContextType {
   cases: Case[];
@@ -12,57 +20,361 @@ interface AppContextType {
   services: Service[];
   invoiceTerms: InvoiceTerm[];
   qbItems: QBItem[];
-  setCases: React.Dispatch<React.SetStateAction<Case[]>>;
-  setClients: React.Dispatch<React.SetStateAction<Client[]>>;
-  setSocieties: React.Dispatch<React.SetStateAction<Society[]>>;
-  setServices: React.Dispatch<React.SetStateAction<Service[]>>;
-  setInvoiceTerms: React.Dispatch<React.SetStateAction<InvoiceTerm[]>>;
-  setQbItems: React.Dispatch<React.SetStateAction<QBItem[]>>;
+  directores: Director[];
   addCase: (c: Case) => void;
   updateCase: (c: Case) => void;
   addComment: (caseId: string, comment: CaseComment) => void;
   addExpense: (caseId: string, expense: CaseExpense) => void;
   updateExpenses: (caseId: string, expenses: CaseExpense[]) => void;
+  removeCase: (id: string) => Promise<boolean>;
+  saveClient: (client: Client, isEdit: boolean) => Promise<boolean>;
+  deleteClient: (id: string) => Promise<boolean>;
+  saveSociety: (society: Society, isEdit: boolean) => Promise<boolean>;
+  deleteSociety: (id: string) => Promise<boolean>;
+  saveService: (service: Service, isEdit: boolean) => Promise<boolean>;
+  deleteService: (id: string) => Promise<boolean>;
+  saveInvoiceTerm: (term: InvoiceTerm, isEdit: boolean) => Promise<boolean>;
+  deleteInvoiceTerm: (id: string) => Promise<boolean>;
+  saveQBItem: (item: QBItem, isEdit: boolean) => Promise<boolean>;
+  deleteQBItem: (id: string) => Promise<boolean>;
+  saveDirector: (d: Director, isEdit: boolean) => Promise<boolean>;
+  deleteDirector: (id: string) => Promise<boolean>;
   getClientName: (id?: string) => string;
   getSocietyName: (id?: string) => string;
   getServiceName: (id?: string) => string;
+  getDirectorName: (id?: string) => string;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [cases, setCases] = useState<Case[]>(mockCases);
-  const [clients, setClients] = useState<Client[]>(mockClients);
-  const [societies, setSocieties] = useState<Society[]>(mockSocieties);
-  const [services, setServices] = useState<Service[]>(mockServices);
-  const [invoiceTerms, setInvoiceTerms] = useState<InvoiceTerm[]>(mockInvoiceTerms);
-  const [qbItems, setQbItems] = useState<QBItem[]>(mockQBItems);
+  const sb = useMemo(() => getSupabase(), []);
+  const useRemote = isSupabaseConfigured();
 
-  const addCase = (c: Case) => setCases(prev => [c, ...prev]);
-  const updateCase = (c: Case) => setCases(prev => prev.map(x => x.id === c.id ? c : x));
+  const [cases, setCases] = useState<Case[]>(() => (useRemote ? [] : mockCases));
+  const [clients, setClients] = useState<Client[]>(() => (useRemote ? [] : mockClients));
+  const [societies, setSocieties] = useState<Society[]>(() => (useRemote ? [] : mockSocieties));
+  const [services, setServices] = useState<Service[]>(() => (useRemote ? [] : mockServices));
+  const [invoiceTerms, setInvoiceTerms] = useState<InvoiceTerm[]>(() => (useRemote ? [] : mockInvoiceTerms));
+  const [qbItems, setQbItems] = useState<QBItem[]>(() => (useRemote ? [] : mockQBItems));
+  const [directores, setDirectores] = useState<Director[]>(() => (useRemote ? [] : mockDirectores));
 
-  const addComment = (caseId: string, comment: CaseComment) => {
+  useEffect(() => {
+    if (!useRemote || !sb) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await db.loadAllFromSupabase(sb);
+        if (cancelled) return;
+        setClients(data.clients);
+        setSocieties(data.societies);
+        setServices(data.services);
+        setInvoiceTerms(data.invoiceTerms);
+        setQbItems(data.qbItems);
+        setDirectores(data.directores);
+        setCases(data.cases);
+        if (data.loadWarnings.length) {
+          toast.warning(
+            `Datos sincronizados con Supabase. Algunas tablas no cargaron (revisa SQL/políticas): ${data.loadWarnings.slice(0, 3).join(' · ')}${data.loadWarnings.length > 3 ? '…' : ''}`,
+            { duration: 12_000 },
+          );
+        }
+      } catch (e) {
+        console.error(e);
+        toast.error('No se pudo cargar desde Supabase; usando datos locales.');
+        setClients(mockClients);
+        setSocieties(mockSocieties);
+        setServices(mockServices);
+        setInvoiceTerms(mockInvoiceTerms);
+        setQbItems(mockQBItems);
+        setDirectores(mockDirectores);
+        setCases(mockCases);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [useRemote, sb]);
+
+  const addCase = useCallback((c: Case) => {
+    setCases(prev => [c, ...prev]);
+    if (sb) {
+      void db.insertCase(sb, c).then(({ error }) => {
+        if (error) {
+          toast.error(error.message);
+          setCases(prev => prev.filter(x => x.id !== c.id));
+        }
+      });
+    }
+  }, [sb]);
+
+  const updateCase = useCallback((c: Case) => {
+    setCases(prev => {
+      const previous = prev.find(x => x.id === c.id);
+      if (sb) {
+        void db.updateCaseRow(sb, c).then(({ error }) => {
+          if (error && previous) {
+            toast.error(error.message);
+            setCases(pp => pp.map(x => x.id === c.id ? previous : x));
+          }
+        });
+      }
+      return prev.map(x => x.id === c.id ? c : x);
+    });
+  }, [sb]);
+
+  const addComment = useCallback((caseId: string, comment: CaseComment) => {
     setCases(prev => prev.map(c => c.id === caseId ? { ...c, comments: [...c.comments, comment] } : c));
-  };
+    if (sb) {
+      void db.insertComment(sb, comment).then(({ error }) => {
+        if (error) {
+          toast.error(error.message);
+          setCases(prev => prev.map(c =>
+            c.id === caseId ? { ...c, comments: c.comments.filter(x => x.id !== comment.id) } : c
+          ));
+        }
+      });
+    }
+  }, [sb]);
 
-  const addExpense = (caseId: string, expense: CaseExpense) => {
+  const addExpense = useCallback((caseId: string, expense: CaseExpense) => {
     setCases(prev => prev.map(c => c.id === caseId ? { ...c, expenses: [...c.expenses, expense] } : c));
-  };
+    if (sb) {
+      void db.insertExpense(sb, caseId, expense).then(({ error }) => {
+        if (error) {
+          toast.error(error.message);
+          setCases(prev => prev.map(c =>
+            c.id === caseId ? { ...c, expenses: c.expenses.filter(x => x.id !== expense.id) } : c
+          ));
+        }
+      });
+    }
+  }, [sb]);
 
-  const updateExpenses = (caseId: string, expenses: CaseExpense[]) => {
-    setCases(prev => prev.map(c => c.id === caseId ? { ...c, expenses } : c));
-  };
+  const updateExpenses = useCallback((caseId: string, expenses: CaseExpense[]) => {
+    setCases(prev => {
+      const previous = prev.find(c => c.id === caseId)?.expenses ?? [];
+      if (sb) {
+        void db.replaceCaseExpenses(sb, caseId, expenses).then(({ error }) => {
+          if (error) {
+            toast.error(error.message);
+            setCases(pp => pp.map(c => c.id === caseId ? { ...c, expenses: previous } : c));
+          }
+        });
+      }
+      return prev.map(c => c.id === caseId ? { ...c, expenses } : c);
+    });
+  }, [sb]);
 
-  const getClientName = (id?: string) => clients.find(c => c.id === id)?.nombre || '';
-  const getSocietyName = (id?: string) => societies.find(s => s.id === id)?.nombre || '';
-  const getServiceName = (id?: string) => services.find(s => s.id === id)?.nombre || '';
+  const removeCase = useCallback(async (id: string): Promise<boolean> => {
+    let removed: Case | null = null;
+    setCases(prev => {
+      removed = prev.find(c => c.id === id) ?? null;
+      return prev.filter(c => c.id !== id);
+    });
+    if (sb) {
+      const { error } = await db.deleteCaseRow(sb, id);
+      if (error) {
+        toast.error(error.message);
+        if (removed) setCases(prev => [removed, ...prev]);
+        return false;
+      }
+    }
+    return true;
+  }, [sb]);
+
+  const saveClient = useCallback(async (client: Client, isEdit: boolean): Promise<boolean> => {
+    if (sb) {
+      const res = isEdit ? await db.updateClientRow(sb, client) : await db.insertClient(sb, client);
+      if (res.error) {
+        toast.error(res.error.message);
+        return false;
+      }
+    }
+    setClients(prev => (isEdit ? prev.map(c => c.id === client.id ? client : c) : [...prev, client]));
+    return true;
+  }, [sb]);
+
+  const deleteClient = useCallback(async (id: string): Promise<boolean> => {
+    if (sb) {
+      const { error } = await db.deleteClientRow(sb, id);
+      if (error) {
+        toast.error(error.message);
+        return false;
+      }
+    }
+    setClients(prev => prev.filter(c => c.id !== id));
+    return true;
+  }, [sb]);
+
+  const saveSociety = useCallback(async (society: Society, isEdit: boolean): Promise<boolean> => {
+    if (sb) {
+      const res = isEdit ? await db.updateSocietyRow(sb, society) : await db.insertSociety(sb, society);
+      if (res.error) {
+        toast.error(res.error.message);
+        return false;
+      }
+    }
+    let merged: Society = society;
+    if (sb && isQboSocietyPushConfigured()) {
+      try {
+        const qb = await pushSocietyToQuickbooksUpsert(society);
+        if (qb.quickbooks_customer_id || qb.id_qb != null) {
+          merged = { ...society };
+          if (qb.quickbooks_customer_id) merged = { ...merged, quickbooks_customer_id: qb.quickbooks_customer_id };
+          if (qb.id_qb != null) merged = { ...merged, id_qb: qb.id_qb };
+        }
+        const needsPatch =
+          (qb.quickbooks_customer_id && !society.quickbooks_customer_id) ||
+          (qb.id_qb != null && qb.id_qb !== society.id_qb);
+        if (needsPatch) {
+          const { error: patchErr } = await db.updateSocietyRow(sb, merged);
+          if (patchErr) {
+            toast.warning(`QuickBooks enlazado; no se guardó el Id en la base: ${patchErr.message}`);
+          }
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        toast.error(`Sociedad guardada; QuickBooks: ${msg}`);
+      }
+    }
+    setSocieties(prev => (isEdit ? prev.map(s => s.id === merged.id ? merged : s) : [...prev, merged]));
+    return true;
+  }, [sb]);
+
+  const deleteSociety = useCallback(async (id: string): Promise<boolean> => {
+    const society = societies.find(s => s.id === id);
+    const qbIdDelete =
+      society?.quickbooks_customer_id?.trim() ||
+      (society?.id_qb != null ? String(society.id_qb) : '');
+    if (sb && society && isQboSocietyPushConfigured() && qbIdDelete) {
+      try {
+        await pushSocietyToQuickbooksDelete(qbIdDelete);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        toast.warning(`QuickBooks no actualizado (${msg}). Se elimina la sociedad solo en la app.`);
+      }
+    }
+    if (sb) {
+      const { error } = await db.deleteSocietyRow(sb, id);
+      if (error) {
+        toast.error(error.message);
+        return false;
+      }
+    }
+    setSocieties(prev => prev.filter(s => s.id !== id));
+    return true;
+  }, [sb, societies]);
+
+  const saveService = useCallback(async (service: Service, isEdit: boolean): Promise<boolean> => {
+    if (sb) {
+      const res = isEdit ? await db.updateServiceRow(sb, service) : await db.insertService(sb, service);
+      if (res.error) {
+        toast.error(res.error.message);
+        return false;
+      }
+    }
+    setServices(prev => (isEdit ? prev.map(s => s.id === service.id ? service : s) : [...prev, service]));
+    return true;
+  }, [sb]);
+
+  const deleteService = useCallback(async (id: string): Promise<boolean> => {
+    if (sb) {
+      const { error } = await db.deleteServiceRow(sb, id);
+      if (error) {
+        toast.error(error.message);
+        return false;
+      }
+    }
+    setServices(prev => prev.filter(s => s.id !== id));
+    return true;
+  }, [sb]);
+
+  const saveInvoiceTerm = useCallback(async (term: InvoiceTerm, isEdit: boolean): Promise<boolean> => {
+    if (sb) {
+      const res = isEdit ? await db.updateInvoiceTermRow(sb, term) : await db.insertInvoiceTerm(sb, term);
+      if (res.error) {
+        toast.error(res.error.message);
+        return false;
+      }
+    }
+    setInvoiceTerms(prev => (isEdit ? prev.map(t => t.id === term.id ? term : t) : [...prev, term]));
+    return true;
+  }, [sb]);
+
+  const deleteInvoiceTerm = useCallback(async (id: string): Promise<boolean> => {
+    if (sb) {
+      const { error } = await db.deleteInvoiceTermRow(sb, id);
+      if (error) {
+        toast.error(error.message);
+        return false;
+      }
+    }
+    setInvoiceTerms(prev => prev.filter(t => t.id !== id));
+    return true;
+  }, [sb]);
+
+  const saveQBItem = useCallback(async (item: QBItem, isEdit: boolean): Promise<boolean> => {
+    if (sb) {
+      const res = isEdit ? await db.updateQBItemRow(sb, item) : await db.insertQBItem(sb, item);
+      if (res.error) {
+        toast.error(res.error.message);
+        return false;
+      }
+    }
+    setQbItems(prev => (isEdit ? prev.map(q => q.id === item.id ? item : q) : [...prev, item]));
+    return true;
+  }, [sb]);
+
+  const deleteQBItem = useCallback(async (id: string): Promise<boolean> => {
+    if (sb) {
+      const { error } = await db.deleteQBItemRow(sb, id);
+      if (error) {
+        toast.error(error.message);
+        return false;
+      }
+    }
+    setQbItems(prev => prev.filter(q => q.id !== id));
+    return true;
+  }, [sb]);
+
+  const saveDirector = useCallback(async (d: Director, isEdit: boolean): Promise<boolean> => {
+    if (sb) {
+      const res = isEdit ? await db.updateDirectorRow(sb, d) : await db.insertDirector(sb, d);
+      if (res.error) {
+        toast.error(res.error.message);
+        return false;
+      }
+    }
+    setDirectores(prev => (isEdit ? prev.map(x => x.id === d.id ? d : x) : [...prev, d]));
+    return true;
+  }, [sb]);
+
+  const deleteDirector = useCallback(async (id: string): Promise<boolean> => {
+    if (sb) {
+      const { error } = await db.deleteDirectorRow(sb, id);
+      if (error) {
+        toast.error(error.message);
+        return false;
+      }
+    }
+    setDirectores(prev => prev.filter(x => x.id !== id));
+    return true;
+  }, [sb]);
+
+  const getClientName = useCallback((id?: string) => clients.find(c => c.id === id)?.nombre || '', [clients]);
+  const getSocietyName = useCallback((id?: string) => societies.find(s => s.id === id)?.nombre || '', [societies]);
+  const getServiceName = useCallback((id?: string) => services.find(s => s.id === id)?.nombre || '', [services]);
+  const getDirectorName = useCallback((id?: string) => directores.find(d => d.id === id)?.nombre || '', [directores]);
 
   return (
     <AppContext.Provider value={{
-      cases, clients, societies, services, invoiceTerms, qbItems,
-      setCases, setClients, setSocieties, setServices, setInvoiceTerms, setQbItems,
-      addCase, updateCase, addComment, addExpense, updateExpenses,
-      getClientName, getSocietyName, getServiceName,
+      cases, clients, societies, services, invoiceTerms, qbItems, directores,
+      addCase, updateCase, addComment, addExpense, updateExpenses, removeCase,
+      saveClient, deleteClient, saveSociety, deleteSociety, saveService, deleteService,
+      saveInvoiceTerm, deleteInvoiceTerm, saveQBItem, deleteQBItem,
+      saveDirector, deleteDirector,
+      getClientName, getSocietyName, getServiceName, getDirectorName,
     }}>
       {children}
     </AppContext.Provider>

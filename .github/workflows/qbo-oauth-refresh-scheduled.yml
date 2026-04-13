@@ -1,0 +1,33 @@
+# Fase 3: renueva el access token de QuickBooks llamando a la Edge Function qbo-oauth-refresh.
+# Requiere secrets en el repo (Settings → Secrets and variables → Actions):
+#   QBO_OAUTH_REFRESH_URL  → https://<REF>.supabase.co/functions/v1/qbo-oauth-refresh
+#   QBO_CRON_SECRET        → mismo valor que en Supabase Edge Function secrets
+#   SUPABASE_ANON_KEY      → anon key del proyecto (Settings → API)
+#
+# Ejecuta cada hora (ajusta el cron si tu plan de GitHub lo permite más frecuente).
+# workflow_dispatch permite probar manualmente sin esperar al cron.
+
+name: QBO OAuth refresh token
+
+on:
+  schedule:
+    - cron: '20 * * * *' # minuto 20 de cada hora UTC
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST qbo-oauth-refresh
+        env:
+          URL: ${{ secrets.QBO_OAUTH_REFRESH_URL }}
+          CRON: ${{ secrets.QBO_CRON_SECRET }}
+          ANON: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$URL" ] || [ -z "$CRON" ] || [ -z "$ANON" ]; then
+            echo "Faltan secrets: QBO_OAUTH_REFRESH_URL, QBO_CRON_SECRET, SUPABASE_ANON_KEY"
+            exit 1
+          fi
+          curl -fsS -X POST "$URL" \
+            -H "Authorization: Bearer $CRON" \
+            -H "apikey: $ANON"

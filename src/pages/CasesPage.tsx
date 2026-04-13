@@ -15,7 +15,7 @@ import { Plus, Filter, Search, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function CasesPage() {
-  const { cases, addCase, setCases, getClientName, getSocietyName } = useApp();
+  const { cases, addCase, removeCase, getClientName, getSocietyName } = useApp();
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<Record<string, any>>({});
   const [showNewCase, setShowNewCase] = useState(false);
@@ -54,11 +54,10 @@ export default function CasesPage() {
     urgent: cases.filter(c => c.prioridad_urgente).length,
   }), [cases]);
 
-  const handleDelete = (id: string) => {
-    if (confirm('¿Está seguro de eliminar este caso?')) {
-      setCases(prev => prev.filter(c => c.id !== id));
-      toast.success('Caso eliminado');
-    }
+  const handleDelete = async (id: string) => {
+    if (!confirm('¿Está seguro de eliminar este caso?')) return;
+    const ok = await removeCase(id);
+    if (ok) toast.success('Caso eliminado');
   };
 
   const currentCommentsCase = commentsCase ? cases.find(c => c.id === commentsCase.id) || null : null;

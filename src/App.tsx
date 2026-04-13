@@ -11,8 +11,10 @@ import SocietiesPage from "./pages/maintenance/SocietiesPage";
 import ServicesPage from "./pages/maintenance/ServicesPage";
 import InvoiceTermsPage from "./pages/maintenance/InvoiceTermsPage";
 import QBItemsPage from "./pages/maintenance/QBItemsPage";
+import DirectoresPage from "./pages/maintenance/DirectoresPage";
 import ConfigPage from "./pages/ConfigPage";
 import NotFound from "./pages/NotFound";
+import ComingSoonPage from "./pages/ComingSoonPage";
 
 const queryClient = new QueryClient();
 
@@ -26,7 +28,12 @@ const App = () => (
           <AppLayout>
             <Routes>
               <Route path="/" element={<CasesPage />} />
+              <Route path="/casos" element={<CasesPage />} />
+              <Route path="/facturas" element={<ComingSoonPage title="Facturas" />} />
+              <Route path="/reportes" element={<ComingSoonPage title="Reportes" />} />
+              <Route path="/instructivos" element={<ComingSoonPage title="Instructivos" />} />
               <Route path="/mantenimiento/clientes" element={<ClientsPage />} />
+              <Route path="/mantenimiento/directores" element={<DirectoresPage />} />
               <Route path="/mantenimiento/sociedades" element={<SocietiesPage />} />
               <Route path="/mantenimiento/servicios" element={<ServicesPage />} />
               <Route path="/mantenimiento/terminos" element={<InvoiceTermsPage />} />

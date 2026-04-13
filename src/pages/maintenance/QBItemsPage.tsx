@@ -10,7 +10,7 @@ import { Plus, Pencil, Trash2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function QBItemsPage() {
-  const { qbItems, setQbItems } = useApp();
+  const { qbItems, saveQBItem, deleteQBItem } = useApp();
   const [search, setSearch] = useState('');
   const [editItem, setEditItem] = useState<QBItem | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -19,20 +19,21 @@ export default function QBItemsPage() {
   const openNew = () => { setForm({ activo: true }); setEditItem(null); setShowForm(true); };
   const openEdit = (q: QBItem) => { setForm({ ...q }); setEditItem(q); setShowForm(true); };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.nombre_interno || !form.nombre_qb) { toast.error('Nombres requeridos'); return; }
-    if (editItem) {
-      setQbItems(prev => prev.map(q => q.id === editItem.id ? { ...editItem, ...form } as QBItem : q));
-      toast.success('Item QB actualizado');
-    } else {
-      setQbItems(prev => [...prev, { ...form, id: crypto.randomUUID() } as QBItem]);
-      toast.success('Item QB creado');
-    }
+    const item = editItem
+      ? { ...editItem, ...form } as QBItem
+      : { ...form, id: crypto.randomUUID(), tipo: form.tipo || 'Servicio', activo: form.activo ?? true } as QBItem;
+    const ok = await saveQBItem(item, !!editItem);
+    if (!ok) return;
+    toast.success(editItem ? 'Item QB actualizado' : 'Item QB creado');
     setShowForm(false);
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('¿Eliminar?')) { setQbItems(prev => prev.filter(q => q.id !== id)); toast.success('Eliminado'); }
+  const handleDelete = async (id: string) => {
+    if (!confirm('¿Eliminar?')) return;
+    const ok = await deleteQBItem(id);
+    if (ok) toast.success('Eliminado');
   };
 
   const filtered = qbItems.filter(q => !search || q.nombre_interno.toLowerCase().includes(search.toLowerCase()));

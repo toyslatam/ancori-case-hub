@@ -1,0 +1,33 @@
+# Config mínima para Supabase CLI (functions serve / deploy).
+# Sustituye project_id por el ref de tu proyecto si usas `supabase link`.
+project_id = "ancori-case-hub"
+
+[api]
+enabled = true
+
+# OAuth: el navegador y Intuit llaman sin JWT de usuario.
+# (No uses [functions] enabled = true: la CLI actual espera solo subtablas por función.)
+[functions.qbo-oauth-start]
+verify_jwt = false
+
+[functions.qbo-oauth-callback]
+verify_jwt = false
+
+# Refresh lo dispara cron con QBO_CRON_SECRET, no sesión de usuario.
+[functions.qbo-oauth-refresh]
+verify_jwt = false
+
+# Estado: requiere Bearer del usuario (validación manual en código + getUser).
+[functions.qbo-oauth-status]
+verify_jwt = false
+
+[functions.qbo-sync-societies]
+verify_jwt = false
+
+# Intuit envía el webhook sin JWT de usuario; la firma va en intuit-signature.
+[functions.qbo-webhook]
+verify_jwt = false
+
+# Push desde la app con secreto compartido (no exponer el build en entornos públicos).
+[functions.qbo-society-push]
+verify_jwt = false

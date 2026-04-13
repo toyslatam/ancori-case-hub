@@ -1,6 +1,11 @@
 export interface Client {
   id: string;
+  /** Nombre cliente (pantalla principal / Anc_Clientes). */
   nombre: string;
+  /** Razón social o nombre fiscal. */
+  razon_social: string;
+  /** Correlativo de negocio (columna ID en listados). */
+  numero?: number;
   email: string;
   telefono: string;
   identificacion: string;
@@ -11,13 +16,39 @@ export interface Client {
   created_at: string;
 }
 
+export type TipoSociedad = 'SOCIEDADES' | 'FUNDACIONES' | 'B.V.I';
+
+export const TIPOS_SOCIEDAD: TipoSociedad[] = ['SOCIEDADES', 'FUNDACIONES', 'B.V.I'];
+
+/** Semestre fiscal según mes de la fecha de inscripción (1–6 → 1, 7–12 → 2). */
+export function semestreFromFechaInscripcion(iso?: string | null): 1 | 2 | null {
+  if (!iso?.trim()) return null;
+  const d = new Date(`${iso.slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  const m = d.getMonth() + 1;
+  if (m >= 1 && m <= 6) return 1;
+  return 2;
+}
+
 export interface Society {
   id: string;
   client_id: string;
+  /** Nombre sociedad (listado principal). */
   nombre: string;
-  tipo_sociedad: string;
+  razon_social: string;
+  tipo_sociedad: TipoSociedad;
   correo: string;
   telefono: string;
+  id_qb?: number | null;
+  ruc: string;
+  dv: string;
+  nit: string;
+  presidente_id?: string | null;
+  tesorero_id?: string | null;
+  secretario_id?: string | null;
+  pago_tasa_unica: string;
+  /** Fecha inscripción (YYYY-MM-DD). El semestre se deriva en UI (1–6 → 1, 7–12 → 2). */
+  fecha_inscripcion?: string;
   identificacion_fiscal?: string;
   quickbooks_customer_id?: string;
   activo: boolean;
@@ -32,6 +63,7 @@ export interface Service {
   codigo?: string;
   tarifa_base?: number;
   activo: boolean;
+  created_at?: string;
 }
 
 export interface CaseComment {
@@ -58,6 +90,7 @@ export interface InvoiceTerm {
   nombre: string;
   dias_vencimiento: number;
   activo: boolean;
+  created_at?: string;
 }
 
 export interface QBItem {
@@ -68,6 +101,23 @@ export interface QBItem {
   tipo: string;
   impuesto_default?: number;
   activo: boolean;
+  created_at?: string;
+}
+
+export type TipoDocumentoDirector = 'Cedula' | 'Pasaporte' | 'Otro';
+
+export const TIPOS_DOCUMENTO_DIRECTOR: TipoDocumentoDirector[] = ['Cedula', 'Pasaporte', 'Otro'];
+
+export interface Director {
+  id: string;
+  /** Nombre del director (columna Título / nombre en listas). */
+  nombre: string;
+  comentarios: string;
+  activo: boolean;
+  /** Fecha de vencimiento del documento de identidad (YYYY-MM-DD). */
+  fecha_vencimiento_documento?: string;
+  tipo_documento: TipoDocumentoDirector;
+  created_at: string;
 }
 
 export interface CaseInvoice {
@@ -120,19 +170,19 @@ export interface Case {
 }
 
 export const mockClients: Client[] = [
-  { id: '1', nombre: 'SAUL SASSON', email: 'saul@email.com', telefono: '+507 6000-1111', identificacion: 'PE-1234', direccion: 'Panamá City', activo: true, created_at: '2024-01-10' },
-  { id: '2', nombre: 'ANA MARIA GOMEZ', email: 'ana@email.com', telefono: '+507 6000-2222', identificacion: 'PE-5678', direccion: 'Costa del Este', activo: true, created_at: '2024-01-15' },
-  { id: '3', nombre: 'JOSE FERNANDO CADAVID', email: 'jose@email.com', telefono: '+507 6000-3333', identificacion: 'PE-9012', direccion: 'Punta Pacífica', activo: true, created_at: '2024-02-01' },
-  { id: '4', nombre: 'SUSANA BERENGUER', email: 'susana@email.com', telefono: '+507 6000-4444', identificacion: 'PE-3456', direccion: 'El Cangrejo', activo: true, created_at: '2024-02-10' },
-  { id: '5', nombre: 'JEAN RICHA HOLMES', email: 'jean@email.com', telefono: '+507 6000-5555', identificacion: 'PE-7890', direccion: 'San Francisco', activo: true, created_at: '2024-03-01' },
+  { id: '1', nombre: 'SAUL SASSON', razon_social: 'SAUL SASSON', numero: 1, email: 'saul@email.com', telefono: '+507 6000-1111', identificacion: 'PE-1234', direccion: 'Panamá City', activo: true, created_at: '2024-01-10' },
+  { id: '2', nombre: 'ANA MARIA GOMEZ', razon_social: 'ANA MARIA GOMEZ', numero: 2, email: 'ana@email.com', telefono: '+507 6000-2222', identificacion: 'PE-5678', direccion: 'Costa del Este', activo: true, created_at: '2024-01-15' },
+  { id: '3', nombre: 'JOSE FERNANDO CADAVID', razon_social: 'JOSE FERNANDO CADAVID', numero: 3, email: 'jose@email.com', telefono: '+507 6000-3333', identificacion: 'PE-9012', direccion: 'Punta Pacífica', activo: true, created_at: '2024-02-01' },
+  { id: '4', nombre: 'SUSANA BERENGUER', razon_social: 'SUSANA BERENGUER', numero: 4, email: 'susana@email.com', telefono: '+507 6000-4444', identificacion: 'PE-3456', direccion: 'El Cangrejo', activo: true, created_at: '2024-02-10' },
+  { id: '5', nombre: 'JEAN RICHA HOLMES', razon_social: 'JEAN RICHA HOLMES', numero: 5, email: 'jean@email.com', telefono: '+507 6000-5555', identificacion: 'PE-7890', direccion: 'San Francisco', activo: true, created_at: '2024-03-01' },
 ];
 
 export const mockSocieties: Society[] = [
-  { id: '1', client_id: '1', nombre: 'HASANI S.A.', tipo_sociedad: 'S.A.', correo: 'hasani@corp.com', telefono: '+507 300-1111', activo: true, created_at: '2024-01-12' },
-  { id: '2', client_id: '2', nombre: 'ANA MARIA GOMEZ', tipo_sociedad: 'Personal', correo: 'ana@corp.com', telefono: '+507 300-2222', activo: true, created_at: '2024-01-16' },
-  { id: '3', client_id: '3', nombre: 'ABASA GROUP CORP.', tipo_sociedad: 'Corp.', correo: 'abasa@corp.com', telefono: '+507 300-3333', activo: true, created_at: '2024-02-05' },
-  { id: '4', client_id: '4', nombre: 'FBBC CORPORATION', tipo_sociedad: 'Corp.', correo: 'fbbc@corp.com', telefono: '+507 300-4444', activo: true, created_at: '2024-02-15' },
-  { id: '5', client_id: '3', nombre: 'DOVLE CINCUENTENARIO 5B-200, S.A.', tipo_sociedad: 'S.A.', correo: 'dovle@corp.com', telefono: '+507 300-5555', activo: true, created_at: '2024-03-01' },
+  { id: '1', client_id: '1', nombre: 'HASANI S.A.', razon_social: 'HASANI SOCIEDAD ANONIMA', tipo_sociedad: 'SOCIEDADES', correo: 'hasani@corp.com', telefono: '+507 300-1111', id_qb: 1001, ruc: '', dv: '', nit: '', presidente_id: 'd1', tesorero_id: 'd2', secretario_id: null, pago_tasa_unica: '', fecha_inscripcion: '2024-03-15', activo: true, created_at: '2024-01-12' },
+  { id: '2', client_id: '2', nombre: 'ANA MARIA GOMEZ', razon_social: 'ANA MARIA GOMEZ', tipo_sociedad: 'FUNDACIONES', correo: 'ana@corp.com', telefono: '+507 300-2222', ruc: '', dv: '', nit: '', pago_tasa_unica: 'Sí', fecha_inscripcion: '2023-08-01', activo: true, created_at: '2024-01-16' },
+  { id: '3', client_id: '3', nombre: 'ABASA GROUP CORP.', razon_social: 'ABASA GROUP CORPORATION', tipo_sociedad: 'B.V.I', correo: 'abasa@corp.com', telefono: '+507 300-3333', ruc: '123456', dv: '7', nit: '', presidente_id: 'd1', pago_tasa_unica: '', fecha_inscripcion: '2022-01-10', activo: true, created_at: '2024-02-05' },
+  { id: '4', client_id: '4', nombre: 'FBBC CORPORATION', razon_social: 'FBBC CORPORATION', tipo_sociedad: 'SOCIEDADES', correo: 'fbbc@corp.com', telefono: '+507 300-4444', ruc: '', dv: '', nit: '', pago_tasa_unica: 'No', fecha_inscripcion: '2024-11-20', activo: true, created_at: '2024-02-15' },
+  { id: '5', client_id: '3', nombre: 'DOVLE CINCUENTENARIO 5B-200, S.A.', razon_social: 'DOVLE CINCUENTENARIO 5B-200, S.A.', tipo_sociedad: 'SOCIEDADES', correo: 'dovle@corp.com', telefono: '+507 300-5555', ruc: '', dv: '', nit: '', fecha_inscripcion: '2024-06-01', activo: true, created_at: '2024-03-01' },
 ];
 
 export const mockServices: Service[] = [
@@ -152,6 +202,11 @@ export const mockQBItems: QBItem[] = [
   { id: '1', nombre_interno: 'Constitución S.A.', nombre_qb: 'Corp Formation SA', qb_item_id: 'QB-001', tipo: 'Servicio', impuesto_default: 7, activo: true },
   { id: '2', nombre_interno: 'Poder General', nombre_qb: 'Power of Attorney', qb_item_id: 'QB-002', tipo: 'Servicio', impuesto_default: 7, activo: true },
   { id: '3', nombre_interno: 'Certificado Existencia', nombre_qb: 'Good Standing Certificate', qb_item_id: 'QB-003', tipo: 'Servicio', impuesto_default: 7, activo: true },
+];
+
+export const mockDirectores: Director[] = [
+  { id: 'd1', nombre: 'MARIA ISABEL PALMA', comentarios: '', activo: true, fecha_vencimiento_documento: '2026-12-31', tipo_documento: 'Cedula', created_at: '2024-06-01' },
+  { id: 'd2', nombre: 'EYRA RUTH ROMERO', comentarios: 'Notas internas', activo: true, tipo_documento: 'Pasaporte', created_at: '2024-06-15' },
 ];
 
 export const mockCases: Case[] = [
