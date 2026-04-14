@@ -64,13 +64,16 @@ Deno.serve(async (req) => {
     return json(503, { error: 'not_configured', hint: 'Inserta tokens tras OAuth o despliega qbo-oauth-callback' });
   }
 
+  const envRealm = (Deno.env.get('QBO_DEFAULT_REALM_ID') ?? '').trim();
+  const realmDisplay = (row.realm_id ?? '').trim() || envRealm || null;
+
   const now = Date.now();
   const expiresAt = row.access_expires_at ? new Date(row.access_expires_at).getTime() : 0;
   if (row.access_token && expiresAt - LEEWAY_SEC * 1000 > now) {
     return json(200, {
       skipped: true,
       access_expires_at: row.access_expires_at,
-      realm_id: row.realm_id,
+      realm_id: realmDisplay,
     });
   }
 
@@ -135,6 +138,6 @@ Deno.serve(async (req) => {
   return json(200, {
     refreshed: true,
     access_expires_at: accessExpiresAt,
-    realm_id: row.realm_id,
+    realm_id: realmDisplay,
   });
 });

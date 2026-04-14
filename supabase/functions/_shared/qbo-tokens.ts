@@ -6,6 +6,17 @@ type SupabaseAdmin = any;
 
 const LEEWAY_MS = 120_000;
 
+function defaultRealmFromEnv(): string {
+  return (Deno.env.get('QBO_DEFAULT_REALM_ID') ?? '').trim();
+}
+
+/** `realm_id` en BD tiene prioridad; si falta, se usa el secret `QBO_DEFAULT_REALM_ID` (sin commitear el valor real). */
+function resolveRealmId(rowRealm: string | null | undefined): string {
+  const fromDb = (rowRealm ?? '').trim();
+  if (fromDb) return fromDb;
+  return defaultRealmFromEnv();
+}
+
 export async function getValidQboAccessToken(
   supabase: SupabaseAdmin,
   clientId: string,
@@ -19,12 +30,13 @@ export async function getValidQboAccessToken(
 
   if (readErr) throw new Error(`db_read: ${readErr.message}`);
   if (!row?.refresh_token) throw new Error('qbo_not_configured');
-  if (!row.realm_id) throw new Error('qbo_missing_realm');
+  const realmId = resolveRealmId(row.realm_id);
+  if (!realmId) throw new Error('qbo_missing_realm');
 
   const now = Date.now();
   const exp = row.access_expires_at ? new Date(row.access_expires_at).getTime() : 0;
   if (row.access_token && exp - LEEWAY_MS > now) {
-    return { accessToken: row.access_token, realmId: row.realm_id };
+    return { accessToken: row.access_token, realmId };
   }
 
   const basic = btoa(`${clientId}:${clientSecret}`);
@@ -67,7 +79,7 @@ export async function getValidQboAccessToken(
   const { error: writeErr } = await supabase.from('qbo_oauth_tokens').upsert(
     {
       id: 'default',
-      realm_id: row.realm_id,
+      realm_id: realmId,
       access_token: accessToken,
       refresh_token: refreshToken,
       access_expires_at: accessExpiresAt,
@@ -78,5 +90,5 @@ export async function getValidQboAccessToken(
 
   if (writeErr) throw new Error(`db_write: ${writeErr.message}`);
 
-  return { accessToken, realmId: row.realm_id };
+  return { accessToken, realmId };
 }

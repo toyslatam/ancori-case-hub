@@ -46,9 +46,11 @@ Deno.serve(async (req) => {
     return json(500, { error: 'db_read', detail: error.message });
   }
 
+  const envRealm = (Deno.env.get('QBO_DEFAULT_REALM_ID') ?? '').trim();
+  const dbRealm = (data?.realm_id ?? '').trim();
   return json(200, {
     connected: Boolean(data?.refresh_token),
-    realm_id: data?.realm_id ?? null,
+    realm_id: dbRealm || envRealm || null,
     access_expires_at: data?.access_expires_at ?? null,
   });
 });

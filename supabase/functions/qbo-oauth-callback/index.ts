@@ -17,6 +17,16 @@ function redirect(url: string, status = 302) {
   });
 }
 
+/** Intuit redirige con `realmId` (camelCase); aceptamos `realm_id` por si un proxy normaliza la query. */
+function realmIdFromCallbackUrl(url: URL): string | null {
+  const raw =
+    url.searchParams.get('realmId') ??
+    url.searchParams.get('realm_id') ??
+    url.searchParams.get('realmID');
+  const t = raw?.trim() ?? '';
+  return t.length > 0 ? t : null;
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'GET') {
     return new Response('Method not allowed', { status: 405 });
@@ -69,10 +79,10 @@ Deno.serve(async (req) => {
     });
   }
 
-  const code = url.searchParams.get('code');
-  const realmIdVal = url.searchParams.get('realmId');
+  const code = url.searchParams.get('code')?.trim();
+  const realmIdVal = realmIdFromCallbackUrl(url);
   if (!code || !realmIdVal) {
-    return failRedirect('incomplete', 'Falta code o realmId');
+    return failRedirect('incomplete', 'Falta code o realmId en la URL de callback');
   }
 
   const basic = btoa(`${clientId}:${clientSecret}`);

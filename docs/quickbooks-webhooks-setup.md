@@ -19,6 +19,7 @@ El **webhook de Intuit no sustituye** el push desde la app: Intuit notifica camb
 | `QBO_WEBHOOK_DEFAULT_CLIENT_ID` | Sí, si quieres **crear** sociedades desde Customer nuevos en QBO | UUID de un registro existente en `public.clients` (cliente **interno** de la plataforma). Las sociedades importadas quedan con ese `client_id` hasta que las reasignes. **No** es el Id de QuickBooks. |
 | `QBO_SOCIETY_PUSH_SECRET` | Recomendado | Secreto dedicado para `qbo-society-push`. Si no lo defines, puedes autorizar con `Authorization: Bearer <QBO_CRON_SECRET>`. |
 | `QBO_CRON_SECRET` | Ya lo usas para cron/sync | También aceptado por `qbo-society-push` como alternativa al secreto anterior. |
+| `QBO_DEFAULT_REALM_ID` | Opcional | **Company Id** de QuickBooks (solo dígitos, p. ej. el que ves en la URL de QBO o en el callback OAuth). Si `qbo_oauth_tokens.realm_id` está vacío, `getValidQboAccessToken`, `qbo-webhook` y `qbo-oauth-status` usan este valor. **No** lo pongas en el repo: créalo solo como secret en Supabase. |
 
 En `societies`, **`id_qb`** es el **Customer.Id** de QuickBooks en forma numérica (cuando el Id es un entero que cabe en `integer`); **`quickbooks_customer_id`** guarda el mismo identificador como texto. Ambos se rellenan desde webhook, `qbo-society-push` y `qbo-sync-societies`.
 

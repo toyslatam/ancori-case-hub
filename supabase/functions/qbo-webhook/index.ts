@@ -156,10 +156,13 @@ function notificationsNeedQboAccessToken(list: QboDataChangeNotification[]): boo
 
 function inferEffectiveRealm(
   list: QboDataChangeNotification[],
-  dbRealm: string | null | undefined
+  dbRealm: string | null | undefined,
+  envRealm: string
 ): string {
   const fromDb = (dbRealm ?? '').trim();
   if (fromDb) return fromDb;
+  const fromEnv = (envRealm ?? '').trim();
+  if (fromEnv) return fromEnv;
   for (const n of list) {
     const r = (n.realmId ?? '').trim();
     if (r) return r;
@@ -278,6 +281,7 @@ Deno.serve(async (req) => {
 
   const verifier = Deno.env.get('INTUIT_WEBHOOK_VERIFIER_TOKEN') ?? '';
   if (!verifier) {
+    console.error('[qbo-webhook] missing_INTUIT_WEBHOOK_VERIFIER_TOKEN');
     return json(503, { error: 'missing_INTUIT_WEBHOOK_VERIFIER_TOKEN' });
   }
 
@@ -287,7 +291,13 @@ Deno.serve(async (req) => {
     req.headers.get('Intuit-Signature') ??
     req.headers.get('INTUIT-SIGNATURE');
 
+  console.info('[qbo-webhook] POST', {
+    bodyBytes: rawBody.length,
+    hasIntuitSignature: Boolean(sig?.trim()),
+  });
+
   if (!(await verifyIntuitSignature(rawBody, sig, verifier))) {
+    console.warn('[qbo-webhook] invalid_signature');
     return json(401, { error: 'invalid_signature' });
   }
 
@@ -310,7 +320,9 @@ Deno.serve(async (req) => {
   const supabase = createClient(supabaseUrl, serviceKey);
 
   const list = normalizeNotifications(payload);
+  console.info('[qbo-webhook] parsed', { notificationCount: list.length });
   if (list.length === 0) {
+    console.info('[qbo-webhook] no_events_after_normalize');
     return json(200, {
       ok: true,
       processed: [
@@ -327,7 +339,11 @@ Deno.serve(async (req) => {
     .eq('id', 'default')
     .maybeSingle();
 
-  let effectiveRealm = inferEffectiveRealm(list, tokRealmRow?.realm_id as string | undefined);
+  let effectiveRealm = inferEffectiveRealm(
+    list,
+    tokRealmRow?.realm_id as string | undefined,
+    Deno.env.get('QBO_DEFAULT_REALM_ID') ?? ''
+  );
   const needsToken = notificationsNeedQboAccessToken(list);
 
   let accessToken = '';
@@ -339,6 +355,7 @@ Deno.serve(async (req) => {
       if (tr) effectiveRealm = tr;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      console.error('[qbo-webhook] qbo_token', { detail: msg });
       return json(503, { error: 'qbo_token', detail: msg });
     }
   }
@@ -454,6 +471,11 @@ Deno.serve(async (req) => {
     }
   }
 
+  console.info('[qbo-webhook] ok', {
+    notification_count: list.length,
+    processedCount: processed.length,
+    errorsCount: errors.length,
+  });
   return json(200, {
     ok: true,
     processed,
