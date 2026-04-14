@@ -341,6 +341,7 @@ function rowToInvoiceLine(row: Record<string, unknown>): InvoiceLine {
   const tarifa = Number(row.tarifa);
   return {
     id: String(row.id),
+    invoice_id: row.invoice_id ? String(row.invoice_id) : undefined,
     servicio_id: row.servicio_id ? String(row.servicio_id) : undefined,
     qb_item_id: row.qb_item_id ? String(row.qb_item_id) : undefined,
     descripcion: String(row.descripcion),
@@ -348,6 +349,7 @@ function rowToInvoiceLine(row: Record<string, unknown>): InvoiceLine {
     tarifa,
     importe: cantidad * tarifa,
     itbms: Number(row.itbms ?? 0),
+    categoria: row.categoria ? String(row.categoria) : undefined,
   };
 }
 
@@ -365,6 +367,8 @@ function rowToInvoice(row: Record<string, unknown>, lines: InvoiceLine[]): CaseI
     total: Number(row.total),
     estado: row.estado as CaseInvoice['estado'],
     qb_invoice_id: row.qb_invoice_id ? String(row.qb_invoice_id) : undefined,
+    numero_factura: row.numero_factura ? String(row.numero_factura) : undefined,
+    nota_cliente: row.nota_cliente ? String(row.nota_cliente) : undefined,
     lines,
   };
 }
@@ -768,4 +772,65 @@ export async function updateDirectorRow(sb: SupabaseClient, d: Director) {
 
 export async function deleteDirectorRow(sb: SupabaseClient, id: string) {
   return sb.from('directores').delete().eq('id', id);
+}
+
+// ─── Facturas (case_invoices + invoice_lines) ────────────────────────────────
+
+function invoiceToRow(inv: CaseInvoice): Record<string, unknown> {
+  return {
+    id: inv.id,
+    case_id: inv.case_id,
+    client_id: inv.client_id ?? null,
+    society_id: inv.society_id ?? null,
+    term_id: inv.term_id ?? null,
+    fecha_factura: inv.fecha_factura,
+    fecha_vencimiento: inv.fecha_vencimiento,
+    subtotal: inv.subtotal,
+    impuesto: inv.impuesto,
+    total: inv.total,
+    estado: inv.estado,
+    qb_invoice_id: inv.qb_invoice_id ?? null,
+    numero_factura: inv.numero_factura ?? null,
+    nota_cliente: inv.nota_cliente ?? null,
+  };
+}
+
+function lineToRow(line: InvoiceLine, invoiceId: string): Record<string, unknown> {
+  return {
+    id: line.id,
+    invoice_id: invoiceId,
+    servicio_id: line.servicio_id ?? null,
+    qb_item_id: line.qb_item_id ?? null,
+    descripcion: line.descripcion,
+    cantidad: line.cantidad,
+    tarifa: line.tarifa,
+    itbms: line.itbms,
+    categoria: line.categoria ?? null,
+  };
+}
+
+export async function insertInvoice(sb: SupabaseClient, inv: CaseInvoice) {
+  const { error } = await sb.from('case_invoices').insert(invoiceToRow(inv));
+  if (error) return { error };
+  if (inv.lines.length > 0) {
+    const { error: le } = await sb.from('invoice_lines').insert(inv.lines.map(l => lineToRow(l, inv.id)));
+    if (le) return { error: le };
+  }
+  return { error: null };
+}
+
+export async function updateInvoice(sb: SupabaseClient, inv: CaseInvoice) {
+  const { error } = await sb.from('case_invoices').update(invoiceToRow(inv)).eq('id', inv.id);
+  if (error) return { error };
+  // Replace lines: delete old, insert new
+  await sb.from('invoice_lines').delete().eq('invoice_id', inv.id);
+  if (inv.lines.length > 0) {
+    const { error: le } = await sb.from('invoice_lines').insert(inv.lines.map(l => lineToRow(l, inv.id)));
+    if (le) return { error: le };
+  }
+  return { error: null };
+}
+
+export async function deleteInvoiceRow(sb: SupabaseClient, invoiceId: string) {
+  return sb.from('case_invoices').delete().eq('id', invoiceId);
 }

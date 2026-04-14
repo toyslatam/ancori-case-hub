@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import {
   Case, Category, Client, Director, Etapa, Society, Service, ServiceItem, Usuario, InvoiceTerm, QBItem,
   mockCases, mockCategories, mockClients, mockDirectores, mockEtapas, mockSocieties, mockServices, mockServiceItems, mockUsuarios, mockInvoiceTerms, mockQBItems,
-  CaseComment, CaseExpense,
+  CaseComment, CaseExpense, CaseInvoice,
 } from '@/data/mockData';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 import {
@@ -30,6 +30,8 @@ interface AppContextType {
   addComment: (caseId: string, comment: CaseComment) => void;
   addExpense: (caseId: string, expense: CaseExpense) => void;
   updateExpenses: (caseId: string, expenses: CaseExpense[]) => void;
+  saveInvoice: (caseId: string, invoice: CaseInvoice, isEdit: boolean) => Promise<boolean>;
+  deleteInvoice: (caseId: string, invoiceId: string) => Promise<boolean>;
   removeCase: (id: string) => Promise<boolean>;
   saveClient: (client: Client, isEdit: boolean) => Promise<boolean>;
   deleteClient: (id: string) => Promise<boolean>;
@@ -191,6 +193,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       return prev.map(c => c.id === caseId ? { ...c, expenses } : c);
     });
+  }, [sb]);
+
+  const saveInvoice = useCallback(async (caseId: string, invoice: CaseInvoice, isEdit: boolean): Promise<boolean> => {
+    const { error } = isEdit
+      ? await db.updateInvoice(sb!, invoice)
+      : await db.insertInvoice(sb!, invoice);
+    if (error) { toast.error(error.message); return false; }
+    setCases(prev => prev.map(c => {
+      if (c.id !== caseId) return c;
+      const invoices = isEdit
+        ? c.invoices.map(i => i.id === invoice.id ? invoice : i)
+        : [...c.invoices, invoice];
+      return { ...c, invoices };
+    }));
+    return true;
+  }, [sb]);
+
+  const deleteInvoice = useCallback(async (caseId: string, invoiceId: string): Promise<boolean> => {
+    if (sb) {
+      const { error } = await db.deleteInvoiceRow(sb, invoiceId);
+      if (error) { toast.error(error.message); return false; }
+    }
+    setCases(prev => prev.map(c =>
+      c.id !== caseId ? c : { ...c, invoices: c.invoices.filter(i => i.id !== invoiceId) }
+    ));
+    return true;
   }, [sb]);
 
   const removeCase = useCallback(async (id: string): Promise<boolean> => {
@@ -493,7 +521,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider value={{
       cases, clients, societies, services, serviceItems, etapas, usuarios, invoiceTerms, categories, qbItems, directores,
-      addCase, updateCase, addComment, addExpense, updateExpenses, removeCase,
+      addCase, updateCase, addComment, addExpense, updateExpenses, saveInvoice, deleteInvoice, removeCase,
       saveClient, deleteClient, saveSociety, deleteSociety, saveService, deleteService,
       saveServiceItem, deleteServiceItem, saveEtapa, deleteEtapa, saveUsuario, deleteUsuario,
       saveInvoiceTerm, deleteInvoiceTerm, saveCategory, deleteCategory, saveQBItem, deleteQBItem,

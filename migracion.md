@@ -606,3 +606,143 @@ Si no sabes el hostname exacto de tu servidor, prueba estas opciones comunes:
 - `correo.solucionesdetecnologia.com`
 
 Puedes verificarlo con tu proveedor de hosting (cPanel → Configuración de correo).
+
+---
+
+## Migración de Facturas (SharePoint → Supabase)
+
+### Paso 1 — Alteraciones de esquema
+
+Ejecutar en **Supabase SQL Editor**:
+
+```sql
+-- Nuevas columnas en case_invoices
+ALTER TABLE public.case_invoices
+  ADD COLUMN IF NOT EXISTS numero_factura text,
+  ADD COLUMN IF NOT EXISTS nota_cliente   text;
+
+-- Nueva columna en invoice_lines
+ALTER TABLE public.invoice_lines
+  ADD COLUMN IF NOT EXISTS categoria text;
+```
+
+### Paso 2 — Exportar referencias desde Supabase
+
+Ir a **SQL Editor** y ejecutar cada query, luego descargar el resultado como CSV
+y guardarlo en la carpeta `public/` del proyecto:
+
+```sql
+-- 1. cases_rows.csv
+SELECT id, n_tarea FROM public.cases WHERE n_tarea IS NOT NULL ORDER BY n_tarea;
+
+-- 2. invoice_terms_rows.csv
+SELECT id, nombre FROM public.invoice_terms ORDER BY nombre;
+```
+
+> `societies_rows.csv` ya debe existir de la migración anterior.
+
+### Paso 3 — Convertir Excel a CSV (si no se hizo antes)
+
+En **PowerShell** desde la carpeta `public/`:
+
+```powershell
+$xl = New-Object -ComObject Excel.Application; $xl.Visible = $false; $xl.DisplayAlerts = $false
+$wb = $xl.Workbooks.Open("$PWD\Facturas encabezado.xlsx")
+$wb.Sheets(1).SaveAs("$PWD\facturas_enc_raw.csv", 6); $wb.Close()
+$wb = $xl.Workbooks.Open("$PWD\Facturas detalle.xlsx")
+$wb.Sheets(1).SaveAs("$PWD\facturas_det_raw.csv", 6); $wb.Close()
+$xl.Quit()
+```
+
+### Paso 4 — Ejecutar el script Python
+
+```powershell
+cd public
+python generar_facturas_import.py
+```
+
+Genera dos archivos:
+- `facturas_enc_import.csv` → tabla `case_invoices`
+- `facturas_det_import.csv` → tabla `invoice_lines`
+
+### Paso 5 — Importar en Supabase
+
+En Supabase, ir a **Table Editor**:
+
+1. Abrir tabla `case_invoices` → **Import CSV** → seleccionar `facturas_enc_import.csv`
+   - Asegurarse de que las columnas `case_id`, `society_id`, `term_id` vacías se traten como NULL.
+2. Abrir tabla `invoice_lines` → **Import CSV** → seleccionar `facturas_det_import.csv`
+
+> **Nota**: Las facturas cuyo `Anc_Tareas` no coincida con ningún caso quedarán con `case_id` vacío.
+> Para vincularlas manualmente, usar el SQL del Paso 6.
+
+### Paso 6 — Vincular facturas a casos por n_tarea (SQL)
+
+Si prefieres importar todo vía SQL en lugar de usar Table Editor:
+
+```sql
+-- Importar encabezados (ajusta los valores según el CSV generado)
+-- Este bloque vincula automáticamente usando n_tarea:
+
+INSERT INTO public.case_invoices
+  (id, case_id, society_id, term_id, fecha_factura, fecha_vencimiento,
+   subtotal, impuesto, total, estado, numero_factura, nota_cliente)
+SELECT
+  e.id,
+  c.id  AS case_id,
+  s.id  AS society_id,
+  t.id  AS term_id,
+  e.fecha_factura::date,
+  e.fecha_vencimiento::date,
+  e.subtotal,
+  e.impuesto,
+  e.total,
+  e.estado,
+  e.numero_factura,
+  e.nota_cliente
+FROM (
+  -- Pega aquí los valores del facturas_enc_import.csv como filas VALUES
+  VALUES
+  -- ('uuid', n_tarea::int, 'nombre_sociedad', 'nombre_termino', 'fecha_f', 'fecha_v', subtotal, impuesto, total, 'estado', 'numero', 'nota')
+  -- Ejemplo:
+  -- ('550e8400-...', 15, 'PREMIER INVESTORS CORP.', NULL, '2026-01-16', '2026-01-17', 1200, 0, 1200, 'pendiente', '000001', NULL)
+) AS e(id, n_tarea, sociedad, termino, fecha_factura, fecha_vencimiento, subtotal, impuesto, total, estado, numero_factura, nota_cliente)
+LEFT JOIN public.cases    c ON c.n_tarea = e.n_tarea
+LEFT JOIN public.societies s ON upper(s.nombre) = upper(e.sociedad)
+LEFT JOIN public.invoice_terms t ON lower(t.nombre) LIKE '%' || lower(e.termino) || '%';
+```
+
+### Paso 7 — Verificar
+
+```sql
+SELECT
+  ci.numero_factura,
+  ci.fecha_factura,
+  ci.total,
+  ci.estado,
+  c.n_tarea,
+  COUNT(il.id) AS lineas
+FROM public.case_invoices ci
+LEFT JOIN public.cases c ON c.id = ci.case_id
+LEFT JOIN public.invoice_lines il ON il.invoice_id = ci.id
+GROUP BY ci.id, c.n_tarea
+ORDER BY ci.numero_factura;
+```
+
+---
+
+## Módulo de Facturas — Vista Pendientes
+
+La nueva página `/facturas` en la app incluye:
+
+- **Tab "Pendientes"**: muestra solo facturas con `estado = 'pendiente'`
+- **Alerta visual** en la parte superior si hay facturas pendientes (banner naranja clickeable)
+- **Facturas vencidas**: la columna Vencimiento se muestra en rojo si la fecha ya pasó
+- **Click en fila**: abre el `InvoiceModal` en modo edición (guarda en BD)
+- **Botón eliminar** por fila con confirmación
+
+El `InvoiceModal` ahora soporta:
+- **Modo creación**: desde el botón Facturas en la tabla de Casos
+- **Modo edición**: desde la página `/facturas`
+- **Guardar borrador**: estado `borrador`
+- **Enviar a QB**: estado `pendiente` (listo para envío a QuickBooks)

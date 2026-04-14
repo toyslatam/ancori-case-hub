@@ -223,11 +223,14 @@ export interface CaseInvoice {
   total: number;
   estado: 'borrador' | 'pendiente' | 'enviada' | 'error' | 'anulada';
   qb_invoice_id?: string;
+  numero_factura?: string;
+  nota_cliente?: string;
   lines: InvoiceLine[];
 }
 
 export interface InvoiceLine {
   id: string;
+  invoice_id?: string;
   servicio_id?: string;
   qb_item_id?: string;
   descripcion: string;
@@ -235,6 +238,7 @@ export interface InvoiceLine {
   tarifa: number;
   importe: number;
   itbms: number;
+  categoria?: string;
 }
 
 export type CaseEstado = 'Pendiente' | 'En Curso' | 'Completado/Facturado' | 'Cancelado';

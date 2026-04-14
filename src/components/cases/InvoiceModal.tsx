@@ -5,40 +5,87 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 import { useApp } from '@/context/AppContext';
-import { Case, InvoiceLine } from '@/data/mockData';
-import { Plus, Trash2, Send } from 'lucide-react';
+import { Case, CaseInvoice, InvoiceLine } from '@/data/mockData';
+import { Plus, Trash2, Send, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface InvoiceModalProps {
   caseData: Case | null;
+  invoice?: CaseInvoice | null;
   open: boolean;
   onClose: () => void;
 }
 
-export function InvoiceModal({ caseData, open, onClose }: InvoiceModalProps) {
-  const { clients, societies, services, invoiceTerms, qbItems, getClientName, getSocietyName } = useApp();
+const ESTADO_LABELS: Record<CaseInvoice['estado'], string> = {
+  borrador: 'Borrador',
+  pendiente: 'Pendiente',
+  enviada: 'Enviada',
+  error: 'Error',
+  anulada: 'Anulada',
+};
+
+const ESTADO_COLORS: Record<CaseInvoice['estado'], string> = {
+  borrador: 'bg-gray-100 text-gray-600',
+  pendiente: 'bg-amber-100 text-amber-700',
+  enviada: 'bg-green-100 text-green-700',
+  error: 'bg-red-100 text-red-700',
+  anulada: 'bg-slate-100 text-slate-500',
+};
+
+function newLine(): InvoiceLine {
+  return { id: crypto.randomUUID(), descripcion: '', cantidad: 1, tarifa: 0, importe: 0, itbms: 7 };
+}
+
+export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalProps) {
+  const { clients, societies, services, invoiceTerms, qbItems, getClientName, getSocietyName, saveInvoice } = useApp();
+
+  const isEdit = !!invoice;
+
   const [billToSociety, setBillToSociety] = useState(false);
   const [termId, setTermId] = useState('');
   const [fechaFactura, setFechaFactura] = useState(new Date().toISOString().split('T')[0]);
   const [fechaVencimiento, setFechaVencimiento] = useState('');
-  const [lines, setLines] = useState<InvoiceLine[]>([]);
+  const [estado, setEstado] = useState<CaseInvoice['estado']>('borrador');
+  const [numeroFactura, setNumeroFactura] = useState('');
+  const [notaCliente, setNotaCliente] = useState('');
+  const [lines, setLines] = useState<InvoiceLine[]>([newLine()]);
+  const [saving, setSaving] = useState(false);
 
+  // Reset when modal opens
   useEffect(() => {
-    if (caseData) {
+    if (!open || !caseData) return;
+
+    if (isEdit && invoice) {
+      setBillToSociety(!!invoice.society_id);
+      setTermId(invoice.term_id ?? '');
+      setFechaFactura(invoice.fecha_factura);
+      setFechaVencimiento(invoice.fecha_vencimiento);
+      setEstado(invoice.estado);
+      setNumeroFactura(invoice.numero_factura ?? '');
+      setNotaCliente(invoice.nota_cliente ?? '');
+      setLines(invoice.lines.length > 0 ? invoice.lines : [newLine()]);
+    } else {
       setBillToSociety(!!caseData.society_id);
+      setTermId('');
+      setFechaFactura(new Date().toISOString().split('T')[0]);
+      setFechaVencimiento('');
+      setEstado('borrador');
+      setNumeroFactura('');
+      setNotaCliente('');
       setLines([{
         id: crypto.randomUUID(),
-        servicio_id: caseData.service_id,
         descripcion: services.find(s => s.id === caseData.service_id)?.nombre || '',
         cantidad: 1,
-        tarifa: services.find(s => s.id === caseData.service_id)?.tarifa_base || 0,
+        tarifa: 0,
         importe: 0,
         itbms: 7,
       }]);
     }
-  }, [caseData]);
+  }, [open, caseData?.id, invoice?.id]);
 
+  // Auto-calculate due date when term changes
   useEffect(() => {
     if (termId && fechaFactura) {
       const term = invoiceTerms.find(t => t.id === termId);
@@ -52,7 +99,7 @@ export function InvoiceModal({ caseData, open, onClose }: InvoiceModalProps) {
 
   if (!caseData) return null;
 
-  const updateLine = (idx: number, field: string, value: any) => {
+  const updateLine = (idx: number, field: string, value: unknown) => {
     setLines(prev => prev.map((l, i) => {
       if (i !== idx) return l;
       const updated = { ...l, [field]: value };
@@ -61,115 +108,254 @@ export function InvoiceModal({ caseData, open, onClose }: InvoiceModalProps) {
     }));
   };
 
-  const addLine = () => setLines(prev => [...prev, { id: crypto.randomUUID(), descripcion: '', cantidad: 1, tarifa: 0, importe: 0, itbms: 7 }]);
+  const addLine = () => setLines(prev => [...prev, newLine()]);
   const removeLine = (idx: number) => setLines(prev => prev.filter((_, i) => i !== idx));
 
   const subtotal = lines.reduce((s, l) => s + l.importe, 0);
   const totalItbms = lines.reduce((s, l) => s + (l.importe * l.itbms / 100), 0);
   const total = subtotal + totalItbms;
 
-  const handleSend = () => {
-    toast.success('Factura preparada. Integración con QuickBooks pendiente de configuración.');
-    onClose();
+  const handleSave = async (sendToQB = false) => {
+    if (!fechaFactura || !fechaVencimiento) {
+      toast.error('Completa las fechas de factura y vencimiento');
+      return;
+    }
+    if (lines.every(l => !l.descripcion.trim())) {
+      toast.error('Agrega al menos una línea con descripción');
+      return;
+    }
+
+    setSaving(true);
+    const inv: CaseInvoice = {
+      id: invoice?.id ?? crypto.randomUUID(),
+      case_id: caseData.id,
+      client_id: caseData.client_id,
+      society_id: billToSociety ? caseData.society_id : undefined,
+      term_id: termId || undefined,
+      fecha_factura: fechaFactura,
+      fecha_vencimiento: fechaVencimiento,
+      subtotal,
+      impuesto: totalItbms,
+      total,
+      estado: sendToQB ? 'pendiente' : estado,
+      qb_invoice_id: invoice?.qb_invoice_id,
+      numero_factura: numeroFactura || undefined,
+      nota_cliente: notaCliente || undefined,
+      lines: lines.filter(l => l.descripcion.trim()),
+    };
+
+    const ok = await saveInvoice(caseData.id, inv, isEdit);
+    setSaving(false);
+
+    if (ok) {
+      toast.success(isEdit ? 'Factura actualizada' : 'Factura guardada');
+      if (sendToQB) toast.info('Integración con QuickBooks pendiente de configuración');
+      onClose();
+    }
   };
+
+  const clientName = getClientName(caseData.client_id);
+  const societyName = getSocietyName(caseData.society_id);
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[950px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Factura — Caso #{caseData.numero_caso}</DialogTitle>
-        </DialogHeader>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 py-2">
-          <div>
-            <Label>Cliente</Label>
-            <Input value={getClientName(caseData.client_id)} readOnly className="bg-muted" />
+      <DialogContent className="sm:max-w-[1000px] max-h-[92vh] overflow-y-auto bg-white rounded-xl border border-gray-200 shadow-lg p-0">
+        <DialogHeader className="px-6 pt-5 pb-4 border-b border-gray-100">
+          <div className="flex items-center justify-between">
+            <DialogTitle className="text-base font-semibold text-gray-800">
+              {isEdit ? `Factura ${invoice?.numero_factura ?? ''} — Caso #${caseData.n_tarea?.toString().padStart(7, '0') ?? caseData.numero_caso}` : `Nueva Factura — Caso #${caseData.n_tarea?.toString().padStart(7, '0') ?? caseData.numero_caso}`}
+            </DialogTitle>
+            <Badge className={`text-xs px-2 py-0.5 rounded-full font-medium border-0 ${ESTADO_COLORS[estado]}`}>
+              {ESTADO_LABELS[estado]}
+            </Badge>
           </div>
-          <div className="flex items-end gap-2">
-            <div className="flex items-center gap-2">
-              <Switch checked={billToSociety} onCheckedChange={setBillToSociety} />
-              <Label className="text-xs">Facturar a Sociedad</Label>
+        </DialogHeader>
+
+        <div className="px-6 py-4 space-y-5">
+          {/* Header fields */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1 block">N° Factura</label>
+              <Input
+                value={numeroFactura}
+                onChange={e => setNumeroFactura(e.target.value)}
+                placeholder="000001"
+                className="h-9 rounded-lg border-gray-200 text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1 block">Cliente</label>
+              <Input value={clientName} readOnly className="h-9 rounded-lg border-gray-200 bg-gray-50 text-sm" />
+            </div>
+            <div>
+              <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1 block">Estado</label>
+              <Select value={estado} onValueChange={v => setEstado(v as CaseInvoice['estado'])}>
+                <SelectTrigger className="h-9 rounded-lg border-gray-200 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(ESTADO_LABELS) as CaseInvoice['estado'][]).map(k => (
+                    <SelectItem key={k} value={k}>{ESTADO_LABELS[k]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
-          <div>
-            <Label>Facturar A</Label>
-            <Input value={billToSociety ? getSocietyName(caseData.society_id) : getClientName(caseData.client_id)} readOnly className="bg-muted" />
+
+          {/* Billing target */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 items-end">
+            <div className="flex items-center gap-2 pt-5">
+              <Switch checked={billToSociety} onCheckedChange={setBillToSociety} disabled={!caseData.society_id} />
+              <label className="text-sm text-gray-600">Facturar a Sociedad</label>
+            </div>
+            {billToSociety && caseData.society_id && (
+              <div className="md:col-span-2">
+                <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1 block">Facturar A</label>
+                <Input value={societyName} readOnly className="h-9 rounded-lg border-gray-200 bg-gray-50 text-sm" />
+              </div>
+            )}
           </div>
-          <div>
-            <Label>Términos</Label>
-            <Select value={termId} onValueChange={setTermId}>
-              <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
-              <SelectContent>
-                {invoiceTerms.filter(t => t.activo).map(t => (
-                  <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+
+          {/* Dates and terms */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1 block">Términos</label>
+              <Select value={termId} onValueChange={setTermId}>
+                <SelectTrigger className="h-9 rounded-lg border-gray-200 text-sm"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                <SelectContent>
+                  {invoiceTerms.filter(t => t.activo).map(t => (
+                    <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1 block">Fecha Factura</label>
+              <Input type="date" value={fechaFactura} onChange={e => setFechaFactura(e.target.value)} className="h-9 rounded-lg border-gray-200 text-sm" />
+            </div>
+            <div>
+              <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1 block">Fecha Vencimiento</label>
+              <Input type="date" value={fechaVencimiento} onChange={e => setFechaVencimiento(e.target.value)} className="h-9 rounded-lg border-gray-200 text-sm" />
+            </div>
           </div>
+
+          {/* Note */}
           <div>
-            <Label>Fecha Factura</Label>
-            <Input type="date" value={fechaFactura} onChange={e => setFechaFactura(e.target.value)} />
+            <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1 block">Nota para el cliente</label>
+            <Input
+              value={notaCliente}
+              onChange={e => setNotaCliente(e.target.value)}
+              placeholder="Opcional"
+              className="h-9 rounded-lg border-gray-200 text-sm"
+            />
           </div>
+
+          {/* Lines table */}
           <div>
-            <Label>Fecha Vencimiento</Label>
-            <Input type="date" value={fechaVencimiento} onChange={e => setFechaVencimiento(e.target.value)} />
+            <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-2 block">Líneas de factura</label>
+            <div className="rounded-lg border border-gray-100 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    <th className="text-left py-2 px-3 font-medium text-gray-500 text-xs">Producto/Servicio</th>
+                    <th className="text-left py-2 px-3 font-medium text-gray-500 text-xs">Prod/Serv QB</th>
+                    <th className="text-left py-2 px-3 font-medium text-gray-500 text-xs">Descripción</th>
+                    <th className="text-right py-2 px-3 font-medium text-gray-500 text-xs w-20">Cant.</th>
+                    <th className="text-right py-2 px-3 font-medium text-gray-500 text-xs w-24">Tarifa</th>
+                    <th className="text-right py-2 px-3 font-medium text-gray-500 text-xs w-24">Importe</th>
+                    <th className="text-right py-2 px-3 font-medium text-gray-500 text-xs w-20">ITBMS %</th>
+                    <th className="w-8" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((l, i) => (
+                    <tr key={l.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                      <td className="py-1.5 px-2">
+                        <Select value={l.servicio_id || '__none__'} onValueChange={v => updateLine(i, 'servicio_id', v === '__none__' ? undefined : v)}>
+                          <SelectTrigger className="h-8 text-xs rounded-lg border-gray-200"><SelectValue placeholder="Servicio" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">— Ninguno —</SelectItem>
+                            {services.map(s => <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </td>
+                      <td className="py-1.5 px-2">
+                        <Select value={l.qb_item_id || '__none__'} onValueChange={v => updateLine(i, 'qb_item_id', v === '__none__' ? undefined : v)}>
+                          <SelectTrigger className="h-8 text-xs rounded-lg border-gray-200"><SelectValue placeholder="QB" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">— Ninguno —</SelectItem>
+                            {qbItems.filter(q => q.activo).map(q => <SelectItem key={q.id} value={q.id}>{q.nombre_qb}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </td>
+                      <td className="py-1.5 px-2">
+                        <Input value={l.descripcion} onChange={e => updateLine(i, 'descripcion', e.target.value)} className="h-8 text-xs rounded-lg border-gray-200" />
+                      </td>
+                      <td className="py-1.5 px-2">
+                        <Input type="number" value={l.cantidad} onChange={e => updateLine(i, 'cantidad', Number(e.target.value))} className="h-8 text-xs text-right rounded-lg border-gray-200" />
+                      </td>
+                      <td className="py-1.5 px-2">
+                        <Input type="number" step="0.01" value={l.tarifa} onChange={e => updateLine(i, 'tarifa', Number(e.target.value))} className="h-8 text-xs text-right rounded-lg border-gray-200" />
+                      </td>
+                      <td className="py-1.5 px-3 text-right font-medium text-gray-700 text-xs">${l.importe.toFixed(2)}</td>
+                      <td className="py-1.5 px-2">
+                        <Input type="number" value={l.itbms} onChange={e => updateLine(i, 'itbms', Number(e.target.value))} className="h-8 text-xs text-right rounded-lg border-gray-200" />
+                      </td>
+                      <td className="py-1.5 px-1">
+                        <button onClick={() => removeLine(i)} className="h-7 w-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <button onClick={addLine} className="mt-2 flex items-center gap-1.5 text-xs text-orange-600 hover:text-orange-700 font-medium px-2 py-1.5 rounded-lg hover:bg-orange-50 transition-colors">
+              <Plus className="h-3.5 w-3.5" /> Agregar línea
+            </button>
+          </div>
+
+          {/* Totals */}
+          <div className="flex justify-end">
+            <div className="space-y-1 text-sm text-right min-w-[200px] bg-gray-50 rounded-lg px-4 py-3 border border-gray-100">
+              <div className="flex justify-between gap-8 text-gray-500">
+                <span>Subtotal</span>
+                <span className="font-medium text-gray-700">${subtotal.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between gap-8 text-gray-500">
+                <span>ITBMS</span>
+                <span className="font-medium text-gray-700">${totalItbms.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between gap-8 font-semibold text-gray-800 border-t border-gray-200 pt-1 mt-1">
+                <span>Total</span>
+                <span>${total.toFixed(2)}</span>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="overflow-x-auto mt-4">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="text-left py-2 px-2 font-medium">Producto/Servicio</th>
-                <th className="text-left py-2 px-2 font-medium">Prod/Serv QB</th>
-                <th className="text-left py-2 px-2 font-medium">Descripción</th>
-                <th className="text-right py-2 px-2 font-medium w-20">Cant.</th>
-                <th className="text-right py-2 px-2 font-medium w-24">Tarifa</th>
-                <th className="text-right py-2 px-2 font-medium w-24">Importe</th>
-                <th className="text-right py-2 px-2 font-medium w-20">ITBMS %</th>
-                <th className="w-10"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {lines.map((l, i) => (
-                <tr key={l.id} className="border-b border-border/50">
-                  <td className="py-1 px-2">
-                    <Select value={l.servicio_id || ''} onValueChange={v => updateLine(i, 'servicio_id', v)}>
-                      <SelectTrigger className="h-8"><SelectValue placeholder="Servicio" /></SelectTrigger>
-                      <SelectContent>
-                        {services.map(s => <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </td>
-                  <td className="py-1 px-2">
-                    <Select value={l.qb_item_id || ''} onValueChange={v => updateLine(i, 'qb_item_id', v)}>
-                      <SelectTrigger className="h-8"><SelectValue placeholder="QB Item" /></SelectTrigger>
-                      <SelectContent>
-                        {qbItems.filter(q => q.activo).map(q => <SelectItem key={q.id} value={q.id}>{q.nombre_qb}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </td>
-                  <td className="py-1 px-2"><Input value={l.descripcion} onChange={e => updateLine(i, 'descripcion', e.target.value)} className="h-8" /></td>
-                  <td className="py-1 px-2"><Input type="number" value={l.cantidad} onChange={e => updateLine(i, 'cantidad', Number(e.target.value))} className="h-8 text-right" /></td>
-                  <td className="py-1 px-2"><Input type="number" step="0.01" value={l.tarifa} onChange={e => updateLine(i, 'tarifa', Number(e.target.value))} className="h-8 text-right" /></td>
-                  <td className="py-1 px-2 text-right font-medium">${l.importe.toFixed(2)}</td>
-                  <td className="py-1 px-2"><Input type="number" value={l.itbms} onChange={e => updateLine(i, 'itbms', Number(e.target.value))} className="h-8 text-right" /></td>
-                  <td className="py-1 px-2"><Button variant="ghost" size="icon" onClick={() => removeLine(i)} className="h-7 w-7 text-destructive"><Trash2 className="h-3 w-3" /></Button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <Button variant="outline" size="sm" onClick={addLine} className="mt-2 gap-1"><Plus className="h-3 w-3" /> Agregar línea</Button>
-
-        <div className="flex justify-between items-end mt-4 pt-4 border-t border-border">
-          <div className="space-y-1 text-sm text-right ml-auto mr-8">
-            <p>Subtotal: <span className="font-bold">${subtotal.toFixed(2)}</span></p>
-            <p>ITBMS: <span className="font-bold">${totalItbms.toFixed(2)}</span></p>
-            <p className="text-base">Total: <span className="font-bold">${total.toFixed(2)}</span></p>
-          </div>
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-100 flex justify-between items-center bg-gray-50/50">
+          <Button variant="ghost" onClick={onClose} className="text-gray-500 hover:text-gray-700 text-sm">
+            Salir
+          </Button>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose}>Salir</Button>
-            <Button onClick={handleSend} className="gap-1"><Send className="h-4 w-4" /> Enviar a QB</Button>
+            <Button
+              variant="outline"
+              onClick={() => handleSave(false)}
+              disabled={saving}
+              className="h-9 text-sm border-gray-200 text-gray-700 hover:bg-gray-100"
+            >
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+              Guardar borrador
+            </Button>
+            <Button
+              onClick={() => handleSave(true)}
+              disabled={saving}
+              className="h-9 text-sm bg-orange-500 hover:bg-orange-600 text-white gap-1.5"
+            >
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+              Enviar a QB
+            </Button>
           </div>
         </div>
       </DialogContent>
