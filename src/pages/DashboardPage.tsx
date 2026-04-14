@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '@/context/AppContext';
 import { Badge } from '@/components/ui/badge';
@@ -220,7 +220,7 @@ export default function DashboardPage() {
   const [page, setPage] = useState(0);
 
   // Reset page on filter change
-  useMemo(() => setPage(0), [filterAnio, filterMes, filterEstado, filterServicio, filterCliente]);
+  useEffect(() => setPage(0), [filterAnio, filterMes, filterEstado, filterServicio, filterCliente]);
 
   // Build enriched rows
   const tableRows = useMemo(() => {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -159,7 +159,7 @@ function ReportTable({
   const pageData = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   // Reset page when data changes
-  useMemo(() => setPage(0), [data.length]);
+  useEffect(() => setPage(0), [data.length]);
 
   function toggleSort(key: string) {
     if (sortKey === key) setSortAsc(!sortAsc);
