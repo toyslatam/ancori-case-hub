@@ -40,9 +40,13 @@ export function FiltersModal({ open, onClose, onApply }: FiltersModalProps) {
             </div>
             <div>
               <Label>Estado</Label>
-              <Select value={filters.estado || ''} onValueChange={v => setFilters(f => ({ ...f, estado: v }))}>
+              <Select
+                value={filters.estado || '__all__'}
+                onValueChange={v => setFilters(f => ({ ...f, estado: v === '__all__' ? undefined : v }))}
+              >
                 <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__all__">Todos</SelectItem>
                   <SelectItem value="Pendiente">Pendiente</SelectItem>
                   <SelectItem value="En Curso">En Curso</SelectItem>
                   <SelectItem value="Completado/Facturado">Completado/Facturado</SelectItem>

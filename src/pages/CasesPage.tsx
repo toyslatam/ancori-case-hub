@@ -18,8 +18,8 @@ import { toast } from 'sonner';
 export default function CasesPage() {
   const { cases, addCase, removeCase, getClientName, getSocietyName } = useApp();
   const [search, setSearch] = useState('');
-  const [filterEstado, setFilterEstado] = useState('');
-  const [filterPrioridad, setFilterPrioridad] = useState('');
+  const [filterEstado, setFilterEstado] = useState('__all__');
+  const [filterPrioridad, setFilterPrioridad] = useState('__all__');
   const [filters, setFilters] = useState<Record<string, any>>({});
   const [showNewCase, setShowNewCase] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
@@ -41,8 +41,8 @@ export default function CasesPage() {
         c.creado_por.toLowerCase().includes(s)
       );
     }
-    if (filterEstado) result = result.filter(c => c.estado === filterEstado);
-    if (filterPrioridad) result = result.filter(c => c.prioridad === filterPrioridad);
+    if (filterEstado && filterEstado !== '__all__') result = result.filter(c => c.estado === filterEstado);
+    if (filterPrioridad && filterPrioridad !== '__all__') result = result.filter(c => c.prioridad === filterPrioridad);
     if (filters.estado) result = result.filter(c => c.estado === filters.estado);
     if (filters.prioridad_urgente) result = result.filter(c => c.prioridad === 'Urgente');
     if (filters.fecha_desde) result = result.filter(c => c.fecha_caso >= filters.fecha_desde);
@@ -57,11 +57,14 @@ export default function CasesPage() {
     urgent: cases.filter(c => c.prioridad === 'Urgente' || c.prioridad_urgente).length,
   }), [cases]);
 
-  const hasActiveFilters = filterEstado || filterPrioridad || Object.keys(filters).length > 0;
+  const hasActiveFilters =
+    (filterEstado && filterEstado !== '__all__') ||
+    (filterPrioridad && filterPrioridad !== '__all__') ||
+    Object.keys(filters).length > 0;
 
   const clearFilters = () => {
-    setFilterEstado('');
-    setFilterPrioridad('');
+    setFilterEstado('__all__');
+    setFilterPrioridad('__all__');
     setFilters({});
   };
 
@@ -106,7 +109,7 @@ export default function CasesPage() {
               <SelectValue placeholder="Estado: todos" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Todos los estados</SelectItem>
+              <SelectItem value="__all__">Todos los estados</SelectItem>
               {CASE_ESTADOS.map(e => <SelectItem key={e} value={e}>{e}</SelectItem>)}
             </SelectContent>
           </Select>
@@ -116,7 +119,7 @@ export default function CasesPage() {
               <SelectValue placeholder="Prioridad: todas" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Todas las prioridades</SelectItem>
+              <SelectItem value="__all__">Todas las prioridades</SelectItem>
               {CASE_PRIORIDADES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
             </SelectContent>
           </Select>
