@@ -61,7 +61,6 @@ export default function FacturasPage() {
   const loadInvoices = async () => {
     const sb = getSupabase();
     if (!sb) {
-      // Fallback: derivar de cases locales
       const local: RichInvoice[] = cases.flatMap(c =>
         (c.invoices ?? []).map(inv => ({
           ...inv,
@@ -76,6 +75,10 @@ export default function FacturasPage() {
     }
 
     setLoading(true);
+
+    // Timeout de seguridad: si la query cuelga más de 15s, liberar el spinner
+    const safetyTimer = setTimeout(() => setLoading(false), 15_000);
+
     try {
       const [invRes, linesRes] = await Promise.all([
         sb.from('case_invoices').select('*').order('fecha_factura', { ascending: false }),
@@ -139,11 +142,14 @@ export default function FacturasPage() {
 
       setDbInvoices(rich);
     } finally {
+      clearTimeout(safetyTimer);
       setLoading(false);
     }
   };
 
-  useEffect(() => { loadInvoices(); }, [cases]);
+  // Cargar solo una vez al montar (no depender de `cases` para evitar bucles)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadInvoices(); }, []);
 
   const counts = useMemo(() => ({
     todas:     dbInvoices.length,
