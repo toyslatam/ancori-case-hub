@@ -3,7 +3,7 @@
 
 begin;
 
-truncate table public.invoice_lines, public.case_invoices, public.case_expenses, public.case_comments, public.cases, public.societies, public.clients, public.directores, public.services, public.invoice_terms, public.qb_items restart identity cascade;
+truncate table public.invoice_lines, public.case_invoices, public.case_expenses, public.case_comments, public.cases, public.societies, public.clients, public.directores, public.services, public.invoice_terms, public.categories, public.qb_items restart identity cascade;
 
 -- Clientes 10000000-...-0001 .. 0005
 insert into public.clients (id, nombre, razon_social, numero, email, telefono, identificacion, direccion, activo, created_at) values
@@ -44,6 +44,13 @@ insert into public.invoice_terms (id, nombre, dias_vencimiento, activo) values
   ('40000000-0000-4000-8000-000000000001', 'Pago Inmediato', 0, true),
   ('40000000-0000-4000-8000-000000000002', 'Net 15', 15, true),
   ('40000000-0000-4000-8000-000000000003', 'Net 30', 30, true);
+
+insert into public.categories (id, nombre, id_qb, activo, created_at) values
+  ('41000000-0000-4000-8000-000000000001', 'CONSTITUCION DE PERSONA JURÍDICA', 55, true, '2024-01-10'),
+  ('41000000-0000-4000-8000-000000000002', 'SERVICIOS TERCERIZADOS', 52, true, '2024-01-10'),
+  ('41000000-0000-4000-8000-000000000003', 'GASTOS NOTARIA', 50, true, '2024-01-10'),
+  ('41000000-0000-4000-8000-000000000004', 'TRÁMITES REGISTRALES', 51, true, '2024-01-10'),
+  ('41000000-0000-4000-8000-000000000005', 'OTROS SERVICIOS', null, true, '2024-06-01');
 
 insert into public.qb_items (id, nombre_interno, nombre_qb, qb_item_id, tipo, impuesto_default, activo) values
   ('50000000-0000-4000-8000-000000000001', 'Constitución S.A.', 'Corp Formation SA', 'QB-001', 'Servicio', 7, true),

@@ -1,8 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
 import { toast } from 'sonner';
 import {
-  Case, Client, Director, Society, Service, InvoiceTerm, QBItem,
-  mockCases, mockClients, mockDirectores, mockSocieties, mockServices, mockInvoiceTerms, mockQBItems,
+  Case, Category, Client, Director, Society, Service, InvoiceTerm, QBItem,
+  mockCases, mockCategories, mockClients, mockDirectores, mockSocieties, mockServices, mockInvoiceTerms, mockQBItems,
   CaseComment, CaseExpense,
 } from '@/data/mockData';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabaseClient';
@@ -19,6 +19,7 @@ interface AppContextType {
   societies: Society[];
   services: Service[];
   invoiceTerms: InvoiceTerm[];
+  categories: Category[];
   qbItems: QBItem[];
   directores: Director[];
   addCase: (c: Case) => void;
@@ -35,6 +36,8 @@ interface AppContextType {
   deleteService: (id: string) => Promise<boolean>;
   saveInvoiceTerm: (term: InvoiceTerm, isEdit: boolean) => Promise<boolean>;
   deleteInvoiceTerm: (id: string) => Promise<boolean>;
+  saveCategory: (c: Category, isEdit: boolean) => Promise<boolean>;
+  deleteCategory: (id: string) => Promise<boolean>;
   saveQBItem: (item: QBItem, isEdit: boolean) => Promise<boolean>;
   deleteQBItem: (id: string) => Promise<boolean>;
   saveDirector: (d: Director, isEdit: boolean) => Promise<boolean>;
@@ -56,6 +59,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [societies, setSocieties] = useState<Society[]>(() => (useRemote ? [] : mockSocieties));
   const [services, setServices] = useState<Service[]>(() => (useRemote ? [] : mockServices));
   const [invoiceTerms, setInvoiceTerms] = useState<InvoiceTerm[]>(() => (useRemote ? [] : mockInvoiceTerms));
+  const [categories, setCategories] = useState<Category[]>(() => (useRemote ? [] : mockCategories));
   const [qbItems, setQbItems] = useState<QBItem[]>(() => (useRemote ? [] : mockQBItems));
   const [directores, setDirectores] = useState<Director[]>(() => (useRemote ? [] : mockDirectores));
 
@@ -70,6 +74,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSocieties(data.societies);
         setServices(data.services);
         setInvoiceTerms(data.invoiceTerms);
+        setCategories(data.categories);
         setQbItems(data.qbItems);
         setDirectores(data.directores);
         setCases(data.cases);
@@ -86,6 +91,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSocieties(mockSocieties);
         setServices(mockServices);
         setInvoiceTerms(mockInvoiceTerms);
+        setCategories(mockCategories);
         setQbItems(mockQBItems);
         setDirectores(mockDirectores);
         setCases(mockCases);
@@ -314,6 +320,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return true;
   }, [sb]);
 
+  const saveCategory = useCallback(async (c: Category, isEdit: boolean): Promise<boolean> => {
+    if (sb) {
+      const res = isEdit ? await db.updateCategoryRow(sb, c) : await db.insertCategory(sb, c);
+      if (res.error) {
+        toast.error(res.error.message);
+        return false;
+      }
+    }
+    setCategories(prev => (isEdit ? prev.map(x => x.id === c.id ? c : x) : [...prev, c]));
+    return true;
+  }, [sb]);
+
+  const deleteCategory = useCallback(async (id: string): Promise<boolean> => {
+    if (sb) {
+      const { error } = await db.deleteCategoryRow(sb, id);
+      if (error) {
+        toast.error(error.message);
+        return false;
+      }
+    }
+    setCategories(prev => prev.filter(x => x.id !== id));
+    return true;
+  }, [sb]);
+
   const saveQBItem = useCallback(async (item: QBItem, isEdit: boolean): Promise<boolean> => {
     if (sb) {
       const res = isEdit ? await db.updateQBItemRow(sb, item) : await db.insertQBItem(sb, item);
@@ -369,10 +399,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      cases, clients, societies, services, invoiceTerms, qbItems, directores,
+      cases, clients, societies, services, invoiceTerms, categories, qbItems, directores,
       addCase, updateCase, addComment, addExpense, updateExpenses, removeCase,
       saveClient, deleteClient, saveSociety, deleteSociety, saveService, deleteService,
-      saveInvoiceTerm, deleteInvoiceTerm, saveQBItem, deleteQBItem,
+      saveInvoiceTerm, deleteInvoiceTerm, saveCategory, deleteCategory, saveQBItem, deleteQBItem,
       saveDirector, deleteDirector,
       getClientName, getSocietyName, getServiceName, getDirectorName,
     }}>

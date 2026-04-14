@@ -93,6 +93,15 @@ export interface InvoiceTerm {
   created_at?: string;
 }
 
+/** Categoría de servicio / clasificación (mapeo ID QuickBooks en id_qb). */
+export interface Category {
+  id: string;
+  nombre: string;
+  id_qb?: number | null;
+  activo: boolean;
+  created_at: string;
+}
+
 export interface QBItem {
   id: string;
   nombre_interno: string;
@@ -196,6 +205,14 @@ export const mockInvoiceTerms: InvoiceTerm[] = [
   { id: '1', nombre: 'Pago Inmediato', dias_vencimiento: 0, activo: true },
   { id: '2', nombre: 'Net 15', dias_vencimiento: 15, activo: true },
   { id: '3', nombre: 'Net 30', dias_vencimiento: 30, activo: true },
+];
+
+export const mockCategories: Category[] = [
+  { id: 'c1', nombre: 'CONSTITUCION DE PERSONA JURÍDICA', id_qb: 55, activo: true, created_at: '2024-01-10' },
+  { id: 'c2', nombre: 'SERVICIOS TERCERIZADOS', id_qb: 52, activo: true, created_at: '2024-01-10' },
+  { id: 'c3', nombre: 'GASTOS NOTARIA', id_qb: 50, activo: true, created_at: '2024-01-10' },
+  { id: 'c4', nombre: 'TRÁMITES REGISTRALES', id_qb: 51, activo: true, created_at: '2024-01-10' },
+  { id: 'c5', nombre: 'OTROS SERVICIOS', id_qb: null, activo: true, created_at: '2024-06-01' },
 ];
 
 export const mockQBItems: QBItem[] = [

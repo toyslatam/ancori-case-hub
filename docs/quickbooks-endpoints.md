@@ -166,6 +166,15 @@ La invoca **Intuit** con el cuerpo JSON del evento. La función comprueba la fir
 | **Método** | `POST` |
 | **Auth** | Firma Intuit (no JWT Supabase). Suele registrarse la URL con `?apikey=<anon>` si el gateway lo exige. |
 
+**Entidades procesadas**
+
+| Entidad en el webhook | Acción interna |
+|----------------------|----------------|
+| **Customer** | GET `/customer/{id}` → upsert en `societies` (ver documentación de sociedades). |
+| **Item** | GET `/item/{id}` → solo si en JSON `Item.Type === "Category"` → insert/update en `public.categories` (`nombre`, `id_qb`, `activo`). Otros tipos de Item generan `skip_item_not_category` en `processed`. Delete/void → `activo: false` en la categoría con ese `id_qb`. |
+
+Equivale al flujo **webhook → token OAuth ya guardado → GET API → filtrar `Type: Category` → guardar** (como en Power Automate). Detalle: [quickbooks-item-category-webhook.md](./quickbooks-item-category-webhook.md).
+
 Respuesta típica: `{ "ok": true, "processed": [...], "errors": [...] }`.
 
 **Configuración paso a paso:** [quickbooks-webhooks-setup.md](./quickbooks-webhooks-setup.md).
@@ -201,4 +210,4 @@ Incluye `qbo-sync-societies`, `qbo-webhook` y `qbo-society-push` junto al resto 
 
 ---
 
-*Plan por fases: [quickbooks-supabase-edge-fases.md](./quickbooks-supabase-edge-fases.md). Webhooks y flujo bidireccional: [quickbooks-webhooks-setup.md](./quickbooks-webhooks-setup.md).*
+*Plan por fases: [quickbooks-supabase-edge-fases.md](./quickbooks-supabase-edge-fases.md). Webhooks: [quickbooks-webhooks-setup.md](./quickbooks-webhooks-setup.md). Categorías QBO (`Item` + `Type: Category`): [quickbooks-item-category-webhook.md](./quickbooks-item-category-webhook.md).*

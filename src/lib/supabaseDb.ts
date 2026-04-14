@@ -4,6 +4,7 @@ import type {
   CaseComment,
   CaseExpense,
   CaseInvoice,
+  Category,
   Client,
   Director,
   InvoiceLine,
@@ -154,6 +155,26 @@ export function invoiceTermToRow(t: InvoiceTerm): Record<string, unknown> {
     dias_vencimiento: t.dias_vencimiento,
     activo: t.activo,
     ...(t.created_at ? { created_at: t.created_at.includes('T') ? t.created_at : `${t.created_at}T12:00:00Z` } : {}),
+  };
+}
+
+export function rowToCategory(row: Record<string, unknown>): Category {
+  return {
+    id: String(row.id),
+    nombre: String(row.nombre),
+    id_qb: row.id_qb != null && row.id_qb !== '' ? Number(row.id_qb) : undefined,
+    activo: Boolean(row.activo),
+    created_at: row.created_at ? isoDate(String(row.created_at)) : new Date().toISOString().slice(0, 10),
+  };
+}
+
+export function categoryToRow(c: Category): Record<string, unknown> {
+  return {
+    id: c.id,
+    nombre: c.nombre,
+    id_qb: c.id_qb ?? null,
+    activo: c.activo,
+    created_at: c.created_at.includes('T') ? c.created_at : `${c.created_at}T12:00:00Z`,
   };
 }
 
@@ -327,6 +348,7 @@ export type LoadAllFromSupabaseResult = {
   societies: Society[];
   services: Service[];
   invoiceTerms: InvoiceTerm[];
+  categories: Category[];
   qbItems: QBItem[];
   directores: Director[];
   cases: Case[];
@@ -340,6 +362,7 @@ export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFr
     societiesRes,
     servicesRes,
     termsRes,
+    categoriesRes,
     qbRes,
     directoresRes,
     casesRes,
@@ -352,6 +375,7 @@ export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFr
     sb.from('societies').select('*').order('nombre'),
     sb.from('services').select('*').order('nombre'),
     sb.from('invoice_terms').select('*').order('nombre'),
+    sb.from('categories').select('*').order('nombre'),
     sb.from('qb_items').select('*').order('nombre_interno'),
     sb.from('directores').select('*').order('nombre'),
     sb.from('cases').select('*').order('fecha_caso', { ascending: false }),
@@ -370,6 +394,7 @@ export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFr
   warn('societies', societiesRes.error);
   warn('services', servicesRes.error);
   warn('invoice_terms', termsRes.error);
+  warn('categories', categoriesRes.error);
   warn('qb_items', qbRes.error);
   warn('directores', directoresRes.error);
   warn('cases', casesRes.error);
@@ -383,6 +408,7 @@ export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFr
     societiesRes,
     servicesRes,
     termsRes,
+    categoriesRes,
     qbRes,
     directoresRes,
     casesRes,
@@ -401,6 +427,7 @@ export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFr
   const societies = societiesRes.error ? [] : (societiesRes.data ?? []).map(r => rowToSociety(r as Record<string, unknown>));
   const services = servicesRes.error ? [] : (servicesRes.data ?? []).map(r => rowToService(r as Record<string, unknown>));
   const invoiceTerms = termsRes.error ? [] : (termsRes.data ?? []).map(r => rowToInvoiceTerm(r as Record<string, unknown>));
+  const categories = categoriesRes.error ? [] : (categoriesRes.data ?? []).map(r => rowToCategory(r as Record<string, unknown>));
   const qbItems = qbRes.error ? [] : (qbRes.data ?? []).map(r => rowToQBItem(r as Record<string, unknown>));
   const directores = directoresRes.error ? [] : (directoresRes.data ?? []).map(r => rowToDirector(r as Record<string, unknown>));
 
@@ -449,7 +476,7 @@ export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFr
     });
   });
 
-  return { clients, societies, services, invoiceTerms, qbItems, directores, cases, loadWarnings };
+  return { clients, societies, services, invoiceTerms, categories, qbItems, directores, cases, loadWarnings };
 }
 
 export async function insertCase(sb: SupabaseClient, c: Case) {
@@ -553,6 +580,18 @@ export async function updateInvoiceTermRow(sb: SupabaseClient, t: InvoiceTerm) {
 
 export async function deleteInvoiceTermRow(sb: SupabaseClient, id: string) {
   return sb.from('invoice_terms').delete().eq('id', id);
+}
+
+export async function insertCategory(sb: SupabaseClient, c: Category) {
+  return sb.from('categories').insert(categoryToRow(c));
+}
+
+export async function updateCategoryRow(sb: SupabaseClient, c: Category) {
+  return sb.from('categories').update(categoryToRow(c)).eq('id', c.id);
+}
+
+export async function deleteCategoryRow(sb: SupabaseClient, id: string) {
+  return sb.from('categories').delete().eq('id', id);
 }
 
 export async function insertQBItem(sb: SupabaseClient, q: QBItem) {

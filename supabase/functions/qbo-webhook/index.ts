@@ -1,5 +1,7 @@
 /**
- * Webhook de Intuit (QuickBooks Online) → sincroniza cambios de Customer hacia public.societies.
+ * Webhook de Intuit (QuickBooks Online) → sincroniza hacia la app:
+ * - **Customer** → public.societies
+ * - **Item** con Type **Category** → public.categories (resto de tipos de Item se ignoran)
  *
  * POST: cuerpo JSON firmado; cabecera intuit-signature = base64(HMAC-SHA256(verifierToken, rawBody))
  *
@@ -10,14 +12,20 @@
  *
  * Customer create/update: GET Customer por Id → upsert en societies. Crear fila nueva requiere
  * QBO_WEBHOOK_DEFAULT_CLIENT_ID (uuid de public.clients).
+ *
+ * Item: GET Item por Id → si Type es Category, upsert en categories (nombre, id_qb, activo).
+ *
+ * Soporta cuerpo **clásico** (`eventNotifications`) y **CloudEvents** (array JSON con `type: qbo.item.created.v1`, etc.).
+ * @see https://blogs.intuit.com/2025/11/12/upcoming-change-to-webhooks-payload-structure
  */
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
 import { getValidQboAccessToken } from '../_shared/qbo-tokens.ts';
 import {
   qboCustomerIdToIdQb,
   qboGetCustomer,
   type QboCustomerFull,
 } from '../_shared/qbo-customers.ts';
+import { qboGetItem } from '../_shared/qbo-items.ts';
 
 const JSON_HDR = { 'Content-Type': 'application/json; charset=utf-8' };
 
@@ -61,6 +69,104 @@ async function verifyIntuitSignature(
   return timingSafeEqual(expected, got);
 }
 
+type QboDataChangeNotification = {
+  realmId?: string;
+  dataChangeEvent?: {
+    entities?: Array<{ name?: string; id?: string; operation?: string }>;
+  };
+};
+
+function extractLegacyNotifications(payload: Record<string, unknown>): QboDataChangeNotification[] {
+  const n = payload.eventNotifications;
+  return Array.isArray(n) ? (n as QboDataChangeNotification[]) : [];
+}
+
+/** Mapea verbo CloudEvents → operation del formato clásico (Create, Update, …). */
+function cloudVerbToOperation(verb: string): string {
+  const v = verb.toLowerCase();
+  const map: Record<string, string> = {
+    created: 'Create',
+    updated: 'Update',
+    deleted: 'Delete',
+    voided: 'Void',
+    merged: 'Merge',
+    restored: 'Update',
+  };
+  return map[v] ?? verb;
+}
+
+/**
+ * Intuit CloudEvents: array de objetos con type `qbo.item.created.v1`, intuitentityid, intuitaccountid (realm).
+ */
+function extractCloudEventsNotifications(payload: unknown): QboDataChangeNotification[] {
+  if (!Array.isArray(payload) || payload.length === 0) return [];
+  const first = payload[0];
+  if (!first || typeof first !== 'object') return [];
+  const t0 = String((first as Record<string, unknown>).type ?? '');
+  if (!/^qbo\./i.test(t0)) return [];
+
+  const out: QboDataChangeNotification[] = [];
+  for (const ev of payload) {
+    if (!ev || typeof ev !== 'object') continue;
+    const row = ev as Record<string, unknown>;
+    const type = String(row.type ?? '');
+    const m = type.match(/^qbo\.([a-z]+)\.(created|updated|deleted|voided|merged|restored)\.v\d+$/i);
+    if (!m) continue;
+    const entityLower = m[1].toLowerCase();
+    const verb = m[2].toLowerCase();
+    const entityName = entityLower.charAt(0).toUpperCase() + entityLower.slice(1);
+    const operation = cloudVerbToOperation(verb);
+    const id = String(
+      row.intuitentityid ?? row.intuitEntityId ?? (row.data as Record<string, unknown> | undefined)?.id ?? ''
+    ).trim();
+    const realmId = String(row.intuitaccountid ?? row.intuitAccountId ?? '').trim();
+    if (!id || !realmId) continue;
+    out.push({
+      realmId,
+      dataChangeEvent: {
+        entities: [{ name: entityName, id, operation }],
+      },
+    });
+  }
+  return out;
+}
+
+function normalizeNotifications(payload: unknown): QboDataChangeNotification[] {
+  if (payload == null) return [];
+  if (Array.isArray(payload)) return extractCloudEventsNotifications(payload);
+  if (typeof payload !== 'object') return [];
+  const obj = payload as Record<string, unknown>;
+  const legacy = extractLegacyNotifications(obj);
+  if (legacy.length > 0) return legacy;
+  return [];
+}
+
+/** GET en QBO (Customer/Item) solo en create/update/merge; delete/void va solo a Supabase. */
+function notificationsNeedQboAccessToken(list: QboDataChangeNotification[]): boolean {
+  for (const n of list) {
+    for (const ent of n.dataChangeEvent?.entities ?? []) {
+      const entityName = (ent.name ?? '').toLowerCase();
+      const op = (ent.operation ?? '').toLowerCase();
+      if (op === 'delete' || op === 'void') continue;
+      if (entityName === 'item' || entityName === 'customer') return true;
+    }
+  }
+  return false;
+}
+
+function inferEffectiveRealm(
+  list: QboDataChangeNotification[],
+  dbRealm: string | null | undefined
+): string {
+  const fromDb = (dbRealm ?? '').trim();
+  if (fromDb) return fromDb;
+  for (const n of list) {
+    const r = (n.realmId ?? '').trim();
+    if (r) return r;
+  }
+  return '';
+}
+
 function mapCustomerToSocietyFields(c: QboCustomerFull): {
   nombre: string;
   razon_social: string;
@@ -78,6 +184,82 @@ function mapCustomerToSocietyFields(c: QboCustomerFull): {
     correo: email,
     telefono,
   };
+}
+
+async function processItemCategoryFromWebhook(
+  supabase: SupabaseClient,
+  realmId: string,
+  accessToken: string,
+  ent: { id?: string; operation?: string },
+  processed: string[],
+  errors: string[]
+): Promise<void> {
+  const id = ent.id;
+  const op = (ent.operation ?? '').toLowerCase();
+  if (!id) return;
+
+  try {
+    if (op === 'delete' || op === 'void') {
+      const idStr = String(id);
+      const idNum = qboCustomerIdToIdQb(idStr);
+      if (idNum == null) {
+        processed.push(`category_deactivate_skip_non_numeric_id:${id}`);
+        return;
+      }
+      const { error } = await supabase.from('categories').update({ activo: false }).eq('id_qb', idNum);
+      if (error) errors.push(`item:${id}: ${error.message}`);
+      else processed.push(`category_deactivate:${id}`);
+      return;
+    }
+
+    if (op === 'create' || op === 'update' || op === 'merge' || op === '') {
+      const item = await qboGetItem(realmId, accessToken, String(id));
+      const type = (item.Type ?? '').trim();
+      if (type !== 'Category') {
+        processed.push(`skip_item_not_category:${id}:${type || 'empty'}`);
+        return;
+      }
+
+      const qbId = String(item.Id!);
+      const idNum = qboCustomerIdToIdQb(qbId);
+      if (idNum == null) {
+        errors.push(`item:${id}: id_qb_no_entero_${qbId}`);
+        return;
+      }
+
+      const nombre = (item.Name ?? item.FullyQualifiedName ?? '').trim() || 'Sin nombre';
+      const activo = item.Active !== false;
+
+      const { data: rows } = await supabase.from('categories').select('id').eq('id_qb', idNum).limit(2);
+
+      const patch: Record<string, unknown> = {
+        nombre: nombre.slice(0, 2000),
+        id_qb: idNum,
+        activo,
+      };
+
+      if (rows && rows.length === 1) {
+        const { error } = await supabase.from('categories').update(patch).eq('id', rows[0].id);
+        if (error) errors.push(`item:${id}: ${error.message}`);
+        else processed.push(`category_update:${id}`);
+      } else if (rows && rows.length === 0) {
+        const newRow = {
+          id: crypto.randomUUID(),
+          nombre: patch.nombre,
+          id_qb: idNum,
+          activo,
+        };
+        const { error } = await supabase.from('categories').insert(newRow);
+        if (error) errors.push(`item:${id}: insert_${error.message}`);
+        else processed.push(`category_create:${id}`);
+      } else if (rows && rows.length > 1) {
+        errors.push(`item:${id}: multiple_categories_for_id_qb`);
+      }
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    errors.push(`item:${id}: ${msg.slice(0, 120)}`);
+  }
 }
 
 Deno.serve(async (req) => {
@@ -109,9 +291,9 @@ Deno.serve(async (req) => {
     return json(401, { error: 'invalid_signature' });
   }
 
-  let payload: Record<string, unknown>;
+  let payload: unknown;
   try {
-    payload = JSON.parse(rawBody) as Record<string, unknown>;
+    payload = JSON.parse(rawBody) as unknown;
   } catch {
     return json(400, { error: 'invalid_json' });
   }
@@ -127,40 +309,68 @@ Deno.serve(async (req) => {
 
   const supabase = createClient(supabaseUrl, serviceKey);
 
-  let accessToken: string;
-  let defaultRealm: string;
-  try {
-    const t = await getValidQboAccessToken(supabase, clientId, clientSecret);
-    accessToken = t.accessToken;
-    defaultRealm = t.realmId;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return json(503, { error: 'qbo_token', detail: msg });
+  const list = normalizeNotifications(payload);
+  if (list.length === 0) {
+    return json(200, {
+      ok: true,
+      processed: [
+        'hint:no_events: revisa formato Intuit (legacy eventNotifications vs CloudEvents array); suscripción Item; URL con ?apikey=',
+      ],
+      errors: [],
+      notification_count: 0,
+    });
   }
 
-  const notifications = payload.eventNotifications as
-    | Array<{
-        realmId?: string;
-        dataChangeEvent?: {
-          entities?: Array<{ name?: string; id?: string; operation?: string }>;
-        };
-      }>
-    | undefined;
+  const { data: tokRealmRow } = await supabase
+    .from('qbo_oauth_tokens')
+    .select('realm_id')
+    .eq('id', 'default')
+    .maybeSingle();
+
+  let effectiveRealm = inferEffectiveRealm(list, tokRealmRow?.realm_id as string | undefined);
+  const needsToken = notificationsNeedQboAccessToken(list);
+
+  let accessToken = '';
+  if (needsToken) {
+    try {
+      const t = await getValidQboAccessToken(supabase, clientId, clientSecret);
+      accessToken = t.accessToken;
+      const tr = (t.realmId ?? '').trim();
+      if (tr) effectiveRealm = tr;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return json(503, { error: 'qbo_token', detail: msg });
+    }
+  }
 
   const processed: string[] = [];
   const errors: string[] = [];
 
-  const list = Array.isArray(notifications) ? notifications : [];
   for (const n of list.slice(0, 20)) {
-    const realmId = n.realmId ?? defaultRealm;
-    if (realmId !== defaultRealm) {
+    const realmId = ((n.realmId ?? effectiveRealm) as string).trim();
+    if (effectiveRealm && realmId && realmId !== effectiveRealm) {
       errors.push(`skip_realm_${realmId}`);
       continue;
     }
 
     const entities = n.dataChangeEvent?.entities ?? [];
     for (const ent of entities.slice(0, 50)) {
-      if ((ent.name ?? '').toLowerCase() !== 'customer') continue;
+      const entityName = (ent.name ?? '').toLowerCase();
+
+      if (entityName === 'item') {
+        await processItemCategoryFromWebhook(
+          supabase,
+          realmId || effectiveRealm,
+          accessToken,
+          ent,
+          processed,
+          errors
+        );
+        continue;
+      }
+
+      if (entityName !== 'customer') continue;
+
       const id = ent.id;
       const op = (ent.operation ?? '').toLowerCase();
       if (!id) continue;
@@ -244,5 +454,10 @@ Deno.serve(async (req) => {
     }
   }
 
-  return json(200, { ok: true, processed, errors });
+  return json(200, {
+    ok: true,
+    processed,
+    errors,
+    notification_count: list.length,
+  });
 });

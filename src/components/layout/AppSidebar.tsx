@@ -19,6 +19,8 @@ import {
   PlaySquare,
   UserCircle,
   UserCog,
+  Wrench,
+  Tags,
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { NavLink } from '@/components/NavLink';
@@ -53,6 +55,8 @@ const maintItems = [
   { title: 'Productos/Servicios QB', url: '/mantenimiento/qb-items', icon: CreditCard },
 ];
 
+const utilItems = [{ title: 'Categorías', url: '/utilidades/categorias', icon: Tags }];
+
 const navLinkActive =
   'bg-[hsl(220_14%_96%)] text-[hsl(17_78%_55%)] font-medium [&>svg]:text-[hsl(17_78%_55%)]';
 
@@ -61,6 +65,7 @@ export function AppSidebar() {
   const collapsed = state === 'collapsed';
   const location = useLocation();
   const isMaintActive = maintItems.some(i => location.pathname === i.url);
+  const isUtilActive = utilItems.some(i => location.pathname === i.url);
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border bg-sidebar">
@@ -130,18 +135,60 @@ export function AppSidebar() {
                     </CollapsibleContent>
                   </SidebarMenuItem>
                 </Collapsible>
-              ) : (
-                maintItems.map(item => (
-                  <SidebarMenuItem key={item.url}>
-                    <SidebarMenuButton asChild tooltip={item.title} isActive={location.pathname === item.url}>
-                      <NavLink to={item.url} className="text-sidebar-foreground/80" activeClassName={navLinkActive}>
-                        <item.icon className="shrink-0" />
-                        <span>{item.title}</span>
-                      </NavLink>
-                    </SidebarMenuButton>
+              ) : null}
+
+              {!collapsed ? (
+                <Collapsible defaultOpen={isUtilActive} className="group/collapsible-util">
+                  <SidebarMenuItem>
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton className="text-sidebar-foreground/80 hover:text-sidebar-foreground">
+                        <Wrench className="shrink-0" />
+                        <span className="flex-1 text-left">Utilidades</span>
+                        <ChevronDown className="ml-auto h-4 w-4 shrink-0 transition-transform group-data-[state=open]/collapsible-util:rotate-180" />
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <SidebarMenuSub>
+                        {utilItems.map(item => (
+                          <SidebarMenuSubItem key={item.url}>
+                            <SidebarMenuSubButton asChild isActive={location.pathname === item.url}>
+                              <NavLink to={item.url} className="text-sidebar-foreground/75" activeClassName={navLinkActive}>
+                                <item.icon className="shrink-0" />
+                                <span>{item.title}</span>
+                              </NavLink>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))}
+                      </SidebarMenuSub>
+                    </CollapsibleContent>
                   </SidebarMenuItem>
-                ))
-              )}
+                </Collapsible>
+              ) : null}
+
+              {collapsed ? (
+                <>
+                  {maintItems.map(item => (
+                    <SidebarMenuItem key={item.url}>
+                      <SidebarMenuButton asChild tooltip={item.title} isActive={location.pathname === item.url}>
+                        <NavLink to={item.url} className="text-sidebar-foreground/80" activeClassName={navLinkActive}>
+                          <item.icon className="shrink-0" />
+                          <span>{item.title}</span>
+                        </NavLink>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                  {utilItems.map(item => (
+                    <SidebarMenuItem key={item.url}>
+                      <SidebarMenuButton asChild tooltip={item.title} isActive={location.pathname === item.url}>
+                        <NavLink to={item.url} className="text-sidebar-foreground/80" activeClassName={navLinkActive}>
+                          <item.icon className="shrink-0" />
+                          <span>{item.title}</span>
+                        </NavLink>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </>
+              ) : null}
 
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip="Casos" isActive={location.pathname === '/casos'}>

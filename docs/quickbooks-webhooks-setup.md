@@ -1,4 +1,4 @@
-# QuickBooks Online: webhooks y sincronización de sociedades
+# QuickBooks Online: webhooks y sincronización (sociedades y categorías)
 
 Este documento aclara **qué hace cada canal** y cómo configurar Intuit y Supabase.
 
@@ -7,7 +7,7 @@ Este documento aclara **qué hace cada canal** y cómo configurar Intuit y Supab
 | Dirección | Mecanismo en este proyecto | Para qué sirve |
 |-----------|----------------------------|----------------|
 | **App → QuickBooks** | Edge Function `qbo-society-push` llamada al **guardar o eliminar** una sociedad en la app | Alta, edición y “baja” lógica (Customer **desactivado** en QBO al borrar en la app). |
-| **QuickBooks → App** | Edge Function `qbo-webhook` (notificaciones de Intuit) | Tras **create/update/merge**, se lee el Customer por Id en la API de QBO y se **actualiza** la sociedad enlazada por `quickbooks_customer_id`, o se **crea** una fila nueva si aún no existe (ver `QBO_WEBHOOK_DEFAULT_CLIENT_ID`). **Delete/void** desactiva la sociedad enlazada. |
+| **QuickBooks → App** | Edge Function `qbo-webhook` (notificaciones de Intuit) | **Customer:** GET Customer → `public.societies`. **Item:** GET Item → solo si `Type === "Category"` → `public.categories`. Ver [quickbooks-item-category-webhook.md](./quickbooks-item-category-webhook.md). |
 
 El **webhook de Intuit no sustituye** el push desde la app: Intuit notifica cambios **originados en QBO**, no intercepta lo que hace tu frontend. Por eso las altas/edits/bajas desde la plataforma usan `qbo-society-push`.
 
@@ -17,10 +17,12 @@ El **webhook de Intuit no sustituye** el push desde la app: Intuit notifica camb
 |--------|-------------|-----|
 | `INTUIT_WEBHOOK_VERIFIER_TOKEN` | Sí, si usas webhook | Mismo valor que el **Verifier Token** en el portal de desarrolladores Intuit (Webhooks). La función valida la cabecera `intuit-signature`. |
 | `QBO_WEBHOOK_DEFAULT_CLIENT_ID` | Sí, si quieres **crear** sociedades desde Customer nuevos en QBO | UUID de un registro existente en `public.clients` (cliente **interno** de la plataforma). Las sociedades importadas quedan con ese `client_id` hasta que las reasignes. **No** es el Id de QuickBooks. |
-
-En `societies`, **`id_qb`** es el **Customer.Id** de QuickBooks en forma numérica (cuando el Id es un entero que cabe en `integer`); **`quickbooks_customer_id`** guarda el mismo identificador como texto. Ambos se rellenan desde webhook, `qbo-society-push` y `qbo-sync-societies`.
 | `QBO_SOCIETY_PUSH_SECRET` | Recomendado | Secreto dedicado para `qbo-society-push`. Si no lo defines, puedes autorizar con `Authorization: Bearer <QBO_CRON_SECRET>`. |
 | `QBO_CRON_SECRET` | Ya lo usas para cron/sync | También aceptado por `qbo-society-push` como alternativa al secreto anterior. |
+
+En `societies`, **`id_qb`** es el **Customer.Id** de QuickBooks en forma numérica (cuando el Id es un entero que cabe en `integer`); **`quickbooks_customer_id`** guarda el mismo identificador como texto. Ambos se rellenan desde webhook, `qbo-society-push` y `qbo-sync-societies`.
+
+En **`categories`**, **`id_qb`** almacena el **Item.Id** de QuickBooks cuando el item es una categoría (`Type: Category`). Las categorías **no** requieren `QBO_WEBHOOK_DEFAULT_CLIENT_ID`.
 
 El resto (`QBO_CLIENT_ID`, `QBO_CLIENT_SECRET`, tokens OAuth, etc.) sigue siendo necesario como en el flujo OAuth ya documentado.
 
@@ -43,13 +45,24 @@ El resto (`QBO_CLIENT_ID`, `QBO_CLIENT_SECRET`, tokens OAuth, etc.) sigue siendo
 
 4. Copia el **Verifier Token** del portal y pégalo en Supabase como `INTUIT_WEBHOOK_VERIFIER_TOKEN`.
 
-## 3. Suscripción de eventos
+## 3. Formato del cuerpo (legacy vs CloudEvents)
 
-En el portal de la app Intuit, en la sección de **Webhooks**, suscribe al menos entidades **Customer** (crear, actualizar, borrar/anular según permita el portal). Así `qbo-webhook` puede actualizar `societies` enlazadas.
+Intuit está migrando los webhooks al formato **[CloudEvents](https://blogs.intuit.com/2025/11/12/upcoming-change-to-webhooks-payload-structure)** (array JSON con `type` tipo `qbo.item.created.v1`, `intuitentityid`, `intuitaccountid`). En el portal hay un **interruptor** para probar el formato nuevo o volver al clásico (`eventNotifications`).
+
+La función **`qbo-webhook`** soporta **ambos** formatos. Si nada se sincroniza pero la función responde `200`, revisa la respuesta: `notification_count: 0` o el aviso en `processed` sobre formato / `apikey` / suscripción **Item**.
+
+## 4. Suscripción de eventos
+
+En el portal de la app Intuit, en la sección de **Webhooks**, suscribe:
+
+- **Customer** — para `public.societies` (crear, actualizar, borrar/anular según permita el portal).
+- **Item** — para sincronizar **categorías** en `public.categories` (la función filtra por `Type: Category` tras el GET a la API; el resto de items se ignoran).
+
+Detalle del flujo Item → categoría: [quickbooks-item-category-webhook.md](./quickbooks-item-category-webhook.md).
 
 **Customer nuevo solo en QBO** (webhook create/update y no hay `quickbooks_customer_id` local): se **inserta** una fila en `societies` con datos del Customer (nombre, razón social, correo, teléfono si viene en QBO, `tipo_sociedad` = `SOCIEDADES`) y `client_id` = `QBO_WEBHOOK_DEFAULT_CLIENT_ID`. Sin ese secret, el evento se registra en `errors` de la respuesta del webhook.
 
-## 4. App (Vite): push al guardar/borrar
+## 5. App (Vite): push al guardar/borrar
 
 En `.env.local` (no versionar):
 
@@ -61,10 +74,11 @@ Con eso, al guardar o eliminar una sociedad, la app llama a `qbo-society-push` c
 
 **Advertencia de seguridad:** cualquier variable `VITE_*` queda en el bundle del navegador. Úsalo solo en entornos controlados; en producción pública conviene sustituir esto por una llamada autenticada (p. ej. JWT de usuario y validación en la función).
 
-## 5. Comprobación rápida
+## 6. Comprobación rápida
 
 - Tras conectar QBO (OAuth), crea una sociedad en la app: debería aparecer un Customer en QBO y `quickbooks_customer_id` en la fila.
 - Edita el Customer en QBO: si el webhook está bien configurado, la sociedad enlazada debería actualizarse al recibir la notificación.
 - Borra la sociedad en la app: el Customer correspondiente en QBO pasa a **inactivo** (no se borra físicamente en QBO por limitaciones habituales de la API).
 
-Detalle de endpoints y `curl`: [quickbooks-endpoints.md](./quickbooks-endpoints.md).
+Detalle de endpoints y `curl`: [quickbooks-endpoints.md](./quickbooks-endpoints.md).  
+Categorías QBO (`Item` + `Type: Category`): [quickbooks-item-category-webhook.md](./quickbooks-item-category-webhook.md).

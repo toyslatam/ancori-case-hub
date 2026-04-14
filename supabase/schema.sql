@@ -201,6 +201,20 @@ create table if not exists public.invoice_lines (
   itbms numeric(5,2) not null default 0
 );
 
+-- Utilidades: categorías (nombre + id QuickBooks).
+create table if not exists public.categories (
+  id uuid primary key default gen_random_uuid(),
+  nombre text not null,
+  id_qb integer,
+  activo boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_categories_nombre on public.categories(nombre);
+
+grant select, insert, update, delete on table public.categories to anon, authenticated;
+grant all on table public.categories to service_role;
+
 create index if not exists idx_societies_client_id on public.societies(client_id);
 create index if not exists idx_cases_client_id on public.cases(client_id);
 create index if not exists idx_cases_society_id on public.cases(society_id);
