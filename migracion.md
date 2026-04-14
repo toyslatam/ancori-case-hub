@@ -357,3 +357,98 @@ from public.service_items si
 left join public.services s on s.id = si.service_id
 order by si.nombre;
 ```
+
+---
+
+## 11. Migración — Usuarios (`public.usuarios` + Supabase Auth)
+
+### Paso 1 — Crear tabla
+
+```sql
+create table if not exists public.usuarios (
+  id uuid primary key default gen_random_uuid(),
+  nombre text not null,
+  correo text not null,
+  rol text,
+  puesto text,
+  correo_microsoft text,
+  activo boolean not null default true,
+  created_at timestamptz not null default now()
+);
+```
+
+### Paso 2 — Insertar los 9 usuarios
+
+```sql
+insert into public.usuarios (nombre, correo, rol, correo_microsoft) values
+  ('Leydis Valdés',        'finanzas@ancori.com',               'Contabilidad',            'lvaldes@Ancoriyasociados.onmicrosoft.com'),
+  ('Jean Richa',           'jricha@ancori.com',                 'Socio',                   'jricha@Ancoriyasociados.onmicrosoft.com'),
+  ('Margie Angel',         'mangel@ancori.com',                 'Socio',                   'mangel@Ancoriyasociados.onmicrosoft.com'),
+  ('Yolimar Gordón',       'ygordon@ancori.com',                'Abogada',                 'ygordon@Ancoriyasociados.onmicrosoft.com'),
+  ('Milagros Flores',      'mflores@ancori.com',                'Abogada',                 'mflores@Ancoriyasociados.onmicrosoft.com'),
+  ('María Isabel Palma',   'mpalma@ancori.com',                 'Asistente Legal',         'mipalma@Ancoriyasociados.onmicrosoft.com'),
+  ('Vanessa Suarez',       'administracion@ancori.com',         'Asistente Administrativo','vsuarez@Ancoriyasociados.onmicrosoft.com'),
+  ('Soporte',              'soporte@ancoriyasociados.com',      null,                      'soporte@ancoriyasociados.onmicrosoft.com'),
+  ('Soporte Ct Auditores', 'panelbi@ctauditoresbi.onmicrosoft.com', null,                  'panelbi@ctauditoresbi.onmicrosoft.com');
+```
+
+### Paso 3 — Crear cuentas de acceso en Supabase Auth
+
+Ve a **Supabase Dashboard → Authentication → Users** y crea cada cuenta con el botón **"Add user"**:
+
+| Correo | Contraseña |
+|--------|-----------|
+| finanzas@ancori.com | ANCORI2026** |
+| jricha@ancori.com | ANCORI2026** |
+| mangel@ancori.com | ANCORI2026** |
+| ygordon@ancori.com | ANCORI2026** |
+| mflores@ancori.com | ANCORI2026** |
+| mpalma@ancori.com | ANCORI2026** |
+| administracion@ancori.com | ANCORI2026** |
+| soporte@ancoriyasociados.com | ANCORI2026** |
+| panelbi@ctauditoresbi.onmicrosoft.com | ANCORI2026** |
+
+> Marca **"Auto Confirm User"** al crear cada uno para que no necesiten confirmar por email.
+
+---
+
+## 12. Migración — Casos (nuevas columnas)
+
+Ejecuta en Supabase SQL Editor para agregar los campos nuevos a la tabla `cases` existente:
+
+```sql
+-- Agregar columnas nuevas a la tabla cases existente
+ALTER TABLE public.cases
+  ADD COLUMN IF NOT EXISTS n_tarea integer,
+  ADD COLUMN IF NOT EXISTS service_item_id uuid references public.service_items(id) on delete set null,
+  ADD COLUMN IF NOT EXISTS etapa_id uuid references public.etapas(id) on delete set null,
+  ADD COLUMN IF NOT EXISTS prioridad text check (prioridad in ('Baja','Media','Urgente')),
+  ADD COLUMN IF NOT EXISTS usuario_asignado_id uuid references public.usuarios(id) on delete set null,
+  ADD COLUMN IF NOT EXISTS notas text,
+  ADD COLUMN IF NOT EXISTS fecha_vencimiento date,
+  ADD COLUMN IF NOT EXISTS recurrencia boolean not null default false,
+  ADD COLUMN IF NOT EXISTS envio_correo boolean not null default false,
+  ADD COLUMN IF NOT EXISTS gastos_cliente numeric(12,2),
+  ADD COLUMN IF NOT EXISTS gastos_pendiente numeric(12,2);
+
+-- Actualizar constraint de estado para incluir 'En Curso'
+ALTER TABLE public.cases
+  DROP CONSTRAINT IF EXISTS cases_estado_check;
+
+ALTER TABLE public.cases
+  ADD CONSTRAINT cases_estado_check
+  CHECK (estado in ('Pendiente','En Curso','Completado/Facturado','Cancelado'));
+
+-- Hacer service_id opcional (antes era NOT NULL)
+ALTER TABLE public.cases
+  ALTER COLUMN service_id DROP NOT NULL;
+
+-- Rellenar n_tarea si la columna está vacía (basado en orden de created_at)
+UPDATE public.cases SET n_tarea = sub.rn
+FROM (
+  SELECT id, ROW_NUMBER() OVER (ORDER BY created_at ASC) as rn
+  FROM public.cases
+  WHERE n_tarea IS NULL
+) sub
+WHERE public.cases.id = sub.id;
+```

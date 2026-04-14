@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppProvider } from "@/context/AppContext";
 import { AppLayout } from "@/components/layout/AppLayout";
+import DashboardPage from "./pages/DashboardPage";
 import CasesPage from "./pages/CasesPage";
 import ClientsPage from "./pages/maintenance/ClientsPage";
 import SocietiesPage from "./pages/maintenance/SocietiesPage";
@@ -31,7 +32,8 @@ const App = () => (
         <BrowserRouter>
           <AppLayout>
             <Routes>
-              <Route path="/" element={<CasesPage />} />
+              <Route path="/" element={<DashboardPage />} />
+              <Route path="/inicio" element={<DashboardPage />} />
               <Route path="/casos" element={<CasesPage />} />
               <Route path="/facturas" element={<ComingSoonPage title="Facturas" />} />
               <Route path="/reportes" element={<ComingSoonPage title="Reportes" />} />

@@ -1,8 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
 import { toast } from 'sonner';
 import {
-  Case, Category, Client, Director, Etapa, Society, Service, ServiceItem, InvoiceTerm, QBItem,
-  mockCases, mockCategories, mockClients, mockDirectores, mockEtapas, mockSocieties, mockServices, mockServiceItems, mockInvoiceTerms, mockQBItems,
+  Case, Category, Client, Director, Etapa, Society, Service, ServiceItem, Usuario, InvoiceTerm, QBItem,
+  mockCases, mockCategories, mockClients, mockDirectores, mockEtapas, mockSocieties, mockServices, mockServiceItems, mockUsuarios, mockInvoiceTerms, mockQBItems,
   CaseComment, CaseExpense,
 } from '@/data/mockData';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabaseClient';
@@ -20,6 +20,7 @@ interface AppContextType {
   services: Service[];
   serviceItems: ServiceItem[];
   etapas: Etapa[];
+  usuarios: Usuario[];
   invoiceTerms: InvoiceTerm[];
   categories: Category[];
   qbItems: QBItem[];
@@ -40,6 +41,8 @@ interface AppContextType {
   deleteServiceItem: (id: string) => Promise<boolean>;
   saveEtapa: (e: Etapa, isEdit: boolean) => Promise<boolean>;
   deleteEtapa: (id: string) => Promise<boolean>;
+  saveUsuario: (u: Usuario, isEdit: boolean) => Promise<boolean>;
+  deleteUsuario: (id: string) => Promise<boolean>;
   saveInvoiceTerm: (term: InvoiceTerm, isEdit: boolean) => Promise<boolean>;
   deleteInvoiceTerm: (id: string) => Promise<boolean>;
   saveCategory: (c: Category, isEdit: boolean) => Promise<boolean>;
@@ -51,6 +54,9 @@ interface AppContextType {
   getClientName: (id?: string) => string;
   getSocietyName: (id?: string) => string;
   getServiceName: (id?: string) => string;
+  getServiceItemName: (id?: string) => string;
+  getEtapaName: (id?: string) => string;
+  getUsuarioName: (id?: string) => string;
   getDirectorName: (id?: string) => string;
 }
 
@@ -66,6 +72,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [services, setServices] = useState<Service[]>(() => (useRemote ? [] : mockServices));
   const [serviceItems, setServiceItems] = useState<ServiceItem[]>(() => (useRemote ? [] : mockServiceItems));
   const [etapas, setEtapas] = useState<Etapa[]>(() => (useRemote ? [] : mockEtapas));
+  const [usuarios, setUsuarios] = useState<Usuario[]>(() => (useRemote ? [] : mockUsuarios));
   const [invoiceTerms, setInvoiceTerms] = useState<InvoiceTerm[]>(() => (useRemote ? [] : mockInvoiceTerms));
   const [categories, setCategories] = useState<Category[]>(() => (useRemote ? [] : mockCategories));
   const [qbItems, setQbItems] = useState<QBItem[]>(() => (useRemote ? [] : mockQBItems));
@@ -83,6 +90,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setServices(data.services);
         setServiceItems(data.serviceItems);
         setEtapas(data.etapas);
+        setUsuarios(data.usuarios);
         setInvoiceTerms(data.invoiceTerms);
         setCategories(data.categories);
         setQbItems(data.qbItems);
@@ -102,6 +110,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setServices(mockServices);
         setServiceItems(mockServiceItems);
         setEtapas(mockEtapas);
+        setUsuarios(mockUsuarios);
         setInvoiceTerms(mockInvoiceTerms);
         setCategories(mockCategories);
         setQbItems(mockQBItems);
@@ -356,6 +365,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return true;
   }, [sb]);
 
+  const saveUsuario = useCallback(async (u: Usuario, isEdit: boolean): Promise<boolean> => {
+    if (sb) {
+      const res = isEdit ? await db.updateUsuarioRow(sb, u) : await db.insertUsuario(sb, u);
+      if (res.error) { toast.error(res.error.message); return false; }
+    }
+    setUsuarios(prev => (isEdit ? prev.map(x => x.id === u.id ? u : x) : [...prev, u]));
+    return true;
+  }, [sb]);
+
+  const deleteUsuario = useCallback(async (id: string): Promise<boolean> => {
+    if (sb) {
+      const { error } = await db.deleteUsuarioRow(sb, id);
+      if (error) { toast.error(error.message); return false; }
+    }
+    setUsuarios(prev => prev.filter(x => x.id !== id));
+    return true;
+  }, [sb]);
+
   const saveInvoiceTerm = useCallback(async (term: InvoiceTerm, isEdit: boolean): Promise<boolean> => {
     if (sb) {
       const res = isEdit ? await db.updateInvoiceTermRow(sb, term) : await db.insertInvoiceTerm(sb, term);
@@ -455,17 +482,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const getClientName = useCallback((id?: string) => clients.find(c => c.id === id)?.nombre || '', [clients]);
   const getSocietyName = useCallback((id?: string) => societies.find(s => s.id === id)?.nombre || '', [societies]);
   const getServiceName = useCallback((id?: string) => services.find(s => s.id === id)?.nombre || '', [services]);
+  const getServiceItemName = useCallback((id?: string) => serviceItems.find(si => si.id === id)?.nombre || '', [serviceItems]);
+  const getEtapaName = useCallback((id?: string) => {
+    const e = etapas.find(x => x.id === id);
+    return e ? `${e.n_etapa}. ${e.nombre}` : '';
+  }, [etapas]);
+  const getUsuarioName = useCallback((id?: string) => usuarios.find(u => u.id === id)?.nombre || '', [usuarios]);
   const getDirectorName = useCallback((id?: string) => directores.find(d => d.id === id)?.nombre || '', [directores]);
 
   return (
     <AppContext.Provider value={{
-      cases, clients, societies, services, serviceItems, etapas, invoiceTerms, categories, qbItems, directores,
+      cases, clients, societies, services, serviceItems, etapas, usuarios, invoiceTerms, categories, qbItems, directores,
       addCase, updateCase, addComment, addExpense, updateExpenses, removeCase,
       saveClient, deleteClient, saveSociety, deleteSociety, saveService, deleteService,
-      saveServiceItem, deleteServiceItem, saveEtapa, deleteEtapa,
+      saveServiceItem, deleteServiceItem, saveEtapa, deleteEtapa, saveUsuario, deleteUsuario,
       saveInvoiceTerm, deleteInvoiceTerm, saveCategory, deleteCategory, saveQBItem, deleteQBItem,
       saveDirector, deleteDirector,
-      getClientName, getSocietyName, getServiceName, getDirectorName,
+      getClientName, getSocietyName, getServiceName, getServiceItemName, getEtapaName, getUsuarioName, getDirectorName,
     }}>
       {children}
     </AppContext.Provider>

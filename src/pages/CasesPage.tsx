@@ -10,13 +10,16 @@ import { InvoiceModal } from '@/components/cases/InvoiceModal';
 import { FiltersModal } from '@/components/cases/FiltersModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Case } from '@/data/mockData';
-import { Plus, Filter, Search, UserPlus } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Case, CASE_ESTADOS, CASE_PRIORIDADES } from '@/data/mockData';
+import { Plus, Filter, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function CasesPage() {
   const { cases, addCase, removeCase, getClientName, getSocietyName } = useApp();
   const [search, setSearch] = useState('');
+  const [filterEstado, setFilterEstado] = useState('');
+  const [filterPrioridad, setFilterPrioridad] = useState('');
   const [filters, setFilters] = useState<Record<string, any>>({});
   const [showNewCase, setShowNewCase] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
@@ -30,29 +33,37 @@ export default function CasesPage() {
     if (search) {
       const s = search.toLowerCase();
       result = result.filter(c =>
-        c.numero_caso.includes(s) ||
+        (c.numero_caso ?? '').toLowerCase().includes(s) ||
+        c.descripcion.toLowerCase().includes(s) ||
         getClientName(c.client_id).toLowerCase().includes(s) ||
         getSocietyName(c.society_id).toLowerCase().includes(s) ||
         c.responsable.toLowerCase().includes(s) ||
         c.creado_por.toLowerCase().includes(s)
       );
     }
-    if (filters.numero_caso) result = result.filter(c => c.numero_caso.includes(filters.numero_caso));
+    if (filterEstado) result = result.filter(c => c.estado === filterEstado);
+    if (filterPrioridad) result = result.filter(c => c.prioridad === filterPrioridad);
     if (filters.estado) result = result.filter(c => c.estado === filters.estado);
-    if (filters.prioridad_urgente) result = result.filter(c => c.prioridad_urgente);
-    if (filters.con_comentarios) result = result.filter(c => c.comments.length > 0);
-    if (filters.con_gastos) result = result.filter(c => c.expenses.length > 0);
+    if (filters.prioridad_urgente) result = result.filter(c => c.prioridad === 'Urgente');
     if (filters.fecha_desde) result = result.filter(c => c.fecha_caso >= filters.fecha_desde);
     if (filters.fecha_hasta) result = result.filter(c => c.fecha_caso <= filters.fecha_hasta);
     return result;
-  }, [cases, search, filters]);
+  }, [cases, search, filterEstado, filterPrioridad, filters, getClientName, getSocietyName]);
 
   const kpi = useMemo(() => ({
     total: cases.length,
     pending: cases.filter(c => c.estado === 'Pendiente').length,
     completed: cases.filter(c => c.estado === 'Completado/Facturado').length,
-    urgent: cases.filter(c => c.prioridad_urgente).length,
+    urgent: cases.filter(c => c.prioridad === 'Urgente' || c.prioridad_urgente).length,
   }), [cases]);
+
+  const hasActiveFilters = filterEstado || filterPrioridad || Object.keys(filters).length > 0;
+
+  const clearFilters = () => {
+    setFilterEstado('');
+    setFilterPrioridad('');
+    setFilters({});
+  };
 
   const handleDelete = async (id: string) => {
     if (!confirm('¿Está seguro de eliminar este caso?')) return;
@@ -64,34 +75,68 @@ export default function CasesPage() {
   const currentExpensesCase = expensesCase ? cases.find(c => c.id === expensesCase.id) || null : null;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-5">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-foreground">CASOS</h1>
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 w-64 bg-card" />
+            <Input
+              placeholder="Buscar por descripción, cliente…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="pl-9 w-64 bg-card"
+            />
           </div>
-          <Button variant="outline" className="gap-1" onClick={() => toast.info('Módulo de Mantenimiento → Clientes')}>
-            <UserPlus className="h-4 w-4" /> Nuevo Cliente/Sociedad
-          </Button>
-        </div>
-      </div>
-
-      <KPICards totalCases={kpi.total} pending={kpi.pending} completed={kpi.completed} urgent={kpi.urgent} />
-
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-foreground">Seguimiento de casos</h2>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setShowFilters(true)} className="gap-1">
-            <Filter className="h-4 w-4" /> Filtro
-          </Button>
           <Button onClick={() => setShowNewCase(true)} className="gap-1">
             <Plus className="h-4 w-4" /> Nuevo Caso
           </Button>
         </div>
       </div>
 
+      {/* KPIs */}
+      <KPICards totalCases={kpi.total} pending={kpi.pending} completed={kpi.completed} urgent={kpi.urgent} />
+
+      {/* Quick Filters */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
+          <Select value={filterEstado} onValueChange={setFilterEstado}>
+            <SelectTrigger className="w-44 bg-card">
+              <SelectValue placeholder="Estado: todos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Todos los estados</SelectItem>
+              {CASE_ESTADOS.map(e => <SelectItem key={e} value={e}>{e}</SelectItem>)}
+            </SelectContent>
+          </Select>
+
+          <Select value={filterPrioridad} onValueChange={setFilterPrioridad}>
+            <SelectTrigger className="w-44 bg-card">
+              <SelectValue placeholder="Prioridad: todas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Todas las prioridades</SelectItem>
+              {CASE_PRIORIDADES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+            </SelectContent>
+          </Select>
+
+          <Button variant="outline" className="gap-1" onClick={() => setShowFilters(true)}>
+            <Filter className="h-4 w-4" /> Más Filtros
+          </Button>
+
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground" onClick={clearFilters}>
+              <X className="h-3 w-3" /> Limpiar
+            </Button>
+          )}
+        </div>
+        <span className="text-sm text-muted-foreground ml-auto">
+          {filtered.length} de {cases.length} caso{cases.length !== 1 ? 's' : ''}
+        </span>
+      </div>
+
+      {/* Table */}
       <CasesTable
         cases={filtered}
         onOpenComments={c => setCommentsCase(c)}
@@ -101,6 +146,7 @@ export default function CasesPage() {
         onDeleteCase={handleDelete}
       />
 
+      {/* Modals */}
       <NewCaseModal open={showNewCase} onClose={() => setShowNewCase(false)} onCreated={addCase} />
       <EditCaseModal caseData={editCase} open={!!editCase} onClose={() => setEditCase(null)} />
       <CommentsDrawer caseData={currentCommentsCase} open={!!commentsCase} onClose={() => setCommentsCase(null)} />

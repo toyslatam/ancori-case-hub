@@ -41,6 +41,17 @@ create table if not exists public.services (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.usuarios (
+  id uuid primary key default gen_random_uuid(),
+  nombre text not null,
+  correo text not null,
+  rol text,
+  puesto text,
+  correo_microsoft text,
+  activo boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.etapas (
   id uuid primary key default gen_random_uuid(),
   nombre text not null,
@@ -155,22 +166,71 @@ alter table public.societies add column if not exists fecha_inscripcion date;
 
 create table if not exists public.cases (
   id uuid primary key default gen_random_uuid(),
-  numero_caso text not null unique,
+  n_tarea integer,
+  numero_caso text not null,
   client_id uuid references public.clients(id) on delete set null,
   society_id uuid references public.societies(id) on delete set null,
-  service_id uuid not null references public.services(id) on delete restrict,
-  descripcion text not null,
-  estado text not null check (estado in ('Pendiente', 'Completado/Facturado', 'En Proceso', 'Cancelado')),
-  etapa text not null,
+  service_id uuid references public.services(id) on delete set null,
+  service_item_id uuid references public.service_items(id) on delete set null,
+  descripcion text not null default '',
+  estado text not null default 'Pendiente'
+    check (estado in ('Pendiente', 'En Curso', 'Completado/Facturado', 'Cancelado')),
+  etapa text,
+  etapa_id uuid references public.etapas(id) on delete set null,
   gastos_cotizados numeric(12,2) not null default 0,
+  gastos_cliente numeric(12,2),
+  gastos_pendiente numeric(12,2),
   cliente_temporal boolean not null default false,
+  prioridad text check (prioridad in ('Baja', 'Media', 'Urgente')),
   prioridad_urgente boolean not null default false,
-  creado_por text not null,
-  responsable text not null,
+  creado_por text not null default '',
+  responsable text not null default '',
+  usuario_asignado_id uuid references public.usuarios(id) on delete set null,
   observaciones text,
-  fecha_caso date not null,
+  notas text,
+  fecha_caso date,
+  fecha_vencimiento date,
+  recurrencia boolean not null default false,
+  envio_correo boolean not null default false,
   created_at timestamptz not null default now()
 );
+
+-- Migración: si ya existe la tabla, agrega las columnas nuevas
+do $$ begin
+  if not exists (select 1 from information_schema.columns where table_name='cases' and column_name='n_tarea') then
+    alter table public.cases add column n_tarea integer;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name='cases' and column_name='service_item_id') then
+    alter table public.cases add column service_item_id uuid references public.service_items(id) on delete set null;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name='cases' and column_name='etapa_id') then
+    alter table public.cases add column etapa_id uuid references public.etapas(id) on delete set null;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name='cases' and column_name='prioridad') then
+    alter table public.cases add column prioridad text check (prioridad in ('Baja', 'Media', 'Urgente'));
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name='cases' and column_name='usuario_asignado_id') then
+    alter table public.cases add column usuario_asignado_id uuid references public.usuarios(id) on delete set null;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name='cases' and column_name='notas') then
+    alter table public.cases add column notas text;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name='cases' and column_name='fecha_vencimiento') then
+    alter table public.cases add column fecha_vencimiento date;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name='cases' and column_name='recurrencia') then
+    alter table public.cases add column recurrencia boolean not null default false;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name='cases' and column_name='envio_correo') then
+    alter table public.cases add column envio_correo boolean not null default false;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name='cases' and column_name='gastos_cliente') then
+    alter table public.cases add column gastos_cliente numeric(12,2);
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name='cases' and column_name='gastos_pendiente') then
+    alter table public.cases add column gastos_pendiente numeric(12,2);
+  end if;
+end $$;
 
 create table if not exists public.case_comments (
   id uuid primary key default gen_random_uuid(),

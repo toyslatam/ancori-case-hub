@@ -16,6 +16,7 @@ import type {
   Society,
   TipoSociedad,
   TipoDocumentoDirector,
+  Usuario,
 } from '@/data/mockData';
 
 function isoDate(s: string): string {
@@ -163,6 +164,32 @@ export function serviceItemToRow(si: ServiceItem): Record<string, unknown> {
     descripcion: si.descripcion ?? null,
     activo: si.activo,
     ...(si.created_at ? { created_at: si.created_at.includes('T') ? si.created_at : `${si.created_at}T12:00:00Z` } : {}),
+  };
+}
+
+export function rowToUsuario(row: Record<string, unknown>): Usuario {
+  return {
+    id: String(row.id),
+    nombre: String(row.nombre),
+    correo: String(row.correo),
+    rol: row.rol ? String(row.rol) : undefined,
+    puesto: row.puesto ? String(row.puesto) : undefined,
+    correo_microsoft: row.correo_microsoft ? String(row.correo_microsoft) : undefined,
+    activo: Boolean(row.activo),
+    created_at: row.created_at ? isoDate(String(row.created_at)) : undefined,
+  };
+}
+
+export function usuarioToRow(u: Usuario): Record<string, unknown> {
+  return {
+    id: u.id,
+    nombre: u.nombre,
+    correo: u.correo,
+    rol: u.rol ?? null,
+    puesto: u.puesto ?? null,
+    correo_microsoft: u.correo_microsoft ?? null,
+    activo: u.activo,
+    ...(u.created_at ? { created_at: u.created_at.includes('T') ? u.created_at : `${u.created_at}T12:00:00Z` } : {}),
   };
 }
 
@@ -347,22 +374,34 @@ function rowToCase(row: Record<string, unknown>, nest: {
   expenses: CaseExpense[];
   invoices: CaseInvoice[];
 }): Case {
+  const prioridad = (row.prioridad as Case['prioridad']) ?? undefined;
   return {
     id: String(row.id),
-    numero_caso: String(row.numero_caso),
+    n_tarea: row.n_tarea != null ? Number(row.n_tarea) : undefined,
+    numero_caso: String(row.numero_caso ?? ''),
     client_id: row.client_id ? String(row.client_id) : undefined,
     society_id: row.society_id ? String(row.society_id) : undefined,
-    service_id: String(row.service_id),
-    descripcion: String(row.descripcion),
-    estado: row.estado as Case['estado'],
-    etapa: String(row.etapa),
-    gastos_cotizados: Number(row.gastos_cotizados),
+    service_id: row.service_id ? String(row.service_id) : undefined,
+    service_item_id: row.service_item_id ? String(row.service_item_id) : undefined,
+    descripcion: String(row.descripcion ?? ''),
+    estado: (row.estado as Case['estado']) ?? 'Pendiente',
+    etapa_id: row.etapa_id ? String(row.etapa_id) : undefined,
+    etapa: row.etapa ? String(row.etapa) : undefined,
+    gastos_cotizados: Number(row.gastos_cotizados ?? 0),
+    gastos_cliente: row.gastos_cliente != null ? Number(row.gastos_cliente) : undefined,
+    gastos_pendiente: row.gastos_pendiente != null ? Number(row.gastos_pendiente) : undefined,
     cliente_temporal: Boolean(row.cliente_temporal),
-    prioridad_urgente: Boolean(row.prioridad_urgente),
-    creado_por: String(row.creado_por),
-    responsable: String(row.responsable),
+    prioridad,
+    prioridad_urgente: prioridad === 'Urgente' || Boolean(row.prioridad_urgente),
+    creado_por: String(row.creado_por ?? ''),
+    responsable: String(row.responsable ?? ''),
+    usuario_asignado_id: row.usuario_asignado_id ? String(row.usuario_asignado_id) : undefined,
     observaciones: String(row.observaciones ?? ''),
-    fecha_caso: String(row.fecha_caso),
+    notas: row.notas ? String(row.notas) : undefined,
+    fecha_caso: String(row.fecha_caso ?? ''),
+    fecha_vencimiento: row.fecha_vencimiento ? String(row.fecha_vencimiento) : undefined,
+    recurrencia: row.recurrencia != null ? Boolean(row.recurrencia) : undefined,
+    envio_correo: row.envio_correo != null ? Boolean(row.envio_correo) : undefined,
     created_at: isoDate(String(row.created_at ?? '')),
     comments: nest.comments,
     expenses: nest.expenses,
@@ -373,20 +412,31 @@ function rowToCase(row: Record<string, unknown>, nest: {
 export function caseToRow(c: Case): Record<string, unknown> {
   return {
     id: c.id,
+    n_tarea: c.n_tarea ?? null,
     numero_caso: c.numero_caso,
     client_id: c.client_id ?? null,
     society_id: c.society_id ?? null,
-    service_id: c.service_id,
+    service_id: c.service_id ?? null,
+    service_item_id: c.service_item_id ?? null,
     descripcion: c.descripcion,
     estado: c.estado,
-    etapa: c.etapa,
+    etapa_id: c.etapa_id ?? null,
+    etapa: c.etapa ?? null,
     gastos_cotizados: c.gastos_cotizados,
+    gastos_cliente: c.gastos_cliente ?? null,
+    gastos_pendiente: c.gastos_pendiente ?? null,
     cliente_temporal: c.cliente_temporal,
-    prioridad_urgente: c.prioridad_urgente,
+    prioridad: c.prioridad ?? null,
+    prioridad_urgente: c.prioridad === 'Urgente' || c.prioridad_urgente,
     creado_por: c.creado_por,
     responsable: c.responsable,
+    usuario_asignado_id: c.usuario_asignado_id ?? null,
     observaciones: c.observaciones,
+    notas: c.notas ?? null,
     fecha_caso: c.fecha_caso,
+    fecha_vencimiento: c.fecha_vencimiento ?? null,
+    recurrencia: c.recurrencia ?? false,
+    envio_correo: c.envio_correo ?? false,
     created_at: c.created_at.includes('T') ? c.created_at : `${c.created_at}T12:00:00Z`,
   };
 }
@@ -397,6 +447,7 @@ export type LoadAllFromSupabaseResult = {
   services: Service[];
   serviceItems: ServiceItem[];
   etapas: Etapa[];
+  usuarios: Usuario[];
   invoiceTerms: InvoiceTerm[];
   categories: Category[];
   qbItems: QBItem[];
@@ -413,6 +464,7 @@ export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFr
     servicesRes,
     serviceItemsRes,
     etapasRes,
+    usuariosRes,
     termsRes,
     categoriesRes,
     qbRes,
@@ -428,6 +480,7 @@ export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFr
     sb.from('services').select('*').order('nombre'),
     sb.from('service_items').select('*').order('nombre'),
     sb.from('etapas').select('*').order('n_etapa', { ascending: true }),
+    sb.from('usuarios').select('*').order('nombre'),
     sb.from('invoice_terms').select('*').order('nombre'),
     sb.from('categories').select('*').order('nombre'),
     sb.from('qb_items').select('*').order('nombre_interno'),
@@ -449,6 +502,7 @@ export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFr
   warn('services', servicesRes.error);
   warn('service_items', serviceItemsRes.error);
   warn('etapas', etapasRes.error);
+  warn('usuarios', usuariosRes.error);
   warn('invoice_terms', termsRes.error);
   warn('categories', categoriesRes.error);
   warn('qb_items', qbRes.error);
@@ -465,6 +519,7 @@ export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFr
     servicesRes,
     serviceItemsRes,
     etapasRes,
+    usuariosRes,
     termsRes,
     categoriesRes,
     qbRes,
@@ -486,6 +541,7 @@ export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFr
   const services = servicesRes.error ? [] : (servicesRes.data ?? []).map(r => rowToService(r as Record<string, unknown>));
   const serviceItems = serviceItemsRes.error ? [] : (serviceItemsRes.data ?? []).map(r => rowToServiceItem(r as Record<string, unknown>));
   const etapas = etapasRes.error ? [] : (etapasRes.data ?? []).map(r => rowToEtapa(r as Record<string, unknown>));
+  const usuarios = usuariosRes.error ? [] : (usuariosRes.data ?? []).map(r => rowToUsuario(r as Record<string, unknown>));
   const invoiceTerms = termsRes.error ? [] : (termsRes.data ?? []).map(r => rowToInvoiceTerm(r as Record<string, unknown>));
   const categories = categoriesRes.error ? [] : (categoriesRes.data ?? []).map(r => rowToCategory(r as Record<string, unknown>));
   const qbItems = qbRes.error ? [] : (qbRes.data ?? []).map(r => rowToQBItem(r as Record<string, unknown>));
@@ -536,7 +592,7 @@ export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFr
     });
   });
 
-  return { clients, societies, services, serviceItems, etapas, invoiceTerms, categories, qbItems, directores, cases, loadWarnings };
+  return { clients, societies, services, serviceItems, etapas, usuarios, invoiceTerms, categories, qbItems, directores, cases, loadWarnings };
 }
 
 export async function insertCase(sb: SupabaseClient, c: Case) {
@@ -628,6 +684,18 @@ export async function updateServiceRow(sb: SupabaseClient, s: Service) {
 
 export async function deleteServiceRow(sb: SupabaseClient, id: string) {
   return sb.from('services').delete().eq('id', id);
+}
+
+export async function insertUsuario(sb: SupabaseClient, u: Usuario) {
+  return sb.from('usuarios').insert(usuarioToRow(u));
+}
+
+export async function updateUsuarioRow(sb: SupabaseClient, u: Usuario) {
+  return sb.from('usuarios').update(usuarioToRow(u)).eq('id', u.id);
+}
+
+export async function deleteUsuarioRow(sb: SupabaseClient, id: string) {
+  return sb.from('usuarios').delete().eq('id', id);
 }
 
 export async function insertEtapa(sb: SupabaseClient, e: Etapa) {

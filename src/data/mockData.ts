@@ -65,6 +65,40 @@ export interface Service {
   created_at?: string;
 }
 
+export const ROLES_USUARIO = [
+  'Socio',
+  'Abogada',
+  'Asistente Legal',
+  'Asistente Administrativo',
+  'Contabilidad',
+  'Soporte',
+] as const;
+
+export type RolUsuario = typeof ROLES_USUARIO[number];
+
+export interface Usuario {
+  id: string;
+  nombre: string;
+  correo: string;
+  rol?: string;
+  puesto?: string;
+  correo_microsoft?: string;
+  activo: boolean;
+  created_at?: string;
+}
+
+export const mockUsuarios: Usuario[] = [
+  { id: 'u1', nombre: 'Leydis Valdés',       correo: 'finanzas@ancori.com',       rol: 'Contabilidad',            correo_microsoft: 'lvaldes@Ancoriyasociados.onmicrosoft.com',    activo: true },
+  { id: 'u2', nombre: 'Jean Richa',           correo: 'jricha@ancori.com',         rol: 'Socio',                   correo_microsoft: 'jricha@Ancoriyasociados.onmicrosoft.com',     activo: true },
+  { id: 'u3', nombre: 'Margie Angel',         correo: 'mangel@ancori.com',         rol: 'Socio',                   correo_microsoft: 'mangel@Ancoriyasociados.onmicrosoft.com',     activo: true },
+  { id: 'u4', nombre: 'Yolimar Gordón',       correo: 'ygordon@ancori.com',        rol: 'Abogada',                 correo_microsoft: 'ygordon@Ancoriyasociados.onmicrosoft.com',    activo: true },
+  { id: 'u5', nombre: 'Milagros Flores',      correo: 'mflores@ancori.com',        rol: 'Abogada',                 correo_microsoft: 'mflores@Ancoriyasociados.onmicrosoft.com',    activo: true },
+  { id: 'u6', nombre: 'María Isabel Palma',   correo: 'mpalma@ancori.com',         rol: 'Asistente Legal',         correo_microsoft: 'mipalma@Ancoriyasociados.onmicrosoft.com',    activo: true },
+  { id: 'u7', nombre: 'Vanessa Suarez',       correo: 'administracion@ancori.com', rol: 'Asistente Administrativo',correo_microsoft: 'vsuarez@Ancoriyasociados.onmicrosoft.com',    activo: true },
+  { id: 'u8', nombre: 'Soporte',              correo: 'soporte@ancoriyasociados.com',                              correo_microsoft: 'soporte@ancoriyasociados.onmicrosoft.com',    activo: true },
+  { id: 'u9', nombre: 'Soporte Ct Auditores', correo: 'panelbi@ctauditoresbi.onmicrosoft.com',                     correo_microsoft: 'panelbi@ctauditoresbi.onmicrosoft.com',       activo: true },
+];
+
 export const TIPOS_ITEM = [
   'N/A',
   'Reformas al Pacto',
@@ -203,22 +237,57 @@ export interface InvoiceLine {
   itbms: number;
 }
 
+export type CaseEstado = 'Pendiente' | 'En Curso' | 'Completado/Facturado' | 'Cancelado';
+export type CasePrioridad = 'Baja' | 'Media' | 'Urgente';
+
+export const CASE_ESTADOS: CaseEstado[] = ['Pendiente', 'En Curso', 'Completado/Facturado', 'Cancelado'];
+export const CASE_PRIORIDADES: CasePrioridad[] = ['Baja', 'Media', 'Urgente'];
+
+/** Formatea n_tarea como "0000130" (7 dígitos con ceros). */
+export function formatNTarea(n?: number): string {
+  if (!n) return '—';
+  return String(n).padStart(7, '0');
+}
+
 export interface Case {
   id: string;
+  /** Correlativo numérico interno (1, 2, 3…). Se muestra como 0000001. */
+  n_tarea?: number;
+  /** Código de visualización derivado de n_tarea. */
   numero_caso: string;
   client_id?: string;
   society_id?: string;
-  service_id: string;
+  /** Servicio derivado del item de servicio o seleccionado manualmente. */
+  service_id?: string;
+  /** FK → service_items.id */
+  service_item_id?: string;
   descripcion: string;
-  estado: 'Pendiente' | 'Completado/Facturado' | 'En Proceso' | 'Cancelado';
-  etapa: string;
+  estado: CaseEstado;
+  /** FK → etapas.id */
+  etapa_id?: string;
+  /** @deprecated usa etapa_id */
+  etapa?: string;
   gastos_cotizados: number;
+  /** Gastos del cliente en el caso. */
+  gastos_cliente?: number;
+  /** Gastos pendientes por cobrar. */
+  gastos_pendiente?: number;
   cliente_temporal: boolean;
+  /** Derived: prioridad === 'Urgente'. Mantenido para compatibilidad. */
   prioridad_urgente: boolean;
+  prioridad?: CasePrioridad;
   creado_por: string;
   responsable: string;
+  /** FK → usuarios.id */
+  usuario_asignado_id?: string;
   observaciones: string;
+  notas?: string;
   fecha_caso: string;
+  /** Fecha límite / vencimiento del caso. */
+  fecha_vencimiento?: string;
+  recurrencia?: boolean;
+  /** Indica si se envió correo al cliente. */
+  envio_correo?: boolean;
   created_at: string;
   comments: CaseComment[];
   expenses: CaseExpense[];
@@ -275,11 +344,14 @@ export const mockDirectores: Director[] = [
 
 export const mockCases: Case[] = [
   {
-    id: '1', numero_caso: '00006', client_id: '1', society_id: '1', service_id: '1',
-    descripcion: 'Constitución Sociedad Anónima', estado: 'Pendiente', etapa: 'Cotización',
-    gastos_cotizados: 5000, cliente_temporal: false, prioridad_urgente: false,
-    creado_por: 'Yolimar Gordón', responsable: 'María Isabel Palma',
-    observaciones: 'SOCIEDAD NUEVA', fecha_caso: '2024-12-01', created_at: '2024-12-01',
+    id: '1', n_tarea: 6, numero_caso: '0000006', client_id: '1', society_id: '1', service_id: '1',
+    service_item_id: 'si1', descripcion: 'Constitución Sociedad Anónima', estado: 'Pendiente',
+    etapa_id: 'e7', gastos_cotizados: 5000, gastos_cliente: 5000, cliente_temporal: false,
+    prioridad_urgente: false, prioridad: 'Media',
+    creado_por: 'Yolimar Gordón', responsable: 'María Isabel Palma', usuario_asignado_id: 'u6',
+    observaciones: 'SOCIEDAD NUEVA', notas: 'Ingresó ayer', fecha_caso: '2024-12-10',
+    fecha_vencimiento: '2025-01-10', recurrencia: false, envio_correo: false,
+    created_at: '2024-12-01',
     comments: [
       { id: '1', case_id: '1', user_name: 'Yolimar Gordón', comentario: 'Caso creado, pendiente de documentos del cliente.', created_at: '2024-12-01T10:00:00' },
     ],
@@ -287,20 +359,21 @@ export const mockCases: Case[] = [
     invoices: [],
   },
   {
-    id: '2', numero_caso: '00005', client_id: '2', society_id: '2', service_id: '2',
-    descripcion: 'Emisión de Poder General o Especial - No Inscrito OTROS SERVICIOS CORPORATIVOS', estado: 'Pendiente', etapa: 'En Proceso',
-    gastos_cotizados: 3000, cliente_temporal: false, prioridad_urgente: false,
-    creado_por: 'Yolimar Gordón', responsable: 'María Isabel Palma',
+    id: '2', n_tarea: 5, numero_caso: '0000005', client_id: '2', society_id: '2', service_id: '2',
+    service_item_id: 'si3', descripcion: 'Emisión de Poder General o Especial - No Inscrito', estado: 'Pendiente',
+    etapa_id: 'e7', gastos_cotizados: 3000, cliente_temporal: false,
+    prioridad_urgente: false, prioridad: 'Baja',
+    creado_por: 'Yolimar Gordón', responsable: 'María Isabel Palma', usuario_asignado_id: 'u6',
     observaciones: '', fecha_caso: '2024-11-20', created_at: '2024-11-20',
     comments: [],
     expenses: [],
     invoices: [],
   },
   {
-    id: '3', numero_caso: '00004', client_id: '3', society_id: '5', service_id: '1',
-    descripcion: 'Constitución Sociedad Anónima', estado: 'Completado/Facturado', etapa: 'Completado',
-    gastos_cotizados: 4500, cliente_temporal: false, prioridad_urgente: false,
-    creado_por: 'Yolimar Gordón', responsable: 'Yolimar Gordón',
+    id: '3', n_tarea: 4, numero_caso: '0000004', client_id: '3', society_id: '5', service_id: '1',
+    service_item_id: 'si1', descripcion: 'Constitución Sociedad Anónima', estado: 'Completado/Facturado',
+    etapa_id: 'e8', gastos_cotizados: 4500, cliente_temporal: false, prioridad_urgente: false, prioridad: 'Media',
+    creado_por: 'Yolimar Gordón', responsable: 'Yolimar Gordón', usuario_asignado_id: 'u4',
     observaciones: 'Ingresó ayer 9 de dic en curso en rp', fecha_caso: '2024-11-15', created_at: '2024-11-15',
     comments: [
       { id: '2', case_id: '3', user_name: 'Yolimar Gordón', comentario: 'Documentos entregados al cliente.', created_at: '2024-12-08T14:30:00' },
@@ -313,10 +386,10 @@ export const mockCases: Case[] = [
     invoices: [],
   },
   {
-    id: '4', numero_caso: '00003', client_id: '3', society_id: '3', service_id: '3',
-    descripcion: 'Certificado de Existencia OTROS SERVICIOS CORPORATIVOS', estado: 'Completado/Facturado', etapa: 'Facturado',
-    gastos_cotizados: 2000, cliente_temporal: false, prioridad_urgente: false,
-    creado_por: 'Yolimar Gordón', responsable: 'Yolimar Gordón',
+    id: '4', n_tarea: 3, numero_caso: '0000003', client_id: '3', society_id: '3', service_id: '3',
+    service_item_id: 'si3', descripcion: 'Certificado de Existencia', estado: 'Completado/Facturado',
+    etapa_id: 'e8', gastos_cotizados: 2000, cliente_temporal: false, prioridad_urgente: false, prioridad: 'Media',
+    creado_por: 'Yolimar Gordón', responsable: 'Yolimar Gordón', usuario_asignado_id: 'u4',
     observaciones: 'CRP y poder firmado por MIP', fecha_caso: '2024-11-10', created_at: '2024-11-10',
     comments: [
       { id: '4', case_id: '4', user_name: 'Yolimar Gordón', comentario: 'Certificado emitido.', created_at: '2024-11-12T11:00:00' },
@@ -325,10 +398,10 @@ export const mockCases: Case[] = [
     invoices: [],
   },
   {
-    id: '5', numero_caso: '00002', client_id: '4', society_id: '4', service_id: '3',
-    descripcion: 'Certificado de Existencia OTROS SERVICIOS CORPORATIVOS', estado: 'Completado/Facturado', etapa: 'Facturado',
-    gastos_cotizados: 2500, cliente_temporal: false, prioridad_urgente: false,
-    creado_por: 'Yolimar Gordón', responsable: 'Yolimar Gordón',
+    id: '5', n_tarea: 2, numero_caso: '0000002', client_id: '4', society_id: '4', service_id: '3',
+    service_item_id: 'si3', descripcion: 'Certificado de Existencia', estado: 'Completado/Facturado',
+    etapa_id: 'e8', gastos_cotizados: 2500, cliente_temporal: false, prioridad_urgente: false, prioridad: 'Baja',
+    creado_por: 'Yolimar Gordón', responsable: 'Yolimar Gordón', usuario_asignado_id: 'u4',
     observaciones: 'MIP Gestionar CRP', fecha_caso: '2024-10-28', created_at: '2024-10-28',
     comments: [
       { id: '5', case_id: '5', user_name: 'Yolimar Gordón', comentario: 'Pendiente firma del cliente.', created_at: '2024-10-30T10:00:00' },
@@ -340,18 +413,15 @@ export const mockCases: Case[] = [
     invoices: [],
   },
   {
-    id: '6', numero_caso: '00001', client_id: '5', society_id: undefined, service_id: '4',
-    descripcion: 'Apostilla de Documento OTROS SERVICIOS CORPORATIVOS', estado: 'Pendiente', etapa: 'En Proceso',
-    gastos_cotizados: 1500, cliente_temporal: true, prioridad_urgente: true,
-    creado_por: 'Yolimar Gordón', responsable: 'María Isabel Palma',
-    observaciones: '', fecha_caso: '2024-10-15', created_at: '2024-10-15',
+    id: '6', n_tarea: 1, numero_caso: '0000001', client_id: '5', society_id: undefined, service_id: '4',
+    service_item_id: 'si3', descripcion: 'Apostilla de Documento', estado: 'En Curso',
+    etapa_id: 'e7', gastos_cotizados: 1500, cliente_temporal: true, prioridad_urgente: true, prioridad: 'Urgente',
+    creado_por: 'Yolimar Gordón', responsable: 'María Isabel Palma', usuario_asignado_id: 'u6',
+    observaciones: '', fecha_caso: '2024-10-15', fecha_vencimiento: '2024-11-15',
+    recurrencia: false, envio_correo: true, created_at: '2024-10-15',
     comments: [
       { id: '7', case_id: '6', user_name: 'Yolimar Gordón', comentario: 'Documento recibido para apostilla.', created_at: '2024-10-15T09:00:00' },
       { id: '8', case_id: '6', user_name: 'Yolimar Gordón', comentario: 'En proceso de apostilla en el MRE.', created_at: '2024-10-18T11:00:00' },
-      { id: '9', case_id: '6', user_name: 'María Isabel Palma', comentario: 'Seguimiento realizado, esperando respuesta.', created_at: '2024-10-22T14:00:00' },
-      { id: '10', case_id: '6', user_name: 'Yolimar Gordón', comentario: 'Apostilla lista, pendiente de entrega.', created_at: '2024-10-25T10:00:00' },
-      { id: '11', case_id: '6', user_name: 'María Isabel Palma', comentario: 'Cliente notificado para recoger.', created_at: '2024-10-28T09:30:00' },
-      { id: '12', case_id: '6', user_name: 'Yolimar Gordón', comentario: 'Entregado al cliente.', created_at: '2024-10-30T16:00:00' },
     ],
     expenses: [
       { id: '4', case_id: '6', descripcion: 'Tasa apostilla MRE', cantidad: 1, importe: 300, total: 300, fecha: '2024-10-16' },

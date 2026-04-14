@@ -44,7 +44,7 @@ export function FiltersModal({ open, onClose, onApply }: FiltersModalProps) {
                 <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Pendiente">Pendiente</SelectItem>
-                  <SelectItem value="En Proceso">En Proceso</SelectItem>
+                  <SelectItem value="En Curso">En Curso</SelectItem>
                   <SelectItem value="Completado/Facturado">Completado/Facturado</SelectItem>
                   <SelectItem value="Cancelado">Cancelado</SelectItem>
                 </SelectContent>
