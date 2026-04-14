@@ -45,8 +45,8 @@ async function fetchAllItems(realmId: string, accessToken: string): Promise<QboI
   let start = 1;
 
   while (true) {
-    // Traer todos los items que NO son Category
-    const sql = `SELECT * FROM Item WHERE Type != 'Category' STARTPOSITION ${start} MAXRESULTS ${PAGE}`;
+    // QBO no soporta != en su SQL, traemos todo y filtramos después en código
+    const sql = `SELECT * FROM Item STARTPOSITION ${start} MAXRESULTS ${PAGE}`;
     const url = `${base}/v3/company/${realmId}/query?query=${encodeURIComponent(sql)}&minorversion=73`;
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
@@ -122,6 +122,8 @@ Deno.serve(async (req) => {
 
   for (const item of qboItems) {
     if (!item.Id || !item.Name) { skipped++; continue; }
+    // Excluir categorías (solo queremos productos/servicios)
+    if (item.Type === 'Category') { skipped++; continue; }
 
     const qbId       = item.Id;                // QBO string ID ("1", "23", etc.)
     const nombreInterno = item.Name.trim();
