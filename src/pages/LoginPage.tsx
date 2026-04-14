@@ -29,10 +29,10 @@ export default function LoginPage() {
 
         {/* Logo + nombre */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl overflow-hidden shadow-md mb-4 bg-white border border-orange-100">
+          <div className="inline-flex items-center justify-center w-24 h-24 rounded-2xl overflow-hidden shadow-md mb-4 bg-white border border-orange-100">
             <img src="/Logo%20Ancori.jpg" alt="Ancori" className="w-full h-full object-cover" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-800 tracking-tight">Ancori Case Hub</h1>
+          <h1 className="text-2xl font-extrabold text-gray-800 tracking-widest uppercase">Plataforma Ancori</h1>
           <p className="text-sm text-gray-400 mt-1">Ingresa con tu cuenta de usuario</p>
         </div>
 
@@ -102,7 +102,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-gray-300 mt-6">
-          CT Auditores · Ancori Case Hub
+          CT Auditores · Plataforma Ancori
         </p>
       </div>
     </div>
