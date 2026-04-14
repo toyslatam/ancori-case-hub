@@ -452,3 +452,107 @@ FROM (
 ) sub
 WHERE public.cases.id = sub.id;
 ```
+
+---
+
+## 13. Importar `casos_import.csv` a Supabase
+
+### Pasos
+
+**1. Ejecuta primero la migración del paso 12** (agregar columnas nuevas a `cases`).
+
+**2. Obtén los UUIDs de tus usuarios** (solo una vez):
+```sql
+SELECT id, nombre FROM public.usuarios ORDER BY nombre;
+```
+Copia los IDs y actualiza el diccionario `usuarios_by_nombre` en `public/generar_casos_import.py`, luego vuelve a ejecutarlo:
+```bash
+python public/generar_casos_import.py
+```
+
+**3. Crea la tabla staging en Supabase SQL Editor:**
+```sql
+CREATE TEMP TABLE casos_staging (
+  n_tarea              integer,
+  numero_caso          text,
+  descripcion          text,
+  estado               text,
+  prioridad            text,
+  fecha_caso           text,
+  fecha_vencimiento    text,
+  society_id           text,
+  client_id            text,
+  service_item_id      text,
+  service_id           text,
+  etapa_id             text,
+  usuario_asignado_id  text,
+  usuario_asignado_nombre text,
+  gastos_cliente       text,
+  gastos_pendiente     text,
+  notas                text,
+  observaciones        text,
+  cliente_temporal     text,
+  recurrencia          text,
+  envio_correo         text,
+  creado_por           text,
+  responsable          text,
+  _ref_item            text,
+  _ref_sociedad        text,
+  _ref_etapa           text
+);
+```
+
+**4. Importa el CSV** via Supabase Dashboard → Table Editor → `casos_staging` → Import Data → sube `public/casos_import.csv`.
+
+**5. Inserta en `cases` desde staging:**
+```sql
+INSERT INTO public.cases (
+  n_tarea, numero_caso, descripcion, estado, prioridad,
+  fecha_caso, fecha_vencimiento,
+  society_id, client_id, service_item_id, service_id, etapa_id,
+  usuario_asignado_id,
+  gastos_cotizados, gastos_cliente, gastos_pendiente,
+  notas, observaciones,
+  cliente_temporal, recurrencia, envio_correo,
+  creado_por, responsable,
+  prioridad_urgente, created_at
+)
+SELECT
+  n_tarea::integer,
+  numero_caso,
+  descripcion,
+  estado,
+  prioridad,
+  NULLIF(fecha_caso, '')::date,
+  NULLIF(fecha_vencimiento, '')::date,
+  NULLIF(society_id, '')::uuid,
+  NULLIF(client_id, '')::uuid,
+  NULLIF(service_item_id, '')::uuid,
+  NULLIF(service_id, '')::uuid,
+  NULLIF(etapa_id, '')::uuid,
+  -- Si tienes UUIDs en el CSV úsalos, si no resuelve por nombre:
+  COALESCE(
+    NULLIF(usuario_asignado_id, '')::uuid,
+    (SELECT id FROM public.usuarios WHERE nombre ILIKE usuario_asignado_nombre LIMIT 1)
+  ),
+  0,
+  NULLIF(gastos_cliente, '')::numeric,
+  NULLIF(gastos_pendiente, '')::numeric,
+  notas,
+  observaciones,
+  (cliente_temporal = 'true'),
+  (recurrencia = 'true'),
+  (envio_correo = 'true'),
+  creado_por,
+  responsable,
+  (prioridad = 'Urgente'),
+  NOW()
+FROM casos_staging
+ORDER BY n_tarea;
+```
+
+**6. Verifica:**
+```sql
+SELECT COUNT(*), MIN(n_tarea), MAX(n_tarea) FROM public.cases;
+-- Debe mostrar 128 filas, n_tarea 1..130
+```

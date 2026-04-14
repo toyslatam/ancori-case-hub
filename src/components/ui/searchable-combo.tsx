@@ -69,7 +69,11 @@ export function SearchableCombo({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-[--radix-popover-trigger-width] p-0"
+        side="bottom"
+        align="start"
+        sideOffset={4}
+        avoidCollisions={false}
+        className="w-[--radix-popover-trigger-width] p-0 z-[200]"
         onOpenAutoFocus={e => {
           e.preventDefault();
           setTimeout(() => inputRef.current?.focus(), 0);

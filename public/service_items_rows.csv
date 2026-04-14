@@ -1,0 +1,67 @@
+id,nombre,service_id,tipo_item,id_qb,sku,descripcion,activo,created_at
+00b06f0a-4a81-4d2c-b293-c8c52b8e2c0b,Cambio de Consejo Fundacional,a63462fe-f60a-4e3a-aaa3-b9296aa35939,Reformas al Acta Fundacional,,,,true,2025-11-11 14:40:00+00
+025d5357-58b1-42ce-a691-c7b403713cd9,Certificación de Incumbency,809552b3-899c-4a75-95d7-6f667112d736,,,,,true,2025-11-11 15:21:00+00
+03347c5c-7e4b-442c-a075-ffb05aa52635,Redomicilio,a63462fe-f60a-4e3a-aaa3-b9296aa35939,,,,,true,2025-11-11 15:15:00+00
+0f30121e-a647-4d90-bf8f-7aceb77fe61e,Investigación en DGI (Finca o Sociedad),2172ce58-b6e4-48df-b113-2e7606dbb0bd,,,,,true,2025-11-11 17:16:00+00
+1b3c2c89-cb06-4c17-ab17-d67848ec3e57,Opinión Legal,2172ce58-b6e4-48df-b113-2e7606dbb0bd,,,,,true,2025-11-11 17:16:00+00
+1ff8f49c-39c1-4c6d-a48b-d82a4a833e54,Apostilla de Documento,809552b3-899c-4a75-95d7-6f667112d736,,,,,true,2025-11-11 15:21:00+00
+2466b025-35b1-424c-aaad-ce0cc354577b,Reactivación de Sociedad,c6bf6750-ff67-43ad-a08f-b46e03cbb67c,,,,,true,2025-11-11 14:36:00+00
+24cf1f86-dc92-426d-bde7-ce39dee0965f,Traducción de Documentos,3aeab317-1a41-4de4-b84a-a6d896c54004,,,,,true,2025-11-11 15:29:00+00
+24ef15cd-b564-4f61-a11f-7d41a56c66d3,Minuta de Compraventa de Inmueble,9932fc1e-853e-4f5e-b776-a8dab97fa23a,Bien Inmueble,,,,true,2025-11-11 17:19:00+00
+256e7a79-c94b-4a04-80d4-d4a87d0474a5,Transformación,c6bf6750-ff67-43ad-a08f-b46e03cbb67c,,,,,true,2025-11-11 14:36:00+00
+2ab595f4-36e0-44f5-96f1-3a91bf3f1658,Cambio de Junta Directiva,c6bf6750-ff67-43ad-a08f-b46e03cbb67c,Reformas al Pacto,,,,true,2025-11-11 14:20:00+00
+310ed974-0b76-4042-9ea1-7654809c80a1,Acompañamiento en Apertura Bancaria,809552b3-899c-4a75-95d7-6f667112d736,,,,,true,2025-11-11 15:22:00+00
+34cb06b9-9be1-457a-b314-45ece0b7e25a,Litigios,ad6bdc82-3846-4155-871f-7c881fba1707,N/A,,,,true,2026-02-19 14:22:00+00
+36dcb8b6-489d-4bd9-88cb-5f12b8503152,Actualización de Valor Catastral ante ANATI,9932fc1e-853e-4f5e-b776-a8dab97fa23a,Bien Inmueble,,,,true,2025-11-11 17:21:00+00
+42e01560-a8be-48ec-a735-9c877451a9af,Servicio de 2 y 3% (DGI),9932fc1e-853e-4f5e-b776-a8dab97fa23a,Bien Inmueble,,,,true,2025-11-11 17:21:00+00
+452650ce-8d70-4aa0-8e1e-f2faf06499a3,Cambio de Agente Residente - CAR IN,a63462fe-f60a-4e3a-aaa3-b9296aa35939,Reformas al Acta Fundacional,,,,true,2025-11-11 15:11:00+00
+47d237d7-a9d0-4da1-9cf2-083af3aa8b84,Vivienda Principal y/o Patrimonio Familiar,2172ce58-b6e4-48df-b113-2e7606dbb0bd,,,,,true,2025-11-11 17:15:00+00
+48008b69-b156-4fb9-b209-c50bd8225045,Transformación,51bf4dc6-1d2c-412c-a819-109237a03eab,,,,,true,2025-11-11 12:48:00+00
+4a894852-dc2b-4e2a-890a-40ec5eff6a67,Constitución de Acta Fundacional,a63462fe-f60a-4e3a-aaa3-b9296aa35939,,,,,true,2025-11-11 14:40:00+00
+4d9f9171-3ed4-4d77-b683-7da6431e9499,Oficina Virtual,809552b3-899c-4a75-95d7-6f667112d736,,,,,true,2025-11-11 15:19:00+00
+4e78a700-7a20-48f7-8527-bb4cac189873,Cambio de Administrador,c6bf6750-ff67-43ad-a08f-b46e03cbb67c,Reformas al Pacto,,,,true,2025-11-11 14:33:00+00
+4f120b79-1941-4646-ab78-181dcabae799,Constitución,c6bf6750-ff67-43ad-a08f-b46e03cbb67c,,,,,true,2025-11-11 13:58:00+00
+520e451a-c3dc-4909-a8c8-b159e6b83804,Aumento o Disminución de Capital,c6bf6750-ff67-43ad-a08f-b46e03cbb67c,Reformas al Pacto,,,,true,2025-11-11 14:30:00+00
+578b007e-aac6-422e-8610-3c6d4e80e690,Anulación y Emisión de Cuotas de Participación,c6bf6750-ff67-43ad-a08f-b46e03cbb67c,,,,,true,2025-11-11 14:34:00+00
+5d5cfec3-8d7b-45d4-b8a6-b0095233bdbd,Custodia de Acciones,809552b3-899c-4a75-95d7-6f667112d736,,,,,true,2025-11-11 15:22:00+00
+5d79368f-e4c1-4096-a475-b05623f829d3,Inscripción en CSS,2172ce58-b6e4-48df-b113-2e7606dbb0bd,,,,,true,2025-11-11 17:16:00+00
+5dca244c-abd7-4e8c-a7e3-d5dd0afdad48,Estados Financieros,3aeab317-1a41-4de4-b84a-a6d896c54004,,,,,true,2025-11-11 15:29:00+00
+60a0f83b-a561-45cd-a05b-b743fac98380,Anulación y Emisión de Acciones,51bf4dc6-1d2c-412c-a819-109237a03eab,,,,,true,2025-11-10 21:10:00+00
+6251d299-833c-4d8a-af62-0028ae90b82b,Escisión,51bf4dc6-1d2c-412c-a819-109237a03eab,Reformas al Pacto,,,,true,2025-11-26 07:15:00+00
+64d2e618-dc50-4961-9f1e-797d3bb34f1a,Cambio de Junta Directiva,51bf4dc6-1d2c-412c-a819-109237a03eab,Reformas al Pacto,72,400005-1,HONORARIOS,true,2025-11-06 11:12:00+00
+6c91ad30-a8d0-45ef-8854-999fd8ae86c8,DILIGENCIAMIENTO DE DOCUMENTOS,809552b3-899c-4a75-95d7-6f667112d736,,,,,true,2025-11-11 15:23:00+00
+7842be89-a6be-4fab-baf2-31ca3e1326c3,Cambio de Nombre,c6bf6750-ff67-43ad-a08f-b46e03cbb67c,Reformas al Pacto,,,,true,2025-11-11 14:21:00+00
+79e24c0d-18f9-4bed-a940-0a6258e89094,Emisión de Poder General o Especial -  Inscrito ante RP,809552b3-899c-4a75-95d7-6f667112d736,Emisión de Poder General o Especial,,,,true,2025-11-11 15:20:00+00
+7c5e4a89-ae9a-4d89-af63-670ab2bf8b63,Redomicilio,c6bf6750-ff67-43ad-a08f-b46e03cbb67c,,,,,true,2025-11-11 14:38:00+00
+7f13fafd-ab33-4a55-bac9-c048ae596144,Registros Contables,3aeab317-1a41-4de4-b84a-a6d896c54004,,,,,true,2025-11-11 15:29:00+00
+89e744e3-f2b5-4935-8eda-0612a63348fb,Emisión del Reglamento Fundacional,a63462fe-f60a-4e3a-aaa3-b9296aa35939,,,,,true,2025-11-11 15:14:00+00
+8a79be94-cc95-442d-a540-34cc4cc1d22d,Cambio de Agente Residente - CAR IN,c6bf6750-ff67-43ad-a08f-b46e03cbb67c,Reformas al Pacto,,,,true,2025-11-11 14:23:00+00
+8d1ed275-a54b-416c-8441-4f4fbce0cc6a,Cambio de Agente Residente - CAR OUT,51bf4dc6-1d2c-412c-a819-109237a03eab,Reformas al Pacto,,,,true,2025-11-10 20:39:00+00
+8e3c608e-7866-4da8-a907-9c6e3fa01993,Servicio Corporativo (si aplica),9932fc1e-853e-4f5e-b776-a8dab97fa23a,Acciones,,,,true,2025-11-11 17:22:00+00
+8ef3bb39-8252-47a0-8462-7b193d82dba7,Aumento o Disminución de Capital,51bf4dc6-1d2c-412c-a819-109237a03eab,Reformas al Pacto,,,,true,2025-11-10 21:09:00+00
+90fbdbe1-8840-4a79-ba11-0dfaeab9a9c9,Cambio de Agente Residente - CAR IN,51bf4dc6-1d2c-412c-a819-109237a03eab,Reformas al Pacto,,,,true,2025-11-10 20:41:00+00
+9bd73455-0417-4a9e-9e9f-3d9511b6af7b,Cambio de Agente Residente - CAR OUT,c6bf6750-ff67-43ad-a08f-b46e03cbb67c,Reformas al Pacto,,,,true,2025-11-11 14:29:00+00
+a1527a22-4d31-4989-b190-73e8488872cb,Certificación de Agente Residente,809552b3-899c-4a75-95d7-6f667112d736,,,,,true,2025-11-11 15:21:00+00
+a180bdd5-1244-4ea2-a3c0-2f49e161d8b5,Emisión de Poder General o Especial -  No Inscrito,809552b3-899c-4a75-95d7-6f667112d736,Emisión de Poder General o Especial,,,,true,2025-11-11 15:20:00+00
+a225a597-684f-4ac7-b946-790db5a52261,Protocolización e Inscripción ante RP,9932fc1e-853e-4f5e-b776-a8dab97fa23a,Bien Inmueble,,,,true,2025-11-11 17:21:00+00
+a2fd1f47-f149-4afa-a7bb-aff4134303b9,Disolución de Sociedad,c6bf6750-ff67-43ad-a08f-b46e03cbb67c,,,,,true,2025-11-11 14:35:00+00
+a91c266d-b135-44c7-ba27-2eb50059e9e8,Certificado de Existencia,809552b3-899c-4a75-95d7-6f667112d736,,,,,true,2025-11-11 15:22:00+00
+b151ff58-9319-4c82-85d2-7fced8a8e3e0,Cambio de Miembros Socios,c6bf6750-ff67-43ad-a08f-b46e03cbb67c,Reformas al Pacto,,,,true,2025-11-11 14:34:00+00
+b6a237a9-e8cb-4e9b-9ed8-4c7c6f7e0e7a,Constitución,51bf4dc6-1d2c-412c-a819-109237a03eab,,,,,true,2025-11-06 11:12:00+00
+b7fee1e1-1f62-47d0-9ee9-5c5fd4f809be,Registro de Marcas,2172ce58-b6e4-48df-b113-2e7606dbb0bd,,,,,true,2025-11-11 17:16:00+00
+b813c197-a43c-4e4b-afa5-b6c68c5578e4,Disolución de Fundación,a63462fe-f60a-4e3a-aaa3-b9296aa35939,,,,,true,2025-11-11 15:15:00+00
+c0417bcd-2546-4756-8b46-22c2824011b1,Disolución de Sociedad,51bf4dc6-1d2c-412c-a819-109237a03eab,,,,,true,2025-11-11 12:45:00+00
+c066da2f-c971-4260-9cd4-823ca3d911a4,Reactivación de Sociedad,51bf4dc6-1d2c-412c-a819-109237a03eab,,,,,true,2025-11-11 12:47:00+00
+c855a328-f0c2-447b-a76f-1e56a9001cea,Residencia Fiscal,2172ce58-b6e4-48df-b113-2e7606dbb0bd,,,,,true,2025-11-11 17:15:00+00
+cd216141-a553-41ab-b5b4-88545fbd0951,Confección Contrato de Promesa de Compraventa de Inmueble,9932fc1e-853e-4f5e-b776-a8dab97fa23a,Bien Inmueble,,,,true,2025-11-11 17:19:00+00
+d749c334-d4ad-49f7-8469-2aaf997c9b49,Contrato Leasing,5ea99f50-a43a-4707-bacc-4cff3e972be8,,,,,true,2025-11-11 07:00:00+00
+dc8118a5-10ca-4773-85c1-c9b956524782,Cambio de Nombre,51bf4dc6-1d2c-412c-a819-109237a03eab,Reformas al Pacto,,,,true,2025-11-06 11:12:00+00
+e00a933f-7822-466f-8693-31069502c03c,DILIGENCIAMIENTO DE FORMULARIOS BANCARIO,809552b3-899c-4a75-95d7-6f667112d736,,,,,true,2025-11-11 15:23:00+00
+e0a196d4-a034-4dcb-94f2-7e92cc62a4e9,Redomicilio,51bf4dc6-1d2c-412c-a819-109237a03eab,,,,,true,2025-11-11 12:48:00+00
+e0d7e1ca-698a-494e-bf87-19c98baf2d39,Revocatoria de Poderes,809552b3-899c-4a75-95d7-6f667112d736,,,,,true,2025-11-11 15:21:00+00
+ee0803d6-1dfa-40c3-829b-f57e99459cd7,"SOCIEDADES DE JURISDICCION EXTRANJERA (BVI, BELICE, NEVIS U OTROS)",fbed2f13-1636-4d3d-9737-504ab0d1bcd1,,,,,true,2025-11-11 15:16:00+00
+ee4baeff-9b4d-47cb-b2ea-5767f1989386,Reforma Integra al Acta Fundacional,a63462fe-f60a-4e3a-aaa3-b9296aa35939,Reformas al Acta Fundacional,,,,true,2025-11-11 15:13:00+00
+f1d40d91-3bc3-4f01-96fb-8d9534975015,Cambio de Agente Residente - CAR OUT,a63462fe-f60a-4e3a-aaa3-b9296aa35939,Reformas al Acta Fundacional,,,,true,2025-11-11 15:12:00+00
+f37bd945-3da5-42da-9c51-672f9c48abd2,Confección Contrato de Promesa y/o Compraventa de Acciones,9932fc1e-853e-4f5e-b776-a8dab97fa23a,Acciones,,,,true,2025-11-11 17:22:00+00
+fa9f86ce-9bbd-40ae-98fe-13d2b6ebd88b,Modificación de Aviso de Operaciones,809552b3-899c-4a75-95d7-6f667112d736,,,,,true,2025-11-11 15:24:00+00
+fc37ef48-6923-4f78-b1ff-cd1106579517,Emisión de Aviso de Operaciones (primera vez),809552b3-899c-4a75-95d7-6f667112d736,,,,,true,2025-11-11 15:23:00+00

@@ -1,0 +1,9 @@
+id,nombre,n_etapa,activo,created_at
+01622d20-b465-4247-a2a4-84d79c6a4c6c,Solicitud,1,true,2026-04-14 04:32:32.210743+00
+307a0f87-82c8-4e80-822c-fa0e21192268,Asignacion Abogado,7,true,2026-04-14 04:32:32.210743+00
+5219858f-d071-4158-8ed9-ee2d1c29c7bf,Asignacion de Clasificacion,3,true,2026-04-14 04:32:32.210743+00
+58be7e16-26be-480c-acdb-36d6a291337c,Recepcion Cotizacion del Cliente,5,true,2026-04-14 04:32:32.210743+00
+97e9f269-c18c-403d-b7da-facff6c147fe,Envio Cotizacion,4,true,2026-04-14 04:32:32.210743+00
+c3841653-38d5-4e20-8be6-b3bd6ae0048b,Recepcion de Respuesta,6,true,2026-04-14 04:32:32.210743+00
+f80fa589-d8e8-45f7-b851-18db9ac749a4,Envio a Cumplimiento,8,true,2026-04-14 04:32:32.210743+00
+fdb54983-fd88-4f27-9d48-e5cdd7bfa332,Evaluacion,2,true,2026-04-14 04:32:32.210743+00
