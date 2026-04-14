@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { Case, formatNTarea } from '@/data/mockData';
 import { useApp } from '@/context/AppContext';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { MessageSquare, DollarSign, FileText, Pencil, Trash2, ArrowUpDown, Mail, RefreshCw } from 'lucide-react';
+import { MessageSquare, DollarSign, FileText, Trash2, ArrowUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface CasesTableProps {
@@ -16,24 +15,18 @@ interface CasesTableProps {
 }
 
 const estadoBadge: Record<string, string> = {
-  'Pendiente': 'bg-yellow-100 text-yellow-800 border-yellow-200',
-  'En Curso': 'bg-blue-100 text-blue-800 border-blue-200',
-  'Completado/Facturado': 'bg-green-100 text-green-800 border-green-200',
-  'Cancelado': 'bg-gray-100 text-gray-600 border-gray-200',
-};
-
-const prioridadBadge: Record<string, string> = {
-  'Baja': 'bg-slate-100 text-slate-600 border-slate-200',
-  'Media': 'bg-amber-100 text-amber-700 border-amber-200',
-  'Urgente': 'bg-red-100 text-red-700 border-red-200',
+  'Pendiente':             'bg-yellow-50 text-yellow-700 border border-yellow-300',
+  'En Curso':              'bg-blue-50 text-blue-700 border border-blue-300',
+  'Completado/Facturado':  'bg-green-50 text-green-700 border border-green-300',
+  'Cancelado':             'bg-gray-100 text-gray-500 border border-gray-200',
 };
 
 export function CasesTable({ cases, onOpenComments, onOpenExpenses, onOpenInvoice, onEditCase, onDeleteCase }: CasesTableProps) {
-  const { getClientName, getSocietyName, getServiceItemName, getEtapaName, getUsuarioName } = useApp();
+  const { getClientName, getSocietyName, getServiceItemName, getUsuarioName } = useApp();
   const [sortField, setSortField] = useState<string>('n_tarea');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-  const [page, setPage] = useState(0);
-  const perPage = 15;
+  const [sortDir, setSortDir]   = useState<'asc' | 'desc'>('desc');
+  const [page, setPage]         = useState(0);
+  const perPage = 20;
 
   const toggleSort = (field: string) => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -47,18 +40,15 @@ export function CasesTable({ cases, onOpenComments, onOpenExpenses, onOpenInvoic
     return sortDir === 'asc' ? cmp : -cmp;
   });
 
-  const paginated = sorted.slice(page * perPage, (page + 1) * perPage);
+  const paginated  = sorted.slice(page * perPage, (page + 1) * perPage);
   const totalPages = Math.ceil(cases.length / perPage);
 
-  const SortHeader = ({ field, children, className }: { field: string; children: React.ReactNode; className?: string }) => (
+  const SortTh = ({ field, children, className }: { field: string; children: React.ReactNode; className?: string }) => (
     <th
-      className={cn(
-        'px-3 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider cursor-pointer select-none hover:text-foreground whitespace-nowrap',
-        className,
-      )}
+      className={cn('px-3 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider cursor-pointer select-none hover:text-foreground whitespace-nowrap', className)}
       onClick={() => toggleSort(field)}
     >
-      <span className="flex items-center gap-1">{children}<ArrowUpDown className="h-3 w-3 opacity-50" /></span>
+      <span className="flex items-center gap-1">{children}<ArrowUpDown className="h-3 w-3 opacity-40" /></span>
     </th>
   );
 
@@ -70,151 +60,146 @@ export function CasesTable({ cases, onOpenComments, onOpenExpenses, onOpenInvoic
 
   return (
     <div className="bg-card rounded-xl shadow-sm border border-border">
+      {/* Header */}
       <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-        <h2 className="text-base font-semibold text-foreground">Seguimiento de Casos</h2>
+        <h2 className="text-base font-semibold text-foreground">Seguimiento de casos</h2>
         <span className="text-xs text-muted-foreground">{cases.length} caso{cases.length !== 1 ? 's' : ''}</span>
       </div>
+
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-muted/50">
+          <thead className="bg-muted/40">
             <tr>
-              <SortHeader field="n_tarea" className="w-24">N° Tarea</SortHeader>
-              <SortHeader field="descripcion">Descripción</SortHeader>
-              <Th>Ítem Servicio</Th>
-              <SortHeader field="estado">Estado</SortHeader>
-              <Th>Sociedad</Th>
-              <Th>Etapa</Th>
-              <Th>Asignado</Th>
+              <SortTh field="n_tarea"   className="w-24">Caso</SortTh>
               <Th>Cliente</Th>
-              <SortHeader field="prioridad">Prioridad</SortHeader>
-              <SortHeader field="fecha_vencimiento">Vencimiento</SortHeader>
-              <Th>Gastos</Th>
-              <Th>Flags</Th>
-              <Th className="text-right">Acciones</Th>
+              <Th>Sociedad</Th>
+              <Th>Creado Por</Th>
+              <Th>Servicio</Th>
+              <SortTh field="estado">Estado</SortTh>
+              <Th>Responsable</Th>
+              <Th>Observaciones</Th>
+              <Th className="text-center">Comentarios</Th>
+              <Th className="text-center">Gastos</Th>
+              <Th className="text-center">Facturas</Th>
+              <Th />
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {paginated.length === 0 ? (
               <tr>
-                <td colSpan={13} className="px-5 py-10 text-center text-muted-foreground">
+                <td colSpan={12} className="px-5 py-12 text-center text-muted-foreground text-sm">
                   No hay casos que mostrar
                 </td>
               </tr>
             ) : paginated.map(c => {
-              const itemNombre = getServiceItemName(c.service_item_id);
-              const etapaNombre = getEtapaName(c.etapa_id);
-              const usuarioNombre = getUsuarioName(c.usuario_asignado_id);
-              const clienteNombre = c.society_id
-                ? getSocietyName(c.society_id)
-                : getClientName(c.client_id);
+              const clienteNombre   = c.society_id ? getClientName(c.client_id) || getSocietyName(c.society_id) : getClientName(c.client_id);
+              const sociedadNombre  = getSocietyName(c.society_id);
+              const servicioNombre  = getServiceItemName(c.service_item_id);
+              const responsable     = getUsuarioName(c.usuario_asignado_id) || c.responsable;
+              const observaciones   = c.notas || c.observaciones || '';
+              const commentCount    = c.comments?.length ?? 0;
 
               return (
                 <tr
                   key={c.id}
-                  className="hover:bg-muted/30 transition-colors cursor-pointer"
+                  className="hover:bg-muted/20 transition-colors cursor-pointer"
                   onClick={() => onEditCase(c)}
                 >
-                  <td className="px-3 py-3 font-mono text-xs font-semibold text-primary whitespace-nowrap">
+                  {/* Caso */}
+                  <td className="px-3 py-3 font-mono text-xs font-bold text-primary whitespace-nowrap">
                     {formatNTarea(c.n_tarea) || c.numero_caso}
                   </td>
-                  <td className="px-3 py-3 max-w-[200px]">
-                    <p className="truncate text-sm font-medium" title={c.descripcion}>{c.descripcion || '—'}</p>
-                    {c.notas && <p className="truncate text-xs text-muted-foreground mt-0.5" title={c.notas}>{c.notas}</p>}
+
+                  {/* Cliente */}
+                  <td className="px-3 py-3 max-w-[150px]">
+                    <span className="truncate block text-xs font-medium" title={clienteNombre}>{clienteNombre || '—'}</span>
+                    {c.cliente_temporal && <span className="text-[10px] text-amber-600 font-semibold">Temporal</span>}
                   </td>
+
+                  {/* Sociedad */}
                   <td className="px-3 py-3 max-w-[160px]">
-                    <span className="truncate block text-xs" title={itemNombre}>{itemNombre || '—'}</span>
+                    <span className="truncate block text-xs" title={sociedadNombre}>{sociedadNombre || '—'}</span>
                   </td>
+
+                  {/* Creado Por */}
+                  <td className="px-3 py-3 max-w-[120px]">
+                    <span className="truncate block text-xs" title={c.creado_por}>{c.creado_por || '—'}</span>
+                  </td>
+
+                  {/* Servicio */}
+                  <td className="px-3 py-3 max-w-[220px]">
+                    <span className="truncate block text-xs leading-snug" title={servicioNombre || c.descripcion}>
+                      {servicioNombre || c.descripcion || '—'}
+                    </span>
+                  </td>
+
+                  {/* Estado */}
                   <td className="px-3 py-3 whitespace-nowrap">
-                    <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium', estadoBadge[c.estado] ?? 'bg-gray-100 text-gray-600')}>
+                    <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold', estadoBadge[c.estado] ?? 'bg-gray-100 text-gray-500')}>
                       {c.estado}
                     </span>
                   </td>
-                  <td className="px-3 py-3 max-w-[150px]">
-                    <span className="truncate block text-xs" title={getSocietyName(c.society_id)}>{getSocietyName(c.society_id) || '—'}</span>
-                  </td>
-                  <td className="px-3 py-3 max-w-[140px]">
-                    <span className="truncate block text-xs" title={etapaNombre}>{etapaNombre || c.etapa || '—'}</span>
-                  </td>
+
+                  {/* Responsable */}
                   <td className="px-3 py-3 max-w-[130px]">
-                    <span className="truncate block text-xs" title={usuarioNombre}>{usuarioNombre || c.responsable || '—'}</span>
+                    <span className="truncate block text-xs" title={responsable}>{responsable || '—'}</span>
                   </td>
-                  <td className="px-3 py-3 max-w-[150px]">
-                    <span className="truncate block text-xs" title={clienteNombre}>{clienteNombre || '—'}</span>
-                    {c.cliente_temporal && <span className="text-[10px] text-amber-600 font-medium">Temporal</span>}
+
+                  {/* Observaciones */}
+                  <td className="px-3 py-3 max-w-[200px]">
+                    <span className="truncate block text-xs text-muted-foreground" title={observaciones}>{observaciones || '—'}</span>
                   </td>
-                  <td className="px-3 py-3 whitespace-nowrap">
-                    {c.prioridad ? (
-                      <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium', prioridadBadge[c.prioridad] ?? '')}>
-                        {c.prioridad}
-                      </span>
-                    ) : '—'}
-                  </td>
-                  <td className="px-3 py-3 whitespace-nowrap text-xs text-muted-foreground">
-                    {c.fecha_vencimiento ?? '—'}
-                  </td>
-                  <td className="px-3 py-3 whitespace-nowrap text-xs text-right">
-                    {c.gastos_cliente != null ? (
-                      <span className="font-medium">${c.gastos_cliente.toLocaleString()}</span>
-                    ) : '—'}
-                  </td>
-                  <td className="px-3 py-3 whitespace-nowrap">
-                    <div className="flex items-center gap-1">
-                      {c.recurrencia && (
-                        <span title="Recurrente"><RefreshCw className="h-3.5 w-3.5 text-blue-500" /></span>
+
+                  {/* Comentarios */}
+                  <td className="px-3 py-3 text-center" onClick={e => e.stopPropagation()}>
+                    <button
+                      onClick={() => onOpenComments(c)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border border-border"
+                    >
+                      <MessageSquare className="h-3.5 w-3.5" />
+                      Ver
+                      {commentCount > 0 && (
+                        <span className="bg-primary text-primary-foreground rounded-full w-4 h-4 flex items-center justify-center text-[10px] font-bold leading-none">
+                          {commentCount}
+                        </span>
                       )}
-                      {c.envio_correo && (
-                        <span title="Correo enviado"><Mail className="h-3.5 w-3.5 text-green-500" /></span>
-                      )}
-                    </div>
+                    </button>
                   </td>
-                  <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-1">
-                      <Button
-                        size="icon" variant="ghost"
-                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                        title="Comentarios"
-                        onClick={() => onOpenComments(c)}
-                      >
-                        <MessageSquare className="h-4 w-4" />
-                        {c.comments.length > 0 && (
-                          <span className="absolute -top-0.5 -right-0.5 text-[9px] bg-primary text-primary-foreground rounded-full w-3.5 h-3.5 flex items-center justify-center">
-                            {c.comments.length}
-                          </span>
-                        )}
-                      </Button>
-                      <Button
-                        size="icon" variant="ghost"
-                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                        title="Gastos"
-                        onClick={() => onOpenExpenses(c)}
-                      >
-                        <DollarSign className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="icon" variant="ghost"
-                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                        title="Factura"
-                        onClick={() => onOpenInvoice(c)}
-                      >
-                        <FileText className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="icon" variant="ghost"
-                        className="h-7 w-7 text-muted-foreground hover:text-primary"
-                        title="Editar"
-                        onClick={() => onEditCase(c)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="icon" variant="ghost"
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        title="Eliminar"
-                        onClick={() => onDeleteCase(c.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+
+                  {/* Gastos */}
+                  <td className="px-3 py-3 text-center" onClick={e => e.stopPropagation()}>
+                    <Button
+                      size="icon" variant="ghost"
+                      className="h-7 w-7 text-muted-foreground hover:text-amber-600"
+                      title="Gastos"
+                      onClick={() => onOpenExpenses(c)}
+                    >
+                      <DollarSign className="h-4 w-4" />
+                    </Button>
+                  </td>
+
+                  {/* Facturas */}
+                  <td className="px-3 py-3 text-center" onClick={e => e.stopPropagation()}>
+                    <Button
+                      size="icon" variant="ghost"
+                      className="h-7 w-7 text-muted-foreground hover:text-blue-600"
+                      title="Facturas"
+                      onClick={() => onOpenInvoice(c)}
+                    >
+                      <FileText className="h-4 w-4" />
+                    </Button>
+                  </td>
+
+                  {/* Eliminar */}
+                  <td className="px-3 py-3 text-center" onClick={e => e.stopPropagation()}>
+                    <Button
+                      size="icon" variant="ghost"
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                      title="Eliminar"
+                      onClick={() => onDeleteCase(c.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </td>
                 </tr>
               );
@@ -223,10 +208,11 @@ export function CasesTable({ cases, onOpenComments, onOpenExpenses, onOpenInvoic
         </table>
       </div>
 
+      {/* Paginación */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between px-5 py-3 border-t border-border">
           <span className="text-xs text-muted-foreground">
-            Página {page + 1} de {totalPages}
+            Página {page + 1} de {totalPages} &nbsp;·&nbsp; {cases.length} casos
           </span>
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>
