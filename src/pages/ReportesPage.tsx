@@ -352,7 +352,8 @@ export default function ReportesPage() {
   const allInvoices = useMemo(() => {
     const invs: any[] = [];
     for (const c of cases) {
-      for (const inv of c.invoices || []) {
+      const caseInvoices = Array.isArray(c.invoices) ? c.invoices : [];
+      for (const inv of caseInvoices) {
         invs.push({ ...inv, _caseId: c.id, _clientId: c.client_id, _societyId: inv.society_id || c.society_id });
       }
     }

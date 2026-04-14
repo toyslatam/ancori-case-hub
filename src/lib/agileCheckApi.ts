@@ -78,7 +78,10 @@ export async function fetchComplianceChecks(
 
   const { data, error } = await query;
   if (error) {
-    console.error('[agileCheckApi] Error cargando checks:', error.message);
+    // Tabla puede no existir aún — no crashear
+    if (!error.message.includes('compliance_checks')) {
+      console.error('[agileCheckApi] Error cargando checks:', error.message);
+    }
     return [];
   }
   return (data ?? []) as ComplianceCheck[];
