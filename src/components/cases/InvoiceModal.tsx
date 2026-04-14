@@ -8,8 +8,11 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { useApp } from '@/context/AppContext';
 import { Case, CaseInvoice, InvoiceLine } from '@/data/mockData';
-import { Plus, Trash2, Send, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Send, Loader2, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
+
+const SUPABASE_URL     = import.meta.env.VITE_SUPABASE_URL as string;
+const FUNCTION_SECRET  = import.meta.env.VITE_FUNCTION_SECRET as string;
 
 interface InvoiceModalProps {
   caseData: Case | null;
@@ -52,6 +55,7 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
   const [notaCliente, setNotaCliente] = useState('');
   const [lines, setLines] = useState<InvoiceLine[]>([newLine()]);
   const [saving, setSaving] = useState(false);
+  const [sending, setSending] = useState(false);
 
   // Reset when modal opens
   useEffect(() => {
@@ -103,6 +107,11 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
     setLines(prev => prev.map((l, i) => {
       if (i !== idx) return l;
       const updated = { ...l, [field]: value };
+      // Al seleccionar item QB, auto-fill ITBMS desde impuesto_default
+      if (field === 'qb_item_id' && value && value !== '__none__') {
+        const qbItem = qbItems.find(q => q.id === value);
+        if (qbItem?.impuesto_default != null) updated.itbms = qbItem.impuesto_default;
+      }
       updated.importe = Number(updated.cantidad) * Number(updated.tarifa);
       return updated;
     }));
@@ -115,41 +124,66 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
   const totalItbms = lines.reduce((s, l) => s + (l.importe * l.itbms / 100), 0);
   const total = subtotal + totalItbms;
 
-  const handleSave = async (sendToQB = false) => {
-    if (!fechaFactura || !fechaVencimiento) {
-      toast.error('Completa las fechas de factura y vencimiento');
-      return;
-    }
-    if (lines.every(l => !l.descripcion.trim())) {
-      toast.error('Agrega al menos una línea con descripción');
-      return;
-    }
+  const buildInvoice = (): CaseInvoice => ({
+    id: invoice?.id ?? crypto.randomUUID(),
+    case_id: caseData.id,
+    client_id: caseData.client_id,
+    society_id: billToSociety ? caseData.society_id : undefined,
+    term_id: termId || undefined,
+    fecha_factura: fechaFactura,
+    fecha_vencimiento: fechaVencimiento,
+    subtotal,
+    impuesto: totalItbms,
+    total,
+    estado,
+    qb_invoice_id: invoice?.qb_invoice_id,
+    numero_factura: numeroFactura || undefined,
+    nota_cliente: notaCliente || undefined,
+    lines: lines.filter(l => l.descripcion.trim()),
+  });
 
+  const handleSave = async () => {
+    if (!fechaFactura || !fechaVencimiento) { toast.error('Completa las fechas'); return; }
+    if (lines.every(l => !l.descripcion.trim())) { toast.error('Agrega al menos una línea'); return; }
     setSaving(true);
-    const inv: CaseInvoice = {
-      id: invoice?.id ?? crypto.randomUUID(),
-      case_id: caseData.id,
-      client_id: caseData.client_id,
-      society_id: billToSociety ? caseData.society_id : undefined,
-      term_id: termId || undefined,
-      fecha_factura: fechaFactura,
-      fecha_vencimiento: fechaVencimiento,
-      subtotal,
-      impuesto: totalItbms,
-      total,
-      estado: sendToQB ? 'pendiente' : estado,
-      qb_invoice_id: invoice?.qb_invoice_id,
-      numero_factura: numeroFactura || undefined,
-      nota_cliente: notaCliente || undefined,
-      lines: lines.filter(l => l.descripcion.trim()),
-    };
-
+    const inv = buildInvoice();
     const ok = await saveInvoice(caseData.id, inv, isEdit);
     setSaving(false);
+    if (ok) { toast.success(isEdit ? 'Factura actualizada' : 'Factura guardada'); onClose(); }
+  };
 
-    if (ok) {
-      toast.success(isEdit ? 'Factura actualizada' : 'Factura guardada');
-      if (sendToQB) toast.info('Integración con QuickBooks pendiente de configuración');
+  const handleSendToQB = async () => {
+    if (!fechaFactura || !fechaVencimiento) { toast.error('Completa las fechas'); return; }
+    if (lines.every(l => !l.descripcion.trim())) { toast.error('Agrega al menos una línea'); return; }
+    if (lines.some(l => l.descripcion.trim() && !l.qb_item_id)) {
+      const confirm = window.confirm('Algunas líneas no tienen un item de QuickBooks asignado. ¿Continuar de todas formas?');
+      if (!confirm) return;
+    }
+
+    // Primero guardar en Supabase
+    setSending(true);
+    const inv = { ...buildInvoice(), estado: 'pendiente' as CaseInvoice['estado'] };
+    const saved = await saveInvoice(caseData.id, inv, isEdit);
+    if (!saved) { setSending(false); return; }
+
+    // Luego enviar a QB
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/qbo-create-invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-ancori-secret': FUNCTION_SECRET },
+        body: JSON.stringify({ invoice_id: inv.id }),
+      });
+      const data = await res.json() as { ok?: boolean; qb_invoice_id?: string; doc_number?: string; error?: string; detail?: string };
+
+      if (!res.ok || !data.ok) {
+        toast.warning(`Factura guardada, pero no se pudo enviar a QB: ${data.detail ?? data.error ?? res.status}`);
+      } else {
+        toast.success(`¡Enviada a QuickBooks! Factura QB #${data.doc_number ?? data.qb_invoice_id}`);
+      }
+    } catch (e) {
+      toast.warning(`Factura guardada. Error de red al enviar a QB: ${String(e)}`);
+    } finally {
+      setSending(false);
       onClose();
     }
   };
@@ -341,20 +375,22 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
           <div className="flex gap-2">
             <Button
               variant="outline"
-              onClick={() => handleSave(false)}
-              disabled={saving}
+              onClick={handleSave}
+              disabled={saving || sending}
               className="h-9 text-sm border-gray-200 text-gray-700 hover:bg-gray-100"
             >
               {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
               Guardar borrador
             </Button>
             <Button
-              onClick={() => handleSave(true)}
-              disabled={saving}
-              className="h-9 text-sm bg-orange-500 hover:bg-orange-600 text-white gap-1.5"
+              onClick={handleSendToQB}
+              disabled={saving || sending}
+              className="h-9 text-sm bg-green-600 hover:bg-green-700 text-white gap-1.5"
             >
-              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-              Enviar a QB
+              {sending
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <CheckCircle2 className="h-3.5 w-3.5" />}
+              {sending ? 'Enviando a QB...' : 'Enviar a QB'}
             </Button>
           </div>
         </div>

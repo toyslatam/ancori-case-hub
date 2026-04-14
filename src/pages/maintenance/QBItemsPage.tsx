@@ -6,8 +6,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
-import { Plus, Pencil, Trash2, Search } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const QBO_CRON_SECRET = import.meta.env.VITE_QBO_CRON_SECRET as string;
 
 export default function QBItemsPage() {
   const { qbItems, saveQBItem, deleteQBItem } = useApp();
@@ -15,6 +18,30 @@ export default function QBItemsPage() {
   const [editItem, setEditItem] = useState<QBItem | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<Partial<QBItem>>({});
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSync = async () => {
+    if (!QBO_CRON_SECRET) { toast.error('VITE_QBO_CRON_SECRET no configurado'); return; }
+    setSyncing(true);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/qbo-sync-qbitems`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-qbo-cron-secret': QBO_CRON_SECRET },
+      });
+      const data = await res.json() as { ok?: boolean; inserted?: number; updated?: number; skipped?: number; total_qbo?: number; error?: string; detail?: string };
+      if (!res.ok || !data.ok) {
+        toast.error(`Error: ${data.error ?? 'desconocido'} — ${data.detail ?? ''}`);
+        return;
+      }
+      toast.success(`Sincronizado: ${data.inserted} nuevos, ${data.updated} actualizados de ${data.total_qbo} items QB`);
+      // Reload after short delay so AppContext re-fetches
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (e) {
+      toast.error(`Error de red: ${String(e)}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const openNew = () => { setForm({ activo: true }); setEditItem(null); setShowForm(true); };
   const openEdit = (q: QBItem) => { setForm({ ...q }); setEditItem(q); setShowForm(true); };
@@ -41,8 +68,24 @@ export default function QBItemsPage() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Productos/Servicios QuickBooks</h1>
-        <Button onClick={openNew} className="gap-1"><Plus className="h-4 w-4" /> Nuevo Item QB</Button>
+        <div>
+          <h1 className="text-2xl font-bold">Productos/Servicios QuickBooks</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{qbItems.length} items cargados</p>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={handleSync}
+            disabled={syncing}
+            className="gap-1.5 border-green-200 text-green-700 hover:bg-green-50"
+          >
+            {syncing
+              ? <RefreshCw className="h-4 w-4 animate-spin" />
+              : <CheckCircle2 className="h-4 w-4" />}
+            {syncing ? 'Sincronizando...' : 'Sincronizar desde QB'}
+          </Button>
+          <Button onClick={openNew} className="gap-1"><Plus className="h-4 w-4" /> Nuevo Item QB</Button>
+        </div>
       </div>
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
