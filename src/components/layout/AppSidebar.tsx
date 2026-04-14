@@ -17,16 +17,17 @@ import {
   Receipt,
   BarChart3,
   PlaySquare,
-  UserCircle,
   UserCog,
   Wrench,
   Tags,
   Layers,
   ListTree,
   GitBranch,
+  LogOut,
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { NavLink } from '@/components/NavLink';
+import { useAuth } from '@/context/AuthContext';
 import {
   Sidebar,
   SidebarContent,
@@ -73,6 +74,7 @@ export function AppSidebar() {
   const location = useLocation();
   const isMaintActive = maintItems.some(i => location.pathname === i.url);
   const isUtilActive = utilItems.some(i => location.pathname === i.url);
+  const { user, signOut } = useAuth();
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border bg-sidebar">
@@ -238,27 +240,39 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border/60">
-        <div
-          className={cn(
-            'flex items-center gap-2 px-2 py-2 text-sm text-muted-foreground',
-            collapsed ? 'flex-col justify-center' : 'justify-between',
-          )}
-        >
-          {!collapsed && (
-            <NavLink to="/configuracion" className="hover:text-foreground">
-              Soporte
-            </NavLink>
-          )}
-          <NavLink
-            to="/configuracion"
-            aria-label="Cuenta y configuración"
+        <div className={cn(
+          'flex items-center gap-2 px-2 py-2',
+          collapsed ? 'flex-col justify-center' : 'justify-between',
+        )}>
+          {/* Avatar + nombre usuario */}
+          <div className={cn('flex items-center gap-2 min-w-0', collapsed && 'flex-col')}>
+            <div className="flex-shrink-0 h-8 w-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-xs font-bold ring-1 ring-orange-200">
+              {user?.initials ?? '?'}
+            </div>
+            {!collapsed && user && (
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-sidebar-foreground truncate leading-tight">
+                  {user.nombre.split(' ')[0]}
+                </p>
+                {user.puesto && (
+                  <p className="text-[10px] text-muted-foreground truncate leading-tight">{user.puesto}</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Cerrar sesión */}
+          <button
+            onClick={() => signOut()}
+            title="Cerrar sesión"
             className={cn(
-              'inline-flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground',
-              'hover:bg-muted hover:text-foreground',
+              'flex-shrink-0 inline-flex items-center justify-center rounded-lg text-muted-foreground',
+              'hover:bg-red-50 hover:text-red-500 transition-colors',
+              collapsed ? 'h-8 w-8' : 'h-8 w-8',
             )}
           >
-            <UserCircle className="h-8 w-8" />
-          </NavLink>
+            <LogOut className="h-4 w-4" />
+          </button>
         </div>
       </SidebarFooter>
 
