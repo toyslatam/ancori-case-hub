@@ -2,22 +2,35 @@ import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { SMTPClient } from 'https://deno.land/x/denomailer@1.6.0/mod.ts';
 
 // Secrets configurados en Supabase Dashboard → Edge Functions → Secrets
-const SMTP_HOST     = Deno.env.get('SMTP_HOST')     ?? 'mail.solucionesdetecnologia.com';
-const SMTP_PORT     = Number(Deno.env.get('SMTP_PORT')     ?? '465');
-const SMTP_USER     = Deno.env.get('SMTP_USER')     ?? 'ancori@solucionesdetecnologia.com';
-const SMTP_PASSWORD = Deno.env.get('SMTP_PASSWORD') ?? '';
-const SMTP_TLS      = Deno.env.get('SMTP_TLS')      !== 'false'; // true por defecto (puerto 465 SSL)
-const MAIL_FROM     = Deno.env.get('MAIL_FROM')     ?? 'ancori@solucionesdetecnologia.com';
-const MAIL_CC       = Deno.env.get('MAIL_CC')       ?? 'soporte@ancoriyasociados.com';
+const SMTP_HOST       = Deno.env.get('SMTP_HOST')       ?? 'mail.solucionesdetecnologia.com';
+const SMTP_PORT       = Number(Deno.env.get('SMTP_PORT') ?? '465');
+const SMTP_USER       = Deno.env.get('SMTP_USER')       ?? 'ancori@solucionesdetecnologia.com';
+const SMTP_PASSWORD   = Deno.env.get('SMTP_PASSWORD')   ?? '';
+const SMTP_TLS        = Deno.env.get('SMTP_TLS')        !== 'false';
+const MAIL_FROM       = Deno.env.get('MAIL_FROM')       ?? 'ancori@solucionesdetecnologia.com';
+const MAIL_CC         = Deno.env.get('MAIL_CC')         ?? 'soporte@ancoriyasociados.com';
+// Secreto propio (no JWT) para proteger la función sin --verify-jwt
+const FUNCTION_SECRET = Deno.env.get('FUNCTION_SECRET') ?? '';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin':  '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-ancori-secret',
 };
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
+  }
+
+  // Validar secreto propio (header x-ancori-secret)
+  if (FUNCTION_SECRET) {
+    const incoming = req.headers.get('x-ancori-secret') ?? '';
+    if (incoming !== FUNCTION_SECRET) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
   }
 
   try {

@@ -559,7 +559,22 @@ SELECT COUNT(*), MIN(n_tarea), MAX(n_tarea) FROM public.cases;
 
 ---
 
-## 14. Configurar correo de asignación (SMTP)
+## 14. Fix columna `etapa` NOT NULL (ejecutar UNA vez)
+
+La columna `etapa` (texto legacy) tiene restricción NOT NULL pero ya no se usa directamente — ahora se usa `etapa_id`. Ejecuta esto en **Supabase SQL Editor**:
+
+```sql
+-- Quitar NOT NULL y poner default vacío
+ALTER TABLE public.cases
+  ALTER COLUMN etapa DROP NOT NULL,
+  ALTER COLUMN etapa SET DEFAULT '';
+```
+
+Esto elimina el error `null value in column "etapa" violates not-null constraint` al crear o editar casos.
+
+---
+
+## 15. Configurar correo de asignación (SMTP)
 
 La Edge Function `send-assignment-email` envía un correo automático al usuario asignado cada vez que se guarda un caso con un nuevo responsable.
 

@@ -78,7 +78,7 @@ export default function CasesPage() {
   const currentExpensesCase = expensesCase ? cases.find(c => c.id === expensesCase.id) || null : null;
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="flex flex-col gap-5 p-5 min-w-0 w-full">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-foreground">CASOS</h1>

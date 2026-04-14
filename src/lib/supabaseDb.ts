@@ -421,7 +421,7 @@ export function caseToRow(c: Case): Record<string, unknown> {
     descripcion: c.descripcion,
     estado: c.estado,
     etapa_id: c.etapa_id ?? null,
-    etapa: c.etapa ?? null,
+    etapa: c.etapa ?? '',   // NOT NULL en BD legacy — nunca enviar null
     gastos_cotizados: c.gastos_cotizados,
     gastos_cliente: c.gastos_cliente ?? null,
     gastos_pendiente: c.gastos_pendiente ?? null,
