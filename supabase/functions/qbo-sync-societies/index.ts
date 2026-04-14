@@ -15,9 +15,17 @@ import {
   normalizeQboName,
   qboCreateCustomer,
   qboCustomerIdToIdQb,
+  qboGetCustomer,
   qboQueryAllCustomers,
   type QboCustomer,
 } from '../_shared/qbo-customers.ts';
+import { extractQboCustomFields } from '../_shared/qbo-custom-fields.ts';
+import {
+  compareFields,
+  resolveDirectorNames,
+  insertConflicts,
+  type SocietyFlat,
+} from '../_shared/sync-conflict-detector.ts';
 
 const JSON_HDR = { 'Content-Type': 'application/json; charset=utf-8' };
 
@@ -181,12 +189,56 @@ Deno.serve(async (req) => {
       if (!upErr) updated++;
     }
 
+    // ── Detección de conflictos por Custom Fields ──────────────────
+    let conflictsDetected = 0;
+    for (const s of rows) {
+      if (!s.activo) continue;
+      const qbId = s.quickbooks_customer_id?.trim();
+      if (!qbId) continue;
+      try {
+        const cFull = await qboGetCustomer(realmId, accessToken, qbId);
+        const qbCF = extractQboCustomFields(cFull as unknown as Record<string, unknown>);
+        // Solo comparar custom fields si hay alguno
+        if (Object.keys(qbCF).length === 0) continue;
+
+        const { data: fullSoc } = await supabase
+          .from('societies').select('*').eq('id', s.id).maybeSingle();
+        if (!fullSoc) continue;
+
+        const dirNames = await resolveDirectorNames(supabase, fullSoc);
+        const flat: SocietyFlat = {
+          ruc: fullSoc.ruc ?? '', dv: fullSoc.dv ?? '', nit: fullSoc.nit ?? '',
+          tipo_sociedad: fullSoc.tipo_sociedad ?? '',
+          nombre: fullSoc.nombre ?? '', razon_social: fullSoc.razon_social ?? '',
+          correo: fullSoc.correo ?? '', ...dirNames,
+        };
+        const comparisons = compareFields(flat, qbCF);
+
+        // Auto-fill Supabase
+        const toSb: Record<string, unknown> = {};
+        for (const cmp of comparisons) {
+          if (cmp.action === 'auto_fill_supabase' &&
+              ['ruc', 'dv', 'nit', 'tipo_sociedad', 'direccion'].includes(cmp.field)) {
+            toSb[cmp.field] = cmp.quickbooksValue;
+          }
+        }
+        if (Object.keys(toSb).length > 0) {
+          await supabase.from('societies').update(toSb).eq('id', s.id);
+        }
+
+        conflictsDetected += await insertConflicts(supabase, s.id, comparisons);
+      } catch (cfErr) {
+        console.error(`[qbo-sync-societies] CF check ${s.id}:`, cfErr);
+      }
+    }
+
     result.from_qb = {
       qbo_customers_loaded: customers.length,
       societies_considered: rows.filter((r) => r.activo).length,
       matched,
       updated,
       id_qb_repaired: idQbRepaired,
+      conflicts_detected: conflictsDetected,
     };
   }
 

@@ -17,6 +17,13 @@ import {
   qboGetCustomer,
   qboSparseUpdateCustomer,
 } from '../_shared/qbo-customers.ts';
+import { extractQboCustomFields, buildCustomFieldPatch } from '../_shared/qbo-custom-fields.ts';
+import {
+  compareFields,
+  resolveDirectorNames,
+  insertConflicts,
+  type SocietyFlat,
+} from '../_shared/sync-conflict-detector.ts';
 
 const JSON_HDR = { 'Content-Type': 'application/json; charset=utf-8' };
 
@@ -185,11 +192,80 @@ Deno.serve(async (req) => {
     if (idQbUpd != null) {
       await supabase.from('societies').update({ id_qb: idQbUpd }).eq('id', s.id);
     }
+
+    // ── Sync bidireccional de Custom Fields ──────────────────────
+    let conflictCount = 0;
+    try {
+      // Leer sociedad completa desde DB para tener todos los campos
+      const { data: fullSociety } = await supabase
+        .from('societies')
+        .select('*')
+        .eq('id', s.id)
+        .maybeSingle();
+
+      if (fullSociety) {
+        const dirNames = await resolveDirectorNames(supabase, fullSociety);
+        const qbCF = extractQboCustomFields(existing as Record<string, unknown>);
+
+        const flat: SocietyFlat = {
+          ruc: fullSociety.ruc ?? '',
+          dv: fullSociety.dv ?? '',
+          nit: fullSociety.nit ?? '',
+          tipo_sociedad: fullSociety.tipo_sociedad ?? '',
+          nombre: fullSociety.nombre ?? '',
+          razon_social: fullSociety.razon_social ?? '',
+          correo: fullSociety.correo ?? '',
+          ...dirNames,
+        };
+
+        const comparisons = compareFields(flat, qbCF, {
+          DisplayName: existing.DisplayName,
+          CompanyName: existing.CompanyName,
+          PrimaryEmailAddr: existing.PrimaryEmailAddr?.Address,
+        });
+
+        // Auto-fill QB: campos que Supabase tiene y QB no
+        const toQb: Record<string, string> = {};
+        for (const c of comparisons) {
+          if (c.action === 'auto_fill_quickbooks') toQb[c.field] = c.supabaseValue;
+        }
+        if (Object.keys(toQb).length > 0) {
+          // Re-fetch para obtener SyncToken actualizado
+          const fresh = await qboGetCustomer(realmId, accessToken, qbId);
+          const cfPatch = buildCustomFieldPatch(fresh.CustomField ?? [], toQb);
+          if (cfPatch.length > 0) {
+            await qboSparseUpdateCustomer(realmId, accessToken, {
+              Id: qbId, SyncToken: fresh.SyncToken ?? '0', CustomField: cfPatch,
+            });
+          }
+        }
+
+        // Auto-fill Supabase: campos que QB tiene y Supabase no
+        const toSb: Record<string, unknown> = {};
+        for (const c of comparisons) {
+          if (c.action === 'auto_fill_supabase') {
+            if (['ruc', 'dv', 'nit', 'tipo_sociedad', 'direccion'].includes(c.field)) {
+              toSb[c.field] = c.quickbooksValue;
+            }
+          }
+        }
+        if (Object.keys(toSb).length > 0) {
+          await supabase.from('societies').update(toSb).eq('id', s.id);
+        }
+
+        // Insertar conflictos (valores distintos en ambos lados)
+        conflictCount = await insertConflicts(supabase, s.id, comparisons);
+      }
+    } catch (cfErr) {
+      console.error('[qbo-society-push] Error en sync bidireccional de CF:', cfErr);
+    }
+
     return json(200, {
       ok: true,
       operation: 'updated',
       quickbooks_customer_id: qbId,
       ...(idQbUpd != null ? { id_qb: idQbUpd } : {}),
+      ...(conflictCount > 0 ? { conflicts_detected: conflictCount } : {}),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

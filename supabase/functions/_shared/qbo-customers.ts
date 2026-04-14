@@ -107,9 +107,12 @@ export async function qboCreateCustomer(
   return { id: String(id) };
 }
 
+import type { QboCustomField } from './qbo-custom-fields.ts';
+
 export type QboCustomerFull = QboCustomer & {
   SyncToken?: string;
   PrimaryPhone?: { FreeFormNumber?: string };
+  CustomField?: QboCustomField[];
 };
 
 export async function qboGetCustomer(
@@ -151,6 +154,7 @@ export async function qboSparseUpdateCustomer(
     CompanyName?: string;
     PrimaryEmailAddr?: string;
     Active?: boolean;
+    CustomField?: QboCustomField[];
   }
 ): Promise<QboCustomerFull> {
   const base = apiBase();
@@ -165,6 +169,9 @@ export async function qboSparseUpdateCustomer(
     cust.PrimaryEmailAddr = { Address: patch.PrimaryEmailAddr };
   }
   if (patch.Active != null) cust.Active = patch.Active;
+  if (patch.CustomField && patch.CustomField.length > 0) {
+    cust.CustomField = patch.CustomField;
+  }
 
   const url = `${base}/v3/company/${realmId}/customer?minorversion=${MINOR}`;
   const res = await fetch(url, {

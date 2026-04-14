@@ -26,6 +26,13 @@ import {
   type QboCustomerFull,
 } from '../_shared/qbo-customers.ts';
 import { qboGetItem } from '../_shared/qbo-items.ts';
+import { extractQboCustomFields } from '../_shared/qbo-custom-fields.ts';
+import {
+  compareFields,
+  resolveDirectorNames,
+  insertConflicts,
+  type SocietyFlat,
+} from '../_shared/sync-conflict-detector.ts';
 
 const JSON_HDR = { 'Content-Type': 'application/json; charset=utf-8' };
 
@@ -433,9 +440,44 @@ Deno.serve(async (req) => {
           if (idNum != null) patch.id_qb = idNum;
 
           if (rows && rows.length === 1) {
-            const { error } = await supabase.from('societies').update(patch).eq('id', rows[0].id);
-            if (error) errors.push(`${id}: ${error.message}`);
-            else processed.push(`update:${id}`);
+            const societyUuid = rows[0].id;
+            const { error } = await supabase.from('societies').update(patch).eq('id', societyUuid);
+            if (error) {
+              errors.push(`${id}: ${error.message}`);
+            } else {
+              processed.push(`update:${id}`);
+              // ── Detección de conflictos (sync bidireccional) ──
+              try {
+                const { data: fullSoc } = await supabase
+                  .from('societies').select('*').eq('id', societyUuid).maybeSingle();
+                if (fullSoc) {
+                  const dirNames = await resolveDirectorNames(supabase, fullSoc);
+                  const qbCF = extractQboCustomFields(c as unknown as Record<string, unknown>);
+                  const flat: SocietyFlat = {
+                    ruc: fullSoc.ruc ?? '', dv: fullSoc.dv ?? '', nit: fullSoc.nit ?? '',
+                    tipo_sociedad: fullSoc.tipo_sociedad ?? '',
+                    nombre: fullSoc.nombre ?? '', razon_social: fullSoc.razon_social ?? '',
+                    correo: fullSoc.correo ?? '', ...dirNames,
+                  };
+                  const comparisons = compareFields(flat, qbCF);
+                  // Auto-fill Supabase (campos que QB tiene y Supabase no)
+                  const toSb: Record<string, unknown> = {};
+                  for (const cmp of comparisons) {
+                    if (cmp.action === 'auto_fill_supabase' &&
+                        ['ruc', 'dv', 'nit', 'tipo_sociedad', 'direccion'].includes(cmp.field)) {
+                      toSb[cmp.field] = cmp.quickbooksValue;
+                    }
+                  }
+                  if (Object.keys(toSb).length > 0) {
+                    await supabase.from('societies').update(toSb).eq('id', societyUuid);
+                  }
+                  const cnt = await insertConflicts(supabase, societyUuid, comparisons);
+                  if (cnt > 0) processed.push(`conflicts:${id}:${cnt}`);
+                }
+              } catch (cfErr) {
+                console.error('[qbo-webhook] conflict detection error:', cfErr);
+              }
+            }
           } else if (rows && rows.length === 0) {
             // Customer en QBO sin fila local: crear sociedad (mismo flujo que create/update manual en QBO).
             const defaultClientId = Deno.env.get('QBO_WEBHOOK_DEFAULT_CLIENT_ID')?.trim();

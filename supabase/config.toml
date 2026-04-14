@@ -31,3 +31,11 @@ verify_jwt = false
 # Push desde la app con secreto compartido (no exponer el build en entornos públicos).
 [functions.qbo-society-push]
 verify_jwt = false
+
+# Resolución de conflictos de sync bidireccional.
+[functions.qbo-reconcile]
+verify_jwt = false
+
+# Notificación email de conflictos de sync.
+[functions.send-conflict-notification]
+verify_jwt = false

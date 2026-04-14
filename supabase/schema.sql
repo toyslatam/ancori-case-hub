@@ -356,3 +356,51 @@ grant all on all tables in schema public to service_role;
 revoke all on table public.qbo_oauth_tokens from anon;
 revoke all on table public.qbo_oauth_tokens from authenticated;
 grant select, insert, update, delete on table public.qbo_oauth_tokens to service_role;
+
+-- ============================================================
+-- Conciliación: detección y resolución de conflictos de sync
+-- ============================================================
+
+create table if not exists public.sync_conflicts (
+  id uuid primary key default gen_random_uuid(),
+  society_id uuid not null references public.societies(id) on delete cascade,
+  field_name text not null,
+  supabase_value text,
+  quickbooks_value text,
+  status text not null default 'pending'
+    check (status in ('pending', 'resolved_supabase', 'resolved_quickbooks', 'dismissed')),
+  resolved_by uuid references public.usuarios(id) on delete set null,
+  resolved_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_sync_conflicts_society on public.sync_conflicts(society_id);
+create index if not exists idx_sync_conflicts_status on public.sync_conflicts(status);
+
+-- Solo un conflicto pendiente por sociedad+campo a la vez.
+create unique index if not exists idx_sync_conflicts_pending_unique
+  on public.sync_conflicts(society_id, field_name)
+  where (status = 'pending');
+
+comment on table public.sync_conflicts is 'Conflictos detectados durante sync bidireccional Supabase ↔ QuickBooks.';
+
+create table if not exists public.sync_notifications (
+  id uuid primary key default gen_random_uuid(),
+  usuario_id uuid not null references public.usuarios(id) on delete cascade,
+  conflict_id uuid references public.sync_conflicts(id) on delete cascade,
+  message text not null,
+  read boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_sync_notifications_usuario on public.sync_notifications(usuario_id);
+create index if not exists idx_sync_notifications_unread
+  on public.sync_notifications(usuario_id, read)
+  where (read = false);
+
+comment on table public.sync_notifications is 'Notificaciones in-app para conflictos de sync.';
+
+grant select, insert, update, delete on table public.sync_conflicts to anon, authenticated;
+grant all on table public.sync_conflicts to service_role;
+grant select, insert, update, delete on table public.sync_notifications to anon, authenticated;
+grant all on table public.sync_notifications to service_role;

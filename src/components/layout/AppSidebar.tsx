@@ -23,6 +23,7 @@ import {
   Layers,
   ListTree,
   GitBranch,
+  GitCompare,
   LogOut,
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
@@ -45,8 +46,10 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { usePendingConflicts } from '@/hooks/usePendingConflicts';
 
 const LOGO_SRC = '/Logo%20Ancori.jpg';
 
@@ -75,6 +78,7 @@ export function AppSidebar() {
   const isMaintActive = maintItems.some(i => location.pathname === i.url);
   const isUtilActive = utilItems.some(i => location.pathname === i.url);
   const { user, signOut } = useAuth();
+  const pendingConflicts = usePendingConflicts();
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border bg-sidebar">
@@ -213,6 +217,20 @@ export function AppSidebar() {
                   <NavLink to="/facturas" className="text-sidebar-foreground/80" activeClassName={navLinkActive}>
                     <Receipt className="shrink-0" />
                     <span>Facturas</span>
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip="Conciliacion" isActive={location.pathname === '/conciliacion'}>
+                  <NavLink to="/conciliacion" className="text-sidebar-foreground/80" activeClassName={navLinkActive}>
+                    <GitCompare className="shrink-0" />
+                    <span>Conciliacion</span>
+                    {pendingConflicts > 0 && (
+                      <Badge variant="destructive" className="ml-auto h-5 min-w-[20px] px-1 text-[10px] leading-none">
+                        {pendingConflicts}
+                      </Badge>
+                    )}
                   </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>

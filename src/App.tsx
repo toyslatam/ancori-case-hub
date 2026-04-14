@@ -20,6 +20,7 @@ import UtilServicesPage from "./pages/utilities/ServicesPage";
 import ServiceItemsPage from "./pages/utilities/ServiceItemsPage";
 import EtapasPage from "./pages/utilities/EtapasPage";
 import FacturasPage from "./pages/FacturasPage";
+import ConciliacionPage from "./pages/ConciliacionPage";
 import ConfigPage from "./pages/ConfigPage";
 import NotFound from "./pages/NotFound";
 import ComingSoonPage from "./pages/ComingSoonPage";
@@ -51,6 +52,7 @@ function ProtectedApp() {
           <Route path="/inicio" element={<DashboardPage />} />
           <Route path="/casos" element={<CasesPage />} />
           <Route path="/facturas" element={<FacturasPage />} />
+          <Route path="/conciliacion" element={<ConciliacionPage />} />
           <Route path="/reportes" element={<ComingSoonPage title="Reportes" />} />
           <Route path="/instructivos" element={<ComingSoonPage title="Instructivos" />} />
           <Route path="/mantenimiento/clientes" element={<ClientsPage />} />
