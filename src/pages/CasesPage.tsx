@@ -151,7 +151,13 @@ export default function CasesPage() {
 
       {/* Modals */}
       <NewCaseModal open={showNewCase} onClose={() => setShowNewCase(false)} onCreated={addCase} />
-      <EditCaseModal caseData={editCase} open={!!editCase} onClose={() => setEditCase(null)} />
+      <EditCaseModal
+        caseData={editCase}
+        open={!!editCase}
+        onClose={() => setEditCase(null)}
+        onOpenExpenses={() => { setExpensesCase(editCase); setEditCase(null); }}
+        onOpenInvoice={() => { setInvoiceCase(editCase); setEditCase(null); }}
+      />
       <CommentsDrawer caseData={currentCommentsCase} open={!!commentsCase} onClose={() => setCommentsCase(null)} />
       <ExpensesModal caseData={currentExpensesCase} open={!!expensesCase} onClose={() => setExpensesCase(null)} />
       <InvoiceModal caseData={invoiceCase} open={!!invoiceCase} onClose={() => setInvoiceCase(null)} />
