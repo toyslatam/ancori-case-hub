@@ -61,12 +61,38 @@ export interface Service {
   categoria: string;
   category_id?: string;
   id_qb?: number;
-  descripcion: string;
-  codigo?: string;
-  tarifa_base?: number;
   activo: boolean;
   created_at?: string;
 }
+
+export const TIPOS_ITEM = [
+  'N/A',
+  'Reformas al Pacto',
+  'Reformas al Acta Fundacional',
+  'Emision de Poder General o Especial',
+  'Bien Inmueble',
+  'Acciones',
+] as const;
+
+export type TipoItem = typeof TIPOS_ITEM[number];
+
+export interface ServiceItem {
+  id: string;
+  nombre: string;
+  service_id?: string;
+  tipo_item: string;
+  id_qb?: number;
+  sku?: string;
+  descripcion?: string;
+  activo: boolean;
+  created_at?: string;
+}
+
+export const mockServiceItems: ServiceItem[] = [
+  { id: 'si1', nombre: 'Constitución', service_id: '1', tipo_item: 'N/A', activo: true },
+  { id: 'si2', nombre: 'Cambio de Nombre', service_id: '1', tipo_item: 'Reformas al Pacto', activo: true },
+  { id: 'si3', nombre: 'Cambio de Junta Directiva', service_id: '1', tipo_item: 'Reformas al Pacto', id_qb: 72, sku: '400001-1', descripcion: 'HONORARIOS', activo: true },
+];
 
 export interface CaseComment {
   id: string;
@@ -94,6 +120,25 @@ export interface InvoiceTerm {
   activo: boolean;
   created_at?: string;
 }
+
+export interface Etapa {
+  id: string;
+  nombre: string;
+  n_etapa: number;
+  activo: boolean;
+  created_at?: string;
+}
+
+export const mockEtapas: Etapa[] = [
+  { id: 'e1', nombre: 'Solicitud',                       n_etapa: 1, activo: true },
+  { id: 'e2', nombre: 'Evaluacion',                      n_etapa: 2, activo: true },
+  { id: 'e3', nombre: 'Asignacion de Clasificacion',     n_etapa: 3, activo: true },
+  { id: 'e4', nombre: 'Envio Cotizacion',                n_etapa: 4, activo: true },
+  { id: 'e5', nombre: 'Recepcion Cotizacion del Cliente',n_etapa: 5, activo: true },
+  { id: 'e6', nombre: 'Recepcion de Respuesta',          n_etapa: 6, activo: true },
+  { id: 'e7', nombre: 'Asignacion Abogado',              n_etapa: 7, activo: true },
+  { id: 'e8', nombre: 'Envio a Cumplimiento',            n_etapa: 8, activo: true },
+];
 
 /** Categoría de servicio / clasificación (mapeo ID QuickBooks en id_qb). */
 export interface Category {
@@ -197,10 +242,10 @@ export const mockSocieties: Society[] = [
 ];
 
 export const mockServices: Service[] = [
-  { id: '1', nombre: 'Constitución Sociedad Anónima', categoria: 'Corporativo', descripcion: 'Constitución de S.A.', activo: true },
-  { id: '2', nombre: 'Emisión de Poder General o Especial', categoria: 'Corporativo', descripcion: 'Emisión de poderes', activo: true },
-  { id: '3', nombre: 'Certificado de Existencia', categoria: 'Corporativo', descripcion: 'Certificado de existencia otros servicios corporativos', activo: true },
-  { id: '4', nombre: 'Apostilla de Documento', categoria: 'Legal', descripcion: 'Apostilla otros servicios corporativos', activo: true },
+  { id: '1', nombre: 'Constitución Sociedad Anónima', categoria: 'Corporativo', activo: true },
+  { id: '2', nombre: 'Emisión de Poder General o Especial', categoria: 'Corporativo', activo: true },
+  { id: '3', nombre: 'Certificado de Existencia', categoria: 'Corporativo', activo: true },
+  { id: '4', nombre: 'Apostilla de Documento', categoria: 'Legal', activo: true },
 ];
 
 export const mockInvoiceTerms: InvoiceTerm[] = [

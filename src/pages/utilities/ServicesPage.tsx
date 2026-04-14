@@ -95,7 +95,7 @@ export default function UtilServicesPage() {
     const catNombre = catId ? (categoryMap.get(catId) ?? '') : '';
     const row: Service = editItem
       ? { ...editItem, nombre: form.nombre.trim(), category_id: catId, categoria: catNombre, id_qb: idQb, activo: form.activo ?? true }
-      : { id: crypto.randomUUID(), nombre: form.nombre.trim(), category_id: catId, categoria: catNombre, id_qb: idQb, descripcion: '', activo: form.activo ?? true };
+      : { id: crypto.randomUUID(), nombre: form.nombre.trim(), category_id: catId, categoria: catNombre, id_qb: idQb, activo: form.activo ?? true };
     const ok = await saveService(row, !!editItem);
     if (!ok) return;
     toast.success(editItem ? 'Servicio actualizado' : 'Servicio creado');

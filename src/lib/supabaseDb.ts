@@ -7,10 +7,12 @@ import type {
   Category,
   Client,
   Director,
+  Etapa,
   InvoiceLine,
   InvoiceTerm,
   QBItem,
   Service,
+  ServiceItem,
   Society,
   TipoSociedad,
   TipoDocumentoDirector,
@@ -119,9 +121,6 @@ export function rowToService(row: Record<string, unknown>): Service {
     categoria: String(row.categoria ?? ''),
     category_id: row.category_id ? String(row.category_id) : undefined,
     id_qb: row.id_qb != null ? Number(row.id_qb) : undefined,
-    descripcion: String(row.descripcion ?? ''),
-    codigo: row.codigo ? String(row.codigo) : undefined,
-    tarifa_base: row.tarifa_base != null ? Number(row.tarifa_base) : undefined,
     activo: Boolean(row.activo),
     created_at: row.created_at ? isoDate(String(row.created_at)) : undefined,
   };
@@ -134,11 +133,56 @@ export function serviceToRow(s: Service): Record<string, unknown> {
     categoria: s.categoria ?? '',
     category_id: s.category_id ?? null,
     id_qb: s.id_qb ?? null,
-    descripcion: s.descripcion,
-    codigo: s.codigo ?? null,
-    tarifa_base: s.tarifa_base ?? null,
     activo: s.activo,
     ...(s.created_at ? { created_at: s.created_at.includes('T') ? s.created_at : `${s.created_at}T12:00:00Z` } : {}),
+  };
+}
+
+export function rowToServiceItem(row: Record<string, unknown>): ServiceItem {
+  return {
+    id: String(row.id),
+    nombre: String(row.nombre),
+    service_id: row.service_id ? String(row.service_id) : undefined,
+    tipo_item: String(row.tipo_item ?? 'N/A'),
+    id_qb: row.id_qb != null ? Number(row.id_qb) : undefined,
+    sku: row.sku ? String(row.sku) : undefined,
+    descripcion: row.descripcion ? String(row.descripcion) : undefined,
+    activo: Boolean(row.activo),
+    created_at: row.created_at ? isoDate(String(row.created_at)) : undefined,
+  };
+}
+
+export function serviceItemToRow(si: ServiceItem): Record<string, unknown> {
+  return {
+    id: si.id,
+    nombre: si.nombre,
+    service_id: si.service_id ?? null,
+    tipo_item: si.tipo_item,
+    id_qb: si.id_qb ?? null,
+    sku: si.sku ?? null,
+    descripcion: si.descripcion ?? null,
+    activo: si.activo,
+    ...(si.created_at ? { created_at: si.created_at.includes('T') ? si.created_at : `${si.created_at}T12:00:00Z` } : {}),
+  };
+}
+
+export function rowToEtapa(row: Record<string, unknown>): Etapa {
+  return {
+    id: String(row.id),
+    nombre: String(row.nombre),
+    n_etapa: Number(row.n_etapa ?? 0),
+    activo: Boolean(row.activo),
+    created_at: row.created_at ? isoDate(String(row.created_at)) : undefined,
+  };
+}
+
+export function etapaToRow(e: Etapa): Record<string, unknown> {
+  return {
+    id: e.id,
+    nombre: e.nombre,
+    n_etapa: e.n_etapa,
+    activo: e.activo,
+    ...(e.created_at ? { created_at: e.created_at.includes('T') ? e.created_at : `${e.created_at}T12:00:00Z` } : {}),
   };
 }
 
@@ -351,6 +395,8 @@ export type LoadAllFromSupabaseResult = {
   clients: Client[];
   societies: Society[];
   services: Service[];
+  serviceItems: ServiceItem[];
+  etapas: Etapa[];
   invoiceTerms: InvoiceTerm[];
   categories: Category[];
   qbItems: QBItem[];
@@ -365,6 +411,8 @@ export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFr
     clientsRes,
     societiesRes,
     servicesRes,
+    serviceItemsRes,
+    etapasRes,
     termsRes,
     categoriesRes,
     qbRes,
@@ -378,6 +426,8 @@ export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFr
     sb.from('clients').select('*').order('numero', { ascending: true }),
     sb.from('societies').select('*').order('nombre'),
     sb.from('services').select('*').order('nombre'),
+    sb.from('service_items').select('*').order('nombre'),
+    sb.from('etapas').select('*').order('n_etapa', { ascending: true }),
     sb.from('invoice_terms').select('*').order('nombre'),
     sb.from('categories').select('*').order('nombre'),
     sb.from('qb_items').select('*').order('nombre_interno'),
@@ -397,6 +447,8 @@ export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFr
   warn('clients', clientsRes.error);
   warn('societies', societiesRes.error);
   warn('services', servicesRes.error);
+  warn('service_items', serviceItemsRes.error);
+  warn('etapas', etapasRes.error);
   warn('invoice_terms', termsRes.error);
   warn('categories', categoriesRes.error);
   warn('qb_items', qbRes.error);
@@ -411,6 +463,8 @@ export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFr
     clientsRes,
     societiesRes,
     servicesRes,
+    serviceItemsRes,
+    etapasRes,
     termsRes,
     categoriesRes,
     qbRes,
@@ -430,6 +484,8 @@ export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFr
   const clients = clientsRes.error ? [] : (clientsRes.data ?? []).map(r => rowToClient(r as Record<string, unknown>));
   const societies = societiesRes.error ? [] : (societiesRes.data ?? []).map(r => rowToSociety(r as Record<string, unknown>));
   const services = servicesRes.error ? [] : (servicesRes.data ?? []).map(r => rowToService(r as Record<string, unknown>));
+  const serviceItems = serviceItemsRes.error ? [] : (serviceItemsRes.data ?? []).map(r => rowToServiceItem(r as Record<string, unknown>));
+  const etapas = etapasRes.error ? [] : (etapasRes.data ?? []).map(r => rowToEtapa(r as Record<string, unknown>));
   const invoiceTerms = termsRes.error ? [] : (termsRes.data ?? []).map(r => rowToInvoiceTerm(r as Record<string, unknown>));
   const categories = categoriesRes.error ? [] : (categoriesRes.data ?? []).map(r => rowToCategory(r as Record<string, unknown>));
   const qbItems = qbRes.error ? [] : (qbRes.data ?? []).map(r => rowToQBItem(r as Record<string, unknown>));
@@ -480,7 +536,7 @@ export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFr
     });
   });
 
-  return { clients, societies, services, invoiceTerms, categories, qbItems, directores, cases, loadWarnings };
+  return { clients, societies, services, serviceItems, etapas, invoiceTerms, categories, qbItems, directores, cases, loadWarnings };
 }
 
 export async function insertCase(sb: SupabaseClient, c: Case) {
@@ -572,6 +628,30 @@ export async function updateServiceRow(sb: SupabaseClient, s: Service) {
 
 export async function deleteServiceRow(sb: SupabaseClient, id: string) {
   return sb.from('services').delete().eq('id', id);
+}
+
+export async function insertEtapa(sb: SupabaseClient, e: Etapa) {
+  return sb.from('etapas').insert(etapaToRow(e));
+}
+
+export async function updateEtapaRow(sb: SupabaseClient, e: Etapa) {
+  return sb.from('etapas').update(etapaToRow(e)).eq('id', e.id);
+}
+
+export async function deleteEtapaRow(sb: SupabaseClient, id: string) {
+  return sb.from('etapas').delete().eq('id', id);
+}
+
+export async function insertServiceItem(sb: SupabaseClient, si: ServiceItem) {
+  return sb.from('service_items').insert(serviceItemToRow(si));
+}
+
+export async function updateServiceItemRow(sb: SupabaseClient, si: ServiceItem) {
+  return sb.from('service_items').update(serviceItemToRow(si)).eq('id', si.id);
+}
+
+export async function deleteServiceItemRow(sb: SupabaseClient, id: string) {
+  return sb.from('service_items').delete().eq('id', id);
 }
 
 export async function insertInvoiceTerm(sb: SupabaseClient, t: InvoiceTerm) {

@@ -37,9 +37,26 @@ create table if not exists public.services (
   categoria text not null default '',
   category_id uuid references public.categories(id) on delete set null,
   id_qb integer,
+  activo boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.etapas (
+  id uuid primary key default gen_random_uuid(),
+  nombre text not null,
+  n_etapa integer not null,
+  activo boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.service_items (
+  id uuid primary key default gen_random_uuid(),
+  nombre text not null,
+  service_id uuid references public.services(id) on delete set null,
+  tipo_item text not null default 'N/A',
+  id_qb integer,
+  sku text,
   descripcion text,
-  codigo text,
-  tarifa_base numeric(12,2),
   activo boolean not null default true,
   created_at timestamptz not null default now()
 );

@@ -1,8 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
 import { toast } from 'sonner';
 import {
-  Case, Category, Client, Director, Society, Service, InvoiceTerm, QBItem,
-  mockCases, mockCategories, mockClients, mockDirectores, mockSocieties, mockServices, mockInvoiceTerms, mockQBItems,
+  Case, Category, Client, Director, Etapa, Society, Service, ServiceItem, InvoiceTerm, QBItem,
+  mockCases, mockCategories, mockClients, mockDirectores, mockEtapas, mockSocieties, mockServices, mockServiceItems, mockInvoiceTerms, mockQBItems,
   CaseComment, CaseExpense,
 } from '@/data/mockData';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabaseClient';
@@ -18,6 +18,8 @@ interface AppContextType {
   clients: Client[];
   societies: Society[];
   services: Service[];
+  serviceItems: ServiceItem[];
+  etapas: Etapa[];
   invoiceTerms: InvoiceTerm[];
   categories: Category[];
   qbItems: QBItem[];
@@ -34,6 +36,10 @@ interface AppContextType {
   deleteSociety: (id: string) => Promise<boolean>;
   saveService: (service: Service, isEdit: boolean) => Promise<boolean>;
   deleteService: (id: string) => Promise<boolean>;
+  saveServiceItem: (item: ServiceItem, isEdit: boolean) => Promise<boolean>;
+  deleteServiceItem: (id: string) => Promise<boolean>;
+  saveEtapa: (e: Etapa, isEdit: boolean) => Promise<boolean>;
+  deleteEtapa: (id: string) => Promise<boolean>;
   saveInvoiceTerm: (term: InvoiceTerm, isEdit: boolean) => Promise<boolean>;
   deleteInvoiceTerm: (id: string) => Promise<boolean>;
   saveCategory: (c: Category, isEdit: boolean) => Promise<boolean>;
@@ -58,6 +64,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [clients, setClients] = useState<Client[]>(() => (useRemote ? [] : mockClients));
   const [societies, setSocieties] = useState<Society[]>(() => (useRemote ? [] : mockSocieties));
   const [services, setServices] = useState<Service[]>(() => (useRemote ? [] : mockServices));
+  const [serviceItems, setServiceItems] = useState<ServiceItem[]>(() => (useRemote ? [] : mockServiceItems));
+  const [etapas, setEtapas] = useState<Etapa[]>(() => (useRemote ? [] : mockEtapas));
   const [invoiceTerms, setInvoiceTerms] = useState<InvoiceTerm[]>(() => (useRemote ? [] : mockInvoiceTerms));
   const [categories, setCategories] = useState<Category[]>(() => (useRemote ? [] : mockCategories));
   const [qbItems, setQbItems] = useState<QBItem[]>(() => (useRemote ? [] : mockQBItems));
@@ -73,6 +81,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setClients(data.clients);
         setSocieties(data.societies);
         setServices(data.services);
+        setServiceItems(data.serviceItems);
+        setEtapas(data.etapas);
         setInvoiceTerms(data.invoiceTerms);
         setCategories(data.categories);
         setQbItems(data.qbItems);
@@ -90,6 +100,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setClients(mockClients);
         setSocieties(mockSocieties);
         setServices(mockServices);
+        setServiceItems(mockServiceItems);
+        setEtapas(mockEtapas);
         setInvoiceTerms(mockInvoiceTerms);
         setCategories(mockCategories);
         setQbItems(mockQBItems);
@@ -296,6 +308,54 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return true;
   }, [sb]);
 
+  const saveServiceItem = useCallback(async (item: ServiceItem, isEdit: boolean): Promise<boolean> => {
+    if (sb) {
+      const res = isEdit ? await db.updateServiceItemRow(sb, item) : await db.insertServiceItem(sb, item);
+      if (res.error) {
+        toast.error(res.error.message);
+        return false;
+      }
+    }
+    setServiceItems(prev => (isEdit ? prev.map(x => x.id === item.id ? item : x) : [...prev, item]));
+    return true;
+  }, [sb]);
+
+  const deleteServiceItem = useCallback(async (id: string): Promise<boolean> => {
+    if (sb) {
+      const { error } = await db.deleteServiceItemRow(sb, id);
+      if (error) {
+        toast.error(error.message);
+        return false;
+      }
+    }
+    setServiceItems(prev => prev.filter(x => x.id !== id));
+    return true;
+  }, [sb]);
+
+  const saveEtapa = useCallback(async (e: Etapa, isEdit: boolean): Promise<boolean> => {
+    if (sb) {
+      const res = isEdit ? await db.updateEtapaRow(sb, e) : await db.insertEtapa(sb, e);
+      if (res.error) {
+        toast.error(res.error.message);
+        return false;
+      }
+    }
+    setEtapas(prev => (isEdit ? prev.map(x => x.id === e.id ? e : x) : [...prev, e]));
+    return true;
+  }, [sb]);
+
+  const deleteEtapa = useCallback(async (id: string): Promise<boolean> => {
+    if (sb) {
+      const { error } = await db.deleteEtapaRow(sb, id);
+      if (error) {
+        toast.error(error.message);
+        return false;
+      }
+    }
+    setEtapas(prev => prev.filter(x => x.id !== id));
+    return true;
+  }, [sb]);
+
   const saveInvoiceTerm = useCallback(async (term: InvoiceTerm, isEdit: boolean): Promise<boolean> => {
     if (sb) {
       const res = isEdit ? await db.updateInvoiceTermRow(sb, term) : await db.insertInvoiceTerm(sb, term);
@@ -399,9 +459,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      cases, clients, societies, services, invoiceTerms, categories, qbItems, directores,
+      cases, clients, societies, services, serviceItems, etapas, invoiceTerms, categories, qbItems, directores,
       addCase, updateCase, addComment, addExpense, updateExpenses, removeCase,
       saveClient, deleteClient, saveSociety, deleteSociety, saveService, deleteService,
+      saveServiceItem, deleteServiceItem, saveEtapa, deleteEtapa,
       saveInvoiceTerm, deleteInvoiceTerm, saveCategory, deleteCategory, saveQBItem, deleteQBItem,
       saveDirector, deleteDirector,
       getClientName, getSocietyName, getServiceName, getDirectorName,

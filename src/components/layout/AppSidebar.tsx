@@ -22,6 +22,8 @@ import {
   Wrench,
   Tags,
   Layers,
+  ListTree,
+  GitBranch,
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { NavLink } from '@/components/NavLink';
@@ -51,7 +53,6 @@ const maintItems = [
   { title: 'Clientes', url: '/mantenimiento/clientes', icon: Users },
   { title: 'Directores', url: '/mantenimiento/directores', icon: UserCog },
   { title: 'Sociedades', url: '/mantenimiento/sociedades', icon: Building2 },
-  { title: 'Procesos / Servicios', url: '/mantenimiento/servicios', icon: Package },
   { title: 'Términos de Factura', url: '/mantenimiento/terminos', icon: FileText },
   { title: 'Productos/Servicios QB', url: '/mantenimiento/qb-items', icon: CreditCard },
 ];
@@ -59,6 +60,8 @@ const maintItems = [
 const utilItems = [
   { title: 'Categorías', url: '/utilidades/categorias', icon: Tags },
   { title: 'Servicios', url: '/utilidades/servicios', icon: Layers },
+  { title: 'Items de Servicio', url: '/utilidades/items-servicio', icon: ListTree },
+  { title: 'Etapas', url: '/utilidades/etapas', icon: GitBranch },
 ];
 
 const navLinkActive =

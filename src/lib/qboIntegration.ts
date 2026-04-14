@@ -114,6 +114,37 @@ export async function pushSocietyToQuickbooksUpsert(
   return { ...(qbid ? { quickbooks_customer_id: qbid } : {}), ...(idQb != null ? { id_qb: idQb } : {}) };
 }
 
+export type QboSyncItemsResult = {
+  total_qbo: number;
+  inserted: number;
+  updated: number;
+  skipped: number;
+  realm_id: string;
+};
+
+/** Llama a la Edge Function qbo-sync-items para traer Items de QB → service_items.
+ *  Requiere VITE_QBO_CRON_SECRET en .env.local (mismo valor que QBO_CRON_SECRET en Supabase). */
+export async function syncServiceItemsFromQbo(): Promise<QboSyncItemsResult> {
+  const secret = (import.meta.env.VITE_QBO_CRON_SECRET as string | undefined)?.trim();
+  const root = functionsBaseUrl();
+  const anon = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+  if (!secret || !root || !anon) {
+    throw new Error('VITE_QBO_CRON_SECRET no configurado en .env.local');
+  }
+  const res = await fetch(`${root}/qbo-sync-items`, {
+    method: 'POST',
+    headers: {
+      apikey: anon,
+      Authorization: `Bearer ${secret}`,
+    },
+  });
+  const j = (await res.json().catch(() => ({}))) as QboSyncItemsResult & { error?: string; detail?: string };
+  if (!res.ok) {
+    throw new Error(j.detail || j.error || `HTTP ${res.status}`);
+  }
+  return j;
+}
+
 export async function pushSocietyToQuickbooksDelete(quickbooksCustomerId: string | undefined): Promise<void> {
   const secret = (import.meta.env.VITE_QBO_SOCIETY_PUSH_SECRET as string | undefined)?.trim();
   const root = functionsBaseUrl();

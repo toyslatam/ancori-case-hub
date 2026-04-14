@@ -198,36 +198,162 @@ Campos: **Nombre Servicio**, **Categorías**, **ID QB**.
 
 ### Paso 1 — Alteración de tabla (una sola vez en SQL Editor)
 
+Agrega las columnas nuevas y elimina las que ya no se usan:
+
 ```sql
+-- Agregar columnas nuevas (si no existen)
 alter table public.services
   add column if not exists category_id uuid references public.categories(id) on delete set null,
   add column if not exists id_qb integer;
+
+-- Eliminar columnas que ya no se usan
+alter table public.services
+  drop column if exists descripcion,
+  drop column if exists codigo,
+  drop column if exists tarifa_base;
 ```
 
-### Paso 2 — Importar servicios
+### Paso 2 — Preparar el CSV
 
-> Primero deben existir las categorías en **Utilidades → Categorías**.
+Crea un archivo `servicios.csv` en Excel con exactamente estas 3 columnas y guárdalo como **CSV UTF-8**:
+
+```
+nombre,categoria_nombre,id_qb
+Sociedad Anonima,CONSTITUCION DE PERSONA JURIDICA,
+Sociedad de Responsabilidad Limitada,CONSTITUCION DE PERSONA JURIDICA,
+Fundaciones de Interes Privado,CONSTITUCION DE PERSONA JURIDICA,
+SOCIEDADES DE JURISDICCION EXTRANJERA,CONSTITUCION DE PERSONA JURIDICA,
+COMPRAVENTAS,COMPRAVENTAS,
+Servicios Bancarios,BANCARIOS,
+OTROS SERVICIOS CORPORATIVOS,OTROS SERVICIOS CORPORATIVOS,
+SERVICIOS TERCERIZADOS,SERVICIOS TERCERIZADOS,
+OTROS SERVICIOS DE LA FIRMA,OTROS SERVICIOS DE LA FIRMA,
+```
+
+> `id_qb` puede ir vacío. `categoria_nombre` debe coincidir exactamente (mayúsculas/minúsculas) con el nombre en **Utilidades → Categorías**.
+
+### Paso 3 — Crear tabla staging e importar el CSV
+
+En Supabase **SQL Editor**, crea la tabla temporal:
+
+```sql
+create table if not exists public.services_import (
+  nombre text,
+  categoria_nombre text,
+  id_qb text
+);
+```
+
+Luego ve a **Table Editor → `services_import` → Import data from CSV** y sube el archivo.
+
+### Paso 4 — Pasar datos a la tabla real
 
 ```sql
 insert into public.services (id, nombre, category_id, id_qb)
-values
-  (gen_random_uuid(), 'Sociedad Anonima',                         (select id from public.categories where upper(nombre) = upper('CONSTITUCION DE PERSONA JURIDICA') limit 1), null),
-  (gen_random_uuid(), 'Sociedad de Responsabilidad Limitada',     (select id from public.categories where upper(nombre) = upper('CONSTITUCION DE PERSONA JURIDICA') limit 1), null),
-  (gen_random_uuid(), 'Fundaciones de Interes Privado',           (select id from public.categories where upper(nombre) = upper('CONSTITUCION DE PERSONA JURIDICA') limit 1), null),
-  (gen_random_uuid(), 'SOCIEDADES DE JURISDICCION EXTRANJERA',    (select id from public.categories where upper(nombre) = upper('CONSTITUCION DE PERSONA JURIDICA') limit 1), null),
-  (gen_random_uuid(), 'COMPRAVENTAS',                             (select id from public.categories where upper(nombre) = upper('COMPRAVENTAS') limit 1),                     null),
-  (gen_random_uuid(), 'Servicios Bancarios',                      (select id from public.categories where upper(nombre) = upper('BANCARIOS') limit 1),                        null),
-  (gen_random_uuid(), 'OTROS SERVICIOS CORPORATIVOS',             (select id from public.categories where upper(nombre) = upper('OTROS SERVICIOS CORPORATIVOS') limit 1),     null),
-  (gen_random_uuid(), 'SERVICIOS TERCERIZADOS',                   (select id from public.categories where upper(nombre) = upper('SERVICIOS TERCERIZADOS') limit 1),           null),
-  (gen_random_uuid(), 'OTROS SERVICIOS DE LA FIRMA',              (select id from public.categories where upper(nombre) = upper('OTROS SERVICIOS DE LA FIRMA') limit 1),      null)
+select
+  gen_random_uuid(),
+  trim(i.nombre),
+  (select id from public.categories where upper(nombre) = upper(trim(i.categoria_nombre)) limit 1),
+  nullif(trim(i.id_qb), '')::integer
+from public.services_import i
+where trim(i.nombre) <> ''
 on conflict do nothing;
+
+-- Borrar la tabla temporal
+drop table public.services_import;
 ```
 
-### Paso 3 — Verificar
+### Paso 5 — Verificar
 
 ```sql
 select s.nombre, c.nombre as categorias, s.id_qb
 from public.services s
 left join public.categories c on c.id = s.category_id
 order by s.nombre;
+```
+
+---
+
+## 10. Migración — Items de Servicio (`public.service_items`)
+
+Campos: **Nombre Ítem**, **Servicios**, **Tipo Ítem**, **ID QB**, **SKU**, **Descripción**.
+
+### Paso 1 — Crear tabla (una sola vez)
+
+```sql
+create table if not exists public.service_items (
+  id uuid primary key default gen_random_uuid(),
+  nombre text not null,
+  service_id uuid references public.services(id) on delete set null,
+  tipo_item text not null default 'N/A',
+  id_qb integer,
+  sku text,
+  descripcion text,
+  activo boolean not null default true,
+  created_at timestamptz not null default now()
+);
+```
+
+### Paso 2 — Preparar el CSV
+
+Crea `items_servicio.csv` con estas columnas (guarda como **CSV UTF-8**):
+
+```
+nombre,servicio_nombre,tipo_item,id_qb,sku,descripcion
+Constitución,Sociedad Anonima,N/A,,,
+Cambio de Nombre,Sociedad Anonima,Reformas al Pacto,,,
+Cambio de Junta Directiva,Sociedad Anonima,Reformas al Pacto,72,400001-1,HONORARIOS
+Cambio de Agente Residente - CAR OUT,Sociedad Anonima,Reformas al Pacto,,,
+Cambio de Agente Residente - CAR IN,Sociedad Anonima,Reformas al Pacto,,,
+Aumento o Disminución de Capital,Sociedad Anonima,Reformas al Pacto,,,
+Anulación y Emisión de Acciones,Sociedad Anonima,Acciones,,,
+Contrato Leasing,Servicios Bancarios,N/A,,,
+Disolución de Sociedad,Sociedad Anonima,N/A,,,
+Reactivación de Sociedad,Sociedad Anonima,N/A,,,
+Transformación,Sociedad Anonima,N/A,,,
+```
+
+> `tipo_item` debe ser exactamente uno de: `N/A`, `Reformas al Pacto`, `Reformas al Acta Fundacional`, `Emision de Poder General o Especial`, `Bien Inmueble`, `Acciones`.
+
+### Paso 3 — Crear tabla staging e importar el CSV
+
+```sql
+create table if not exists public.service_items_import (
+  nombre text,
+  servicio_nombre text,
+  tipo_item text,
+  id_qb text,
+  sku text,
+  descripcion text
+);
+```
+
+Luego: **Table Editor → `service_items_import` → Import data from CSV**.
+
+### Paso 4 — Pasar a la tabla real
+
+```sql
+insert into public.service_items (id, nombre, service_id, tipo_item, id_qb, sku, descripcion)
+select
+  gen_random_uuid(),
+  trim(i.nombre),
+  (select id from public.services where upper(nombre) = upper(trim(i.servicio_nombre)) limit 1),
+  coalesce(nullif(trim(i.tipo_item), ''), 'N/A'),
+  nullif(trim(i.id_qb), '')::integer,
+  nullif(trim(i.sku), ''),
+  nullif(trim(i.descripcion), '')
+from public.service_items_import i
+where trim(i.nombre) <> ''
+on conflict do nothing;
+
+drop table public.service_items_import;
+```
+
+### Paso 5 — Verificar
+
+```sql
+select si.nombre, s.nombre as servicio, si.tipo_item, si.id_qb, si.sku
+from public.service_items si
+left join public.services s on s.id = si.service_id
+order by si.nombre;
 ```
