@@ -38,50 +38,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Convierte auth user → AuthUser (enriquecido con datos de la tabla usuarios)
   async function enrichUser(authUser: User | null): Promise<AuthUser | null> {
     if (!authUser?.email) return null;
+    const fallback: AuthUser = {
+      id: authUser.id,
+      email: authUser.email,
+      nombre: authUser.email.split('@')[0],
+      initials: authUser.email[0].toUpperCase(),
+    };
     const sb = getSupabase();
-    if (!sb) {
+    if (!sb) return fallback;
+    try {
+      const { data } = await sb
+        .from('usuarios')
+        .select('nombre, rol, puesto')
+        .ilike('correo', authUser.email)
+        .maybeSingle();
+      const nombre = data?.nombre ?? fallback.nombre;
       return {
         id: authUser.id,
         email: authUser.email,
-        nombre: authUser.email.split('@')[0],
-        initials: authUser.email[0].toUpperCase(),
+        nombre,
+        rol: data?.rol,
+        puesto: data?.puesto,
+        initials: getInitials(nombre),
       };
+    } catch {
+      return fallback;
     }
-    const { data } = await sb
-      .from('usuarios')
-      .select('nombre, rol, puesto')
-      .ilike('correo', authUser.email)
-      .maybeSingle();
-
-    const nombre = data?.nombre ?? authUser.email.split('@')[0];
-    return {
-      id: authUser.id,
-      email: authUser.email,
-      nombre,
-      rol: data?.rol,
-      puesto: data?.puesto,
-      initials: getInitials(nombre),
-    };
   }
 
   useEffect(() => {
     const sb = getSupabase();
     if (!sb) { setLoading(false); return; }
 
-    // Sesión inicial
-    sb.auth.getSession().then(async ({ data: { session: s } }) => {
-      setSession(s);
-      setUser(await enrichUser(s?.user ?? null));
-      setLoading(false);
-    });
+    // Timeout de seguridad: si en 6 s no resuelve, liberar el spinner
+    const safetyTimer = setTimeout(() => setLoading(false), 6000);
 
-    // Escuchar cambios de sesión
+    // Sesión inicial
+    sb.auth.getSession()
+      .then(async ({ data: { session: s } }) => {
+        setSession(s);
+        setUser(await enrichUser(s?.user ?? null));
+      })
+      .catch(() => { /* sesión no disponible */ })
+      .finally(() => {
+        clearTimeout(safetyTimer);
+        setLoading(false);
+      });
+
+    // Escuchar cambios de sesión (login / logout / refresh)
     const { data: { subscription } } = sb.auth.onAuthStateChange(async (_event, s) => {
       setSession(s);
       setUser(await enrichUser(s?.user ?? null));
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(safetyTimer);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signIn = async (email: string, password: string): Promise<{ error: string | null }> => {
