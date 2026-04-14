@@ -24,6 +24,7 @@ import {
   ListTree,
   GitBranch,
   GitCompare,
+  Shield,
   LogOut,
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
@@ -231,6 +232,15 @@ export function AppSidebar() {
                         {pendingConflicts}
                       </Badge>
                     )}
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip="Cumplimiento" isActive={location.pathname === '/cumplimiento'}>
+                  <NavLink to="/cumplimiento" className="text-sidebar-foreground/80" activeClassName={navLinkActive}>
+                    <Shield className="shrink-0" />
+                    <span>Cumplimiento</span>
                   </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>

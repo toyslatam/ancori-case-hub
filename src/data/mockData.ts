@@ -11,6 +11,7 @@ export interface Client {
   identificacion: string;
   direccion: string;
   quickbooks_customer_id?: string;
+  tipo_cliente?: string;
   activo: boolean;
   observaciones?: string;
   created_at: string;
@@ -71,8 +72,12 @@ export const ROLES_USUARIO = [
   'Asistente Legal',
   'Asistente Administrativo',
   'Contabilidad',
+  'Cumplimiento',
   'Soporte',
 ] as const;
+
+export const TIPOS_CLIENTE = ['Persona Natural', 'Persona Juridica', 'PEP'] as const;
+export type TipoCliente = typeof TIPOS_CLIENTE[number];
 
 export type RolUsuario = typeof ROLES_USUARIO[number];
 

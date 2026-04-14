@@ -39,3 +39,7 @@ verify_jwt = false
 # Notificación email de conflictos de sync.
 [functions.send-conflict-notification]
 verify_jwt = false
+
+# Verificación PEP/AML vía AgileCheck.
+[functions.agilecheck-verify]
+verify_jwt = false

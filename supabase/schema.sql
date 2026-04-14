@@ -404,3 +404,39 @@ grant select, insert, update, delete on table public.sync_conflicts to anon, aut
 grant all on table public.sync_conflicts to service_role;
 grant select, insert, update, delete on table public.sync_notifications to anon, authenticated;
 grant all on table public.sync_notifications to service_role;
+
+-- ============================================================
+-- Cumplimiento: verificaciones PEP/AML vía AgileCheck
+-- ============================================================
+
+-- Tipo de cliente (persona natural, jurídica, PEP)
+alter table public.clients add column if not exists tipo_cliente text
+  check (tipo_cliente in ('Persona Natural', 'Persona Juridica', 'PEP'));
+
+create table if not exists public.compliance_checks (
+  id uuid primary key default gen_random_uuid(),
+  entity_type text not null check (entity_type in ('client', 'director', 'society')),
+  entity_id uuid not null,
+  entity_name text not null,
+  check_type text not null default 'PEP'
+    check (check_type in ('PEP', 'sanctions', 'negative_news', 'full')),
+  status text not null default 'pending'
+    check (status in ('pending', 'clean', 'match', 'review', 'error')),
+  risk_level text check (risk_level in ('bajo', 'medio', 'alto', 'critico')),
+  agilecheck_id text,
+  result_summary text,
+  result_data jsonb,
+  checked_by uuid references public.usuarios(id) on delete set null,
+  checked_at timestamptz,
+  expires_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_compliance_entity on public.compliance_checks(entity_type, entity_id);
+create index if not exists idx_compliance_status on public.compliance_checks(status);
+create index if not exists idx_compliance_expires on public.compliance_checks(expires_at);
+
+comment on table public.compliance_checks is 'Verificaciones PEP/AML vía AgileCheck para clientes, directores y sociedades.';
+
+grant select, insert, update, delete on table public.compliance_checks to anon, authenticated;
+grant all on table public.compliance_checks to service_role;
