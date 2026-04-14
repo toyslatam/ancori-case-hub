@@ -1,22 +1,24 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { Case, CaseInvoice } from '@/data/mockData';
+import { CaseInvoice, InvoiceLine, Case } from '@/data/mockData';
 import { InvoiceModal } from '@/components/cases/InvoiceModal';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
   AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
   AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { FileText, Clock, CheckCircle, Plus, Search, Trash2, ExternalLink } from 'lucide-react';
+import { FileText, Clock, CheckCircle, Search, Trash2, ExternalLink, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
+import { getSupabase } from '@/lib/supabaseClient';
 
 type Tab = 'todas' | 'pendientes' | 'enviadas' | 'anuladas';
 
-interface FlatInvoice extends CaseInvoice {
-  case: Case;
+interface RichInvoice extends CaseInvoice {
+  case?: Case;
+  _clientName?: string;
+  _societyName?: string;
+  _caseNum?: string;
 }
 
 const ESTADO_LABEL: Record<CaseInvoice['estado'], string> = {
@@ -37,14 +39,9 @@ const ESTADO_STYLE: Record<CaseInvoice['estado'], string> = {
 
 function formatDate(d?: string) {
   if (!d) return '—';
-  const parts = d.split('-');
-  if (parts.length !== 3) return d;
-  return `${parts[2]}/${parts[1]}/${parts[0]}`;
-}
-
-function numCaso(c: Case) {
-  if (c.n_tarea != null) return `#${String(c.n_tarea).padStart(7, '0')}`;
-  return `#${c.numero_caso}`;
+  const p = d.split('-');
+  if (p.length !== 3) return d;
+  return `${p[2]}/${p[1]}/${p[0]}`;
 }
 
 export default function FacturasPage() {
@@ -52,71 +49,154 @@ export default function FacturasPage() {
 
   const [tab, setTab] = useState<Tab>('todas');
   const [search, setSearch] = useState('');
-  const [selectedInvoice, setSelectedInvoice] = useState<FlatInvoice | null>(null);
+  const [selectedInvoice, setSelectedInvoice] = useState<RichInvoice | null>(null);
   const [selectedCase, setSelectedCase] = useState<Case | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<FlatInvoice | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<RichInvoice | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const allInvoices = useMemo<FlatInvoice[]>(() =>
-    cases.flatMap(c => (c.invoices ?? []).map(inv => ({ ...inv, case: c }))),
-    [cases]
-  );
+  // Facturas directamente de Supabase (independiente del nested en cases)
+  const [dbInvoices, setDbInvoices] = useState<RichInvoice[]>([]);
+
+  const loadInvoices = async () => {
+    const sb = getSupabase();
+    if (!sb) {
+      // Fallback: derivar de cases locales
+      const local: RichInvoice[] = cases.flatMap(c =>
+        (c.invoices ?? []).map(inv => ({
+          ...inv,
+          case: c,
+          _clientName: getClientName(c.client_id),
+          _societyName: getSocietyName(c.society_id),
+          _caseNum: c.n_tarea != null ? String(c.n_tarea).padStart(7, '0') : c.numero_caso,
+        }))
+      );
+      setDbInvoices(local);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const [invRes, linesRes] = await Promise.all([
+        sb.from('case_invoices').select('*').order('fecha_factura', { ascending: false }),
+        sb.from('invoice_lines').select('*'),
+      ]);
+
+      if (invRes.error) { toast.error(invRes.error.message); return; }
+
+      const linesByInv = new Map<string, InvoiceLine[]>();
+      for (const r of (linesRes.data ?? [])) {
+        const row = r as Record<string, unknown>;
+        const invId = String(row.invoice_id);
+        const existing = linesByInv.get(invId) ?? [];
+        existing.push({
+          id: String(row.id),
+          invoice_id: invId,
+          servicio_id: row.servicio_id ? String(row.servicio_id) : undefined,
+          qb_item_id: row.qb_item_id ? String(row.qb_item_id) : undefined,
+          descripcion: String(row.descripcion ?? ''),
+          cantidad: Number(row.cantidad ?? 1),
+          tarifa: Number(row.tarifa ?? 0),
+          importe: Number(row.cantidad ?? 1) * Number(row.tarifa ?? 0),
+          itbms: Number(row.itbms ?? 0),
+          categoria: row.categoria ? String(row.categoria) : undefined,
+        });
+        linesByInv.set(invId, existing);
+      }
+
+      const rich: RichInvoice[] = (invRes.data ?? []).map(r => {
+        const row = r as Record<string, unknown>;
+        const caseId = row.case_id ? String(row.case_id) : undefined;
+        const matchedCase = caseId ? cases.find(c => c.id === caseId) : undefined;
+        const clientId = row.client_id ? String(row.client_id) : matchedCase?.client_id;
+        const societyId = row.society_id ? String(row.society_id) : matchedCase?.society_id;
+        const id = String(row.id);
+
+        return {
+          id,
+          case_id: caseId ?? '',
+          client_id: clientId,
+          society_id: societyId,
+          term_id: row.term_id ? String(row.term_id) : undefined,
+          fecha_factura: String(row.fecha_factura ?? ''),
+          fecha_vencimiento: String(row.fecha_vencimiento ?? ''),
+          subtotal: Number(row.subtotal ?? 0),
+          impuesto: Number(row.impuesto ?? 0),
+          total: Number(row.total ?? 0),
+          estado: (row.estado as CaseInvoice['estado']) ?? 'pendiente',
+          qb_invoice_id: row.qb_invoice_id ? String(row.qb_invoice_id) : undefined,
+          numero_factura: row.numero_factura ? String(row.numero_factura) : undefined,
+          nota_cliente: row.nota_cliente ? String(row.nota_cliente) : undefined,
+          lines: linesByInv.get(id) ?? [],
+          case: matchedCase,
+          _clientName: getClientName(clientId),
+          _societyName: getSocietyName(societyId),
+          _caseNum: matchedCase
+            ? (matchedCase.n_tarea != null ? String(matchedCase.n_tarea).padStart(7, '0') : matchedCase.numero_caso)
+            : undefined,
+        };
+      });
+
+      setDbInvoices(rich);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadInvoices(); }, [cases]);
 
   const counts = useMemo(() => ({
-    todas: allInvoices.length,
-    pendientes: allInvoices.filter(i => i.estado === 'pendiente').length,
-    enviadas: allInvoices.filter(i => i.estado === 'enviada').length,
-    anuladas: allInvoices.filter(i => i.estado === 'anulada').length,
-  }), [allInvoices]);
+    todas:     dbInvoices.length,
+    pendientes: dbInvoices.filter(i => i.estado === 'pendiente').length,
+    enviadas:   dbInvoices.filter(i => i.estado === 'enviada').length,
+    anuladas:   dbInvoices.filter(i => i.estado === 'anulada').length,
+  }), [dbInvoices]);
 
   const filtered = useMemo(() => {
-    let list = allInvoices;
+    let list = dbInvoices;
     if (tab === 'pendientes') list = list.filter(i => i.estado === 'pendiente');
-    else if (tab === 'enviadas') list = list.filter(i => i.estado === 'enviada');
-    else if (tab === 'anuladas') list = list.filter(i => i.estado === 'anulada');
+    else if (tab === 'enviadas')  list = list.filter(i => i.estado === 'enviada');
+    else if (tab === 'anuladas')  list = list.filter(i => i.estado === 'anulada');
 
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(i =>
         (i.numero_factura ?? '').toLowerCase().includes(q) ||
-        getClientName(i.client_id).toLowerCase().includes(q) ||
-        getSocietyName(i.society_id).toLowerCase().includes(q) ||
-        numCaso(i.case).toLowerCase().includes(q)
+        (i._clientName ?? '').toLowerCase().includes(q) ||
+        (i._societyName ?? '').toLowerCase().includes(q) ||
+        (i._caseNum ?? '').toLowerCase().includes(q)
       );
     }
-    return list.sort((a, b) => {
-      const da = a.fecha_factura ?? '';
-      const db_ = b.fecha_factura ?? '';
-      return db_.localeCompare(da);
-    });
-  }, [allInvoices, tab, search, clients, societies]);
+    return list;
+  }, [dbInvoices, tab, search]);
 
-  const openEdit = (fi: FlatInvoice) => {
-    setSelectedInvoice(fi);
-    setSelectedCase(fi.case);
+  const openEdit = (inv: RichInvoice) => {
+    setSelectedInvoice(inv);
+    setSelectedCase(inv.case ?? null);
     setModalOpen(true);
-  };
-
-  const openNew = () => {
-    setSelectedInvoice(null);
-    setSelectedCase(null);
-    setModalOpen(false);
-    toast.info('Para crear una factura, ábrela desde un caso en la tabla de Casos.');
   };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    const ok = await deleteInvoice(deleteTarget.case.id, deleteTarget.id);
-    if (ok) toast.success('Factura eliminada');
+    if (deleteTarget.case) {
+      await deleteInvoice(deleteTarget.case.id, deleteTarget.id);
+    } else {
+      const sb = getSupabase();
+      if (sb) await sb.from('case_invoices').delete().eq('id', deleteTarget.id);
+    }
+    setDbInvoices(prev => prev.filter(i => i.id !== deleteTarget.id));
+    toast.success('Factura eliminada');
     setDeleteTarget(null);
   };
 
-  const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
-    { key: 'todas', label: 'Todas', icon: <FileText className="h-3.5 w-3.5" /> },
-    { key: 'pendientes', label: 'Pendientes', icon: <Clock className="h-3.5 w-3.5" /> },
-    { key: 'enviadas', label: 'Enviadas', icon: <CheckCircle className="h-3.5 w-3.5" /> },
-    { key: 'anuladas', label: 'Anuladas', icon: null },
+  const TABS: { key: Tab; label: string; icon?: React.ReactNode }[] = [
+    { key: 'todas',     label: 'Todas',     icon: <FileText className="h-3.5 w-3.5" /> },
+    { key: 'pendientes',label: 'Pendientes',icon: <Clock className="h-3.5 w-3.5" /> },
+    { key: 'enviadas',  label: 'Enviadas',  icon: <CheckCircle className="h-3.5 w-3.5" /> },
+    { key: 'anuladas',  label: 'Anuladas' },
   ];
+
+  const today = new Date().toISOString().split('T')[0];
 
   return (
     <div className="p-5 min-w-0 w-full">
@@ -124,11 +204,21 @@ export default function FacturasPage() {
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-xl font-semibold text-gray-800">Facturas</h1>
-          <p className="text-sm text-gray-400 mt-0.5">{allInvoices.length} factura{allInvoices.length !== 1 ? 's' : ''} en total</p>
+          <p className="text-sm text-gray-400 mt-0.5">
+            {dbInvoices.length} factura{dbInvoices.length !== 1 ? 's' : ''} en total
+          </p>
         </div>
+        <button
+          onClick={loadInvoices}
+          disabled={loading}
+          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+          Actualizar
+        </button>
       </div>
 
-      {/* KPI cards for pending */}
+      {/* Banner pendientes */}
       {counts.pendientes > 0 && (
         <div
           className="mb-5 flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 cursor-pointer hover:bg-amber-100 transition-colors"
@@ -153,9 +243,7 @@ export default function FacturasPage() {
               key={t.key}
               onClick={() => setTab(t.key)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                tab === t.key
-                  ? 'bg-white text-gray-800 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
+                tab === t.key ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               {t.icon}
@@ -192,11 +280,18 @@ export default function FacturasPage() {
                 <th className="text-left py-2.5 px-4 font-medium text-gray-500 text-xs">Vencimiento</th>
                 <th className="text-right py-2.5 px-4 font-medium text-gray-500 text-xs">Total</th>
                 <th className="text-center py-2.5 px-4 font-medium text-gray-500 text-xs">Estado</th>
-                <th className="w-16 py-2.5 px-4" />
+                <th className="w-12 py-2.5 px-4" />
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-sm text-gray-400">
+                    <RefreshCw className="h-4 w-4 animate-spin inline mr-2" />
+                    Cargando facturas...
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-sm text-gray-400">
                     {search ? 'Sin resultados para tu búsqueda' : 'No hay facturas en esta vista'}
@@ -204,26 +299,30 @@ export default function FacturasPage() {
                 </tr>
               ) : (
                 filtered.map((inv, idx) => {
-                  const isOverdue = inv.estado === 'pendiente' && inv.fecha_vencimiento && inv.fecha_vencimiento < new Date().toISOString().split('T')[0];
+                  const isOverdue = inv.estado === 'pendiente' && inv.fecha_vencimiento && inv.fecha_vencimiento < today;
                   return (
                     <tr
                       key={inv.id}
-                      className={`border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}
+                      className={`border-b border-gray-50 hover:bg-orange-50/30 cursor-pointer transition-colors ${
+                        idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'
+                      }`}
                       onClick={() => openEdit(inv)}
                     >
                       <td className="py-3 px-4">
-                        <span className="font-mono text-xs font-medium text-gray-700">
-                          {inv.numero_factura || <span className="text-gray-400 italic">Sin N°</span>}
+                        <span className="font-mono text-xs font-semibold text-gray-700">
+                          {inv.numero_factura || <span className="text-gray-400 italic font-normal">Sin N°</span>}
                         </span>
                       </td>
                       <td className="py-3 px-4">
-                        <span className="font-mono text-xs text-orange-600 font-medium">{numCaso(inv.case)}</span>
+                        {inv._caseNum
+                          ? <span className="font-mono text-xs text-orange-600 font-medium">#{inv._caseNum}</span>
+                          : <span className="text-xs text-gray-300 italic">Sin caso</span>}
                       </td>
                       <td className="py-3 px-4">
                         <div>
-                          <p className="text-xs font-medium text-gray-700 leading-tight">{getClientName(inv.client_id)}</p>
-                          {inv.society_id && (
-                            <p className="text-[11px] text-gray-400 leading-tight">{getSocietyName(inv.society_id)}</p>
+                          <p className="text-xs font-medium text-gray-700 leading-tight">{inv._clientName || '—'}</p>
+                          {inv._societyName && (
+                            <p className="text-[11px] text-gray-400 leading-tight">{inv._societyName}</p>
                           )}
                         </div>
                       </td>
@@ -231,7 +330,9 @@ export default function FacturasPage() {
                       <td className="py-3 px-4">
                         <span className={`text-xs ${isOverdue ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>
                           {formatDate(inv.fecha_vencimiento)}
-                          {isOverdue && <span className="ml-1 text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">Vencida</span>}
+                          {isOverdue && (
+                            <span className="ml-1.5 text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">Vencida</span>
+                          )}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-right">
@@ -246,7 +347,6 @@ export default function FacturasPage() {
                         <button
                           onClick={() => setDeleteTarget(inv)}
                           className="h-7 w-7 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
-                          title="Eliminar factura"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -259,7 +359,6 @@ export default function FacturasPage() {
           </table>
         </div>
 
-        {/* Footer summary */}
         {filtered.length > 0 && (
           <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50 flex justify-between items-center">
             <span className="text-xs text-gray-400">{filtered.length} registro{filtered.length !== 1 ? 's' : ''}</span>
@@ -274,17 +373,17 @@ export default function FacturasPage() {
       <InvoiceModal
         caseData={selectedCase}
         invoice={selectedInvoice}
-        open={modalOpen}
-        onClose={() => { setModalOpen(false); setSelectedInvoice(null); setSelectedCase(null); }}
+        open={modalOpen && !!selectedCase}
+        onClose={() => { setModalOpen(false); setSelectedInvoice(null); setSelectedCase(null); loadInvoices(); }}
       />
 
-      {/* Delete confirmation */}
+      {/* Delete confirm */}
       <AlertDialog open={!!deleteTarget} onOpenChange={open => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>¿Eliminar factura?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción eliminará la factura {deleteTarget?.numero_factura ?? ''} permanentemente. No se puede deshacer.
+              Se eliminará la factura {deleteTarget?.numero_factura ?? ''} permanentemente.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
