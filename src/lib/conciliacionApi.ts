@@ -17,7 +17,7 @@ const FIELD_LABELS: Record<string, string> = {
   dv: 'DV',
   nit: 'NIT',
   tipo_sociedad: 'Tipo de Sociedad',
-  direccion: 'Direccion',
+  fecha_inscripcion: 'Fecha de Constitucion',
   presidente_name: 'Presidente',
   tesorero_name: 'Tesorero',
   secretario_name: 'Secretario',

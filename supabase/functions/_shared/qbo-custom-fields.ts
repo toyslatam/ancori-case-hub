@@ -20,14 +20,22 @@ export type QboCustomField = {
  * contra el nombre resuelto, no el UUID.
  */
 export const QB_CUSTOM_FIELD_MAP: Record<string, string> = {
-  'RUC':               'ruc',
-  'DV':                'dv',
-  'NIT':               'nit',
-  'TIPO DE SOCIEDAD':  'tipo_sociedad',
-  'DIRECCION':         'direccion',
-  'PRESIDENTE':        'presidente_name',
-  'TESORERO':          'tesorero_name',
-  'SECRETARIO':        'secretario_name',
+  // ── Campos activos (en uso) ──────────────────────────────
+  'RUC':                    'ruc',
+  'DV':                     'dv',
+  'NIT.':                   'nit',           // QB usa "NIT." con punto final
+  'PRESIDENTE':             'presidente_name',
+  'TESORERO':               'tesorero_name',
+  'SECRETARIO':             'secretario_name',
+  'FECHA DE CONSTITUCION':  'fecha_inscripcion',
+  'TIPO DE SOCIEDAD':       'tipo_sociedad',
+  // ── Campos reservados (dropdowns, aún sin uso) ───────────
+  // 'DIRECCION':           'direccion',
+  // 'CLIENTE.':            'cliente_ref',
+  // 'NOMBRE DE CLIENTE':   'nombre_cliente',
+  // 'DATOS DEL CLIENTE':   'datos_cliente',
+  // 'DIRECTORES':          'directores_ref',
+  // 'DATOS TRIBUTARIOS':   'datos_tributarios',
 };
 
 /** Claves inversas: clave interna → nombre QB */

@@ -53,7 +53,7 @@ const DIRECT_SOCIETY_COLUMNS: Record<string, string> = {
   dv: 'dv',
   nit: 'nit',
   tipo_sociedad: 'tipo_sociedad',
-  direccion: 'direccion',
+  fecha_inscripcion: 'fecha_inscripcion',
   nombre: 'nombre',
   razon_social: 'razon_social',
   correo: 'correo',

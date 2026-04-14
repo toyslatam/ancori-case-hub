@@ -456,6 +456,7 @@ Deno.serve(async (req) => {
                   const flat: SocietyFlat = {
                     ruc: fullSoc.ruc ?? '', dv: fullSoc.dv ?? '', nit: fullSoc.nit ?? '',
                     tipo_sociedad: fullSoc.tipo_sociedad ?? '',
+                    fecha_inscripcion: fullSoc.fecha_inscripcion ?? '',
                     nombre: fullSoc.nombre ?? '', razon_social: fullSoc.razon_social ?? '',
                     correo: fullSoc.correo ?? '', ...dirNames,
                   };
@@ -464,7 +465,7 @@ Deno.serve(async (req) => {
                   const toSb: Record<string, unknown> = {};
                   for (const cmp of comparisons) {
                     if (cmp.action === 'auto_fill_supabase' &&
-                        ['ruc', 'dv', 'nit', 'tipo_sociedad', 'direccion'].includes(cmp.field)) {
+                        ['ruc', 'dv', 'nit', 'tipo_sociedad', 'fecha_inscripcion'].includes(cmp.field)) {
                       toSb[cmp.field] = cmp.quickbooksValue;
                     }
                   }

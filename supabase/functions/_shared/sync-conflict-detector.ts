@@ -27,7 +27,7 @@ export type SocietyFlat = {
   dv?: string;
   nit?: string;
   tipo_sociedad?: string;
-  direccion?: string;
+  fecha_inscripcion?: string;
   presidente_name?: string;   // nombre resuelto, no UUID
   tesorero_name?: string;
   secretario_name?: string;
@@ -79,9 +79,9 @@ export function compareFields(
 ): FieldComparison[] {
   const result: FieldComparison[] = [];
 
-  // Custom Fields (RUC, DV, NIT, directores, tipo_sociedad, direccion)
+  // Custom Fields activos en QB
   const customKeys: (keyof SocietyFlat)[] = [
-    'ruc', 'dv', 'nit', 'tipo_sociedad', 'direccion',
+    'ruc', 'dv', 'nit', 'tipo_sociedad', 'fecha_inscripcion',
     'presidente_name', 'tesorero_name', 'secretario_name',
   ];
 
