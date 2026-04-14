@@ -7,6 +7,8 @@ import { cn } from '@/lib/utils';
 export interface ComboOption {
   value: string;
   label: string;
+  /** Texto secundario que se muestra debajo del label en dos líneas */
+  sublabel?: string;
 }
 
 interface SearchableComboProps {
@@ -36,7 +38,10 @@ export function SearchableCombo({
   const filtered = useMemo(() => {
     if (!query.trim()) return options;
     const q = query.toLowerCase();
-    return options.filter(o => o.label.toLowerCase().includes(q));
+    return options.filter(o =>
+      o.label.toLowerCase().includes(q) ||
+      (o.sublabel ?? '').toLowerCase().includes(q)
+    );
   }, [options, query]);
 
   const handleOpenChange = (next: boolean) => {
@@ -59,12 +64,26 @@ export function SearchableCombo({
           aria-expanded={open}
           disabled={disabled}
           className={cn(
-            'w-full justify-between font-normal truncate',
+            'w-full justify-between font-normal',
+            selected?.sublabel ? 'h-auto py-2' : 'truncate',
             !selected && 'text-muted-foreground',
             className,
           )}
         >
-          <span className="truncate">{selected ? selected.label : placeholder}</span>
+          {selected ? (
+            selected.sublabel ? (
+              <span className="flex flex-col items-start text-left min-w-0 overflow-hidden">
+                <span className="truncate w-full text-sm font-medium leading-tight">{selected.label}</span>
+                <span className="truncate w-full text-xs text-muted-foreground leading-tight mt-0.5">
+                  — {selected.sublabel}
+                </span>
+              </span>
+            ) : (
+              <span className="truncate">{selected.label}</span>
+            )
+          ) : (
+            <span className="truncate">{placeholder}</span>
+          )}
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
@@ -99,12 +118,23 @@ export function SearchableCombo({
                 type="button"
                 onClick={() => handleSelect(opt.value)}
                 className={cn(
-                  'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground',
-                  value === opt.value && 'font-medium',
+                  'flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground',
+                  value === opt.value && 'bg-accent/50',
                 )}
               >
-                <Check className={cn('h-4 w-4 shrink-0', value === opt.value ? 'opacity-100' : 'opacity-0')} />
-                <span className="truncate">{opt.label}</span>
+                <Check className={cn('h-4 w-4 shrink-0 mt-0.5', value === opt.value ? 'opacity-100' : 'opacity-0')} />
+                {opt.sublabel ? (
+                  <span className="flex flex-col items-start min-w-0 overflow-hidden">
+                    <span className={cn('truncate w-full leading-snug', value === opt.value && 'font-semibold')}>
+                      {opt.label}
+                    </span>
+                    <span className="truncate w-full text-xs text-muted-foreground leading-snug">
+                      — {opt.sublabel}
+                    </span>
+                  </span>
+                ) : (
+                  <span className={cn('truncate', value === opt.value && 'font-medium')}>{opt.label}</span>
+                )}
               </button>
             ))
           )}

@@ -41,7 +41,7 @@ export function NewCaseModal({ open, onClose, onCreated }: NewCaseModalProps) {
   const serviceItemOptions = useMemo(() =>
     serviceItems.filter(si => si.activo).map(si => {
       const svcNombre = services.find(s => s.id === si.service_id)?.nombre;
-      return { value: si.id, label: svcNombre ? `${si.nombre} — ${svcNombre}` : si.nombre };
+      return { value: si.id, label: si.nombre, sublabel: svcNombre };
     }),
     [serviceItems, services]);
 
@@ -183,9 +183,13 @@ export function NewCaseModal({ open, onClose, onCreated }: NewCaseModalProps) {
             {serviceItemId && (() => {
               const item = serviceItemOptions.find(o => o.value === serviceItemId);
               return item ? (
-                <p className="mt-1.5 text-xs text-muted-foreground px-1">
-                  ✓ Seleccionado: <span className="font-medium text-foreground">{item.label}</span>
-                </p>
+                <div className="mt-1.5 text-xs text-muted-foreground px-1 flex items-start gap-1">
+                  <span className="text-green-600 font-bold">✓</span>
+                  <span>
+                    <span className="font-semibold text-foreground">{item.label}</span>
+                    {item.sublabel && <span className="block text-muted-foreground">— {item.sublabel}</span>}
+                  </span>
+                </div>
               ) : null;
             })()}
           </div>

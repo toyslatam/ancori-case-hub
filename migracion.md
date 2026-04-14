@@ -556,3 +556,38 @@ ORDER BY n_tarea;
 SELECT COUNT(*), MIN(n_tarea), MAX(n_tarea) FROM public.cases;
 -- Debe mostrar 128 filas, n_tarea 1..130
 ```
+
+---
+
+## 14. Configurar correo de asignación (SMTP)
+
+La Edge Function `send-assignment-email` envía un correo automático al usuario asignado cada vez que se guarda un caso con un nuevo responsable.
+
+### Secrets en Supabase Dashboard → Settings → Edge Functions → Secrets
+
+| Secret          | Valor                                    |
+|-----------------|------------------------------------------|
+| `SMTP_HOST`     | `mail.solucionesdetecnologia.com`        |
+| `SMTP_PORT`     | `465`                                    |
+| `SMTP_USER`     | `ancori@solucionesdetecnologia.com`      |
+| `SMTP_PASSWORD` | `abog90`                                 |
+| `SMTP_TLS`      | `true` (SSL puerto 465) ó `false` (587 TLS) |
+| `MAIL_FROM`     | `ancori@solucionesdetecnologia.com`      |
+| `MAIL_CC`       | `soporte@ancoriyasociados.com`           |
+
+> Si usas puerto 587 (TLS/STARTTLS): cambia `SMTP_PORT=587` y `SMTP_TLS=false`.
+
+### Desplegar la función
+
+```bash
+npx supabase functions deploy send-assignment-email --project-ref jyqdfjonikorlwmjepgd
+```
+
+### Verificar el host SMTP
+
+Si no sabes el hostname exacto de tu servidor, prueba estas opciones comunes:
+- `mail.solucionesdetecnologia.com`
+- `smtp.solucionesdetecnologia.com`
+- `correo.solucionesdetecnologia.com`
+
+Puedes verificarlo con tu proveedor de hosting (cPanel → Configuración de correo).
