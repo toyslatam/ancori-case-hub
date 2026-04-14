@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,7 @@ import { CASE_ESTADOS, CASE_PRIORIDADES, formatNTarea } from '@/data/mockData';
 import {
   BarChart3, Download, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   X, FileText, Users, Building2, Briefcase, TrendingUp, DollarSign,
-  AlertTriangle, Clock, PieChart as PieIcon,
+  AlertTriangle, Clock, CheckCircle, PieChart as PieIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -312,7 +312,7 @@ function SharedFilters({
 /*  ReportesPage                                                       */
 /* ================================================================== */
 
-export default function ReportesPage() {
+function ReportesPageInner() {
   const {
     cases, clients, services, societies, usuarios,
     getClientName, getSocietyName, getServiceName, getUsuarioName,
@@ -826,5 +826,54 @@ export default function ReportesPage() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+// Error Boundary para capturar errores de render
+class ReportesErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[ReportesPage] Render error:', error, info);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="p-6 space-y-4">
+          <h1 className="text-2xl font-bold text-red-600">Error en Reportes</h1>
+          <p className="text-sm text-muted-foreground">
+            Ocurrio un error al cargar la seccion de reportes. Esto puede deberse a que
+            algunas tablas aun no existen en la base de datos.
+          </p>
+          <pre className="bg-red-50 border border-red-200 rounded p-3 text-xs text-red-800 overflow-x-auto">
+            {this.state.error.message}
+          </pre>
+          <button
+            className="px-4 py-2 bg-orange-500 text-white rounded text-sm"
+            onClick={() => this.setState({ error: null })}
+          >
+            Reintentar
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// Wrapper con Error Boundary
+export default function ReportesPageSafe() {
+  return (
+    <ReportesErrorBoundary>
+      <ReportesPageInner />
+    </ReportesErrorBoundary>
   );
 }
