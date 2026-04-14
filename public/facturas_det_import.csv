@@ -1,0 +1,19 @@
+id,invoice_id,descripcion,cantidad,tarifa,itbms,categoria
+822399d8-d068-4f2f-811b-418236bd83b8,b335a7ee-27e0-4641-ab7e-a82e38b4e599,Honorario por Diligenciamiento de documento Apostillado,1.0,75.0,7.0,Honorarios
+573e755e-dc53-4554-88f8-6cefc336bde1,b335a7ee-27e0-4641-ab7e-a82e38b4e599,Gastos Legales,1.0,135.0,0.0,Gastos
+bc6bc347-0879-48e1-8d48-997526521fb3,b335a7ee-27e0-4641-ab7e-a82e38b4e599,DHL,1.0,75.0,0.0,Gastos
+41397749-e535-4dd4-b8b1-53b7fecd59a2,90e2bdf1-8541-4e23-8ec1-54fc2fe1b7fd,4 Contratos de Compraventa de acciones,1.0,1200.0,0.0,Gastos
+b6445538-0828-4d25-aca2-5b181f5d096a,f6eaf695-59ca-4c8d-89ca-6bd07d55a1cf,Diligenciamiento de Certificado de Existencia debidamente notariado,1.0,150.0,7.0,Honorarios
+4bce2bd4-37fb-4098-af2d-d599bf3bce2e,f6eaf695-59ca-4c8d-89ca-6bd07d55a1cf,Gastos Legales,1.0,200.0,0.0,Gastos
+8a26da01-42a0-42b0-b05c-c0ab3d2e9178,05b1522e-eb3c-4e9b-8775-aab045c6b504,Anulación y Emisión de Acciones,1.0,250.0,7.0,Honorarios
+651133b6-7730-41eb-9d23-288cfe9b3308,05b1522e-eb3c-4e9b-8775-aab045c6b504,Gastos legales,1.0,225.0,0.0,Gastos
+de4d31de-fe73-4899-a4ca-50b2df743e02,17658fa1-3110-45d8-abb9-977ed378d9e7,Anulacion y nueva emision de Acciones Luisa Boada a Sofia Boada,1.0,250.0,7.0,Honorarios
+d9e28194-a198-4995-b395-ff4038484cf4,17658fa1-3110-45d8-abb9-977ed378d9e7,Gastos Legales,1.0,135.0,0.0,Gastos
+cca0c136-799b-42d1-af5d-5c6b3cf79d6c,8f8820da-362f-44d0-9f1e-9a7d87ec024e,Anulacion y emision de acciones nuevas,1.0,300.0,7.0,Honorarios
+72f79008-a012-450f-a265-8276ceef5e83,8f8820da-362f-44d0-9f1e-9a7d87ec024e,Gastos varios,1.0,150.0,0.0,Gastos
+13f2722a-cdba-4af9-9e9d-7b44ed85f67c,db4f2da2-444c-456d-b13f-4fbd857a0232,Honorarios extras,1.0,75.0,7.0,Honorarios
+9bad1582-fdd0-42b7-a307-08b1f2431244,db4f2da2-444c-456d-b13f-4fbd857a0232,Gastos extras,1.0,88.0,0.0,Gastos
+073f60f7-d4a5-4bc4-b679-c9de20636103,db4f2da2-444c-456d-b13f-4fbd857a0232,Honorarios por servicio,1.0,50.0,7.0,Honorarios
+1a6f1d29-58d7-416f-ab24-dc43c5ba02e6,db4f2da2-444c-456d-b13f-4fbd857a0232,Gastos de servicio,2.0,100.0,0.0,Gastos
+c98bbc9d-8899-4f7e-8d5c-c438fca345d6,9d384c80-6d73-4fa7-a4ae-1e26941ce52f,Honorarios por servicios,2.0,25.0,7.0,Honorarios
+9ae07b49-4fdb-4375-8451-89345c7063f2,9d384c80-6d73-4fa7-a4ae-1e26941ce52f,Gastos de servicios2,3.0,66.0,0.0,Gastos
