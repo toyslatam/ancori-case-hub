@@ -8,9 +8,12 @@ import {
   AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
   AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { FileText, Clock, CheckCircle, Search, Trash2, ExternalLink, RefreshCw } from 'lucide-react';
+import { FileText, Clock, CheckCircle, Search, Trash2, ExternalLink, RefreshCw, Send, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getSupabase } from '@/lib/supabaseClient';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const FUNCTION_SECRET = import.meta.env.VITE_FUNCTION_SECRET as string;
 
 type Tab = 'todas' | 'pendientes' | 'enviadas' | 'anuladas';
 
@@ -54,6 +57,7 @@ export default function FacturasPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<RichInvoice | null>(null);
   const [loading, setLoading] = useState(false);
+  const [sendingId, setSendingId] = useState<string | null>(null);
 
   // Facturas directamente de Supabase (independiente del nested en cases)
   const [dbInvoices, setDbInvoices] = useState<RichInvoice[]>([]);
@@ -180,6 +184,38 @@ export default function FacturasPage() {
     setSelectedInvoice(inv);
     setSelectedCase(inv.case ?? null);
     setModalOpen(true);
+  };
+
+  const handleSendToQB = async (inv: RichInvoice, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!FUNCTION_SECRET) { toast.error('VITE_FUNCTION_SECRET no configurado'); return; }
+    setSendingId(inv.id);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/qbo-create-invoice`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-ancori-secret': FUNCTION_SECRET,
+        },
+        body: JSON.stringify({ invoice_id: inv.id }),
+      });
+      const data = await res.json() as { ok?: boolean; qb_invoice_id?: string; doc_number?: string; error?: string; detail?: string };
+      if (!res.ok || !data.ok) {
+        toast.error(`Error QB: ${data.detail ?? data.error ?? 'Sin detalle'}`);
+        return;
+      }
+      toast.success(`Factura enviada a QB${data.doc_number ? ` — N° ${data.doc_number}` : ''}`);
+      // Actualizar estado en la lista local sin recargar todo
+      setDbInvoices(prev => prev.map(i =>
+        i.id === inv.id
+          ? { ...i, estado: 'enviada', qb_invoice_id: data.qb_invoice_id, numero_factura: data.doc_number ?? i.numero_factura }
+          : i
+      ));
+    } catch (err) {
+      toast.error(`Error de red: ${String(err)}`);
+    } finally {
+      setSendingId(null);
+    }
   };
 
   const handleDelete = async () => {
@@ -350,12 +386,28 @@ export default function FacturasPage() {
                         </span>
                       </td>
                       <td className="py-3 px-4" onClick={e => e.stopPropagation()}>
-                        <button
-                          onClick={() => setDeleteTarget(inv)}
-                          className="h-7 w-7 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        <div className="flex items-center gap-1 justify-end">
+                          {/* Botón enviar a QB — solo para facturas pendientes o borrador */}
+                          {(inv.estado === 'pendiente' || inv.estado === 'borrador') && (
+                            <button
+                              onClick={e => handleSendToQB(inv, e)}
+                              disabled={sendingId === inv.id}
+                              title="Enviar a QuickBooks"
+                              className="h-7 px-2 flex items-center gap-1 rounded-lg text-xs font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors disabled:opacity-50"
+                            >
+                              {sendingId === inv.id
+                                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                : <Send className="h-3.5 w-3.5" />}
+                              <span className="hidden sm:inline">QB</span>
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setDeleteTarget(inv)}
+                            className="h-7 w-7 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
