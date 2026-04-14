@@ -23,6 +23,7 @@ import FacturasPage from "./pages/FacturasPage";
 import ConciliacionPage from "./pages/ConciliacionPage";
 import CumplimientoPage from "./pages/CumplimientoPage";
 import ReportesPage from "./pages/ReportesPage";
+import InstructivosPage from "./pages/InstructivosPage";
 import ConfigPage from "./pages/ConfigPage";
 import NotFound from "./pages/NotFound";
 import ComingSoonPage from "./pages/ComingSoonPage";
@@ -57,7 +58,7 @@ function ProtectedApp() {
           <Route path="/conciliacion" element={<ConciliacionPage />} />
           <Route path="/cumplimiento" element={<CumplimientoPage />} />
           <Route path="/reportes" element={<ReportesPage />} />
-          <Route path="/instructivos" element={<ComingSoonPage title="Instructivos" />} />
+          <Route path="/instructivos" element={<InstructivosPage />} />
           <Route path="/mantenimiento/clientes" element={<ClientsPage />} />
           <Route path="/mantenimiento/directores" element={<DirectoresPage />} />
           <Route path="/mantenimiento/sociedades" element={<SocietiesPage />} />
