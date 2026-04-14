@@ -34,7 +34,9 @@ create table if not exists public.societies (
 create table if not exists public.services (
   id uuid primary key default gen_random_uuid(),
   nombre text not null,
-  categoria text not null,
+  categoria text not null default '',
+  category_id uuid references public.categories(id) on delete set null,
+  id_qb integer,
   descripcion text,
   codigo text,
   tarifa_base numeric(12,2),

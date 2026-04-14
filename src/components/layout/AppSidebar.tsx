@@ -21,6 +21,7 @@ import {
   UserCog,
   Wrench,
   Tags,
+  Layers,
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { NavLink } from '@/components/NavLink';
@@ -55,7 +56,10 @@ const maintItems = [
   { title: 'Productos/Servicios QB', url: '/mantenimiento/qb-items', icon: CreditCard },
 ];
 
-const utilItems = [{ title: 'Categorías', url: '/utilidades/categorias', icon: Tags }];
+const utilItems = [
+  { title: 'Categorías', url: '/utilidades/categorias', icon: Tags },
+  { title: 'Servicios', url: '/utilidades/servicios', icon: Layers },
+];
 
 const navLinkActive =
   'bg-[hsl(220_14%_96%)] text-[hsl(17_78%_55%)] font-medium [&>svg]:text-[hsl(17_78%_55%)]';

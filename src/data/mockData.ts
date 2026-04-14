@@ -59,6 +59,8 @@ export interface Service {
   id: string;
   nombre: string;
   categoria: string;
+  category_id?: string;
+  id_qb?: number;
   descripcion: string;
   codigo?: string;
   tarifa_base?: number;

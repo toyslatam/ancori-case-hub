@@ -13,6 +13,7 @@ import InvoiceTermsPage from "./pages/maintenance/InvoiceTermsPage";
 import QBItemsPage from "./pages/maintenance/QBItemsPage";
 import DirectoresPage from "./pages/maintenance/DirectoresPage";
 import CategoriesPage from "./pages/utilities/CategoriesPage";
+import UtilServicesPage from "./pages/utilities/ServicesPage";
 import ConfigPage from "./pages/ConfigPage";
 import NotFound from "./pages/NotFound";
 import ComingSoonPage from "./pages/ComingSoonPage";
@@ -40,6 +41,7 @@ const App = () => (
               <Route path="/mantenimiento/terminos" element={<InvoiceTermsPage />} />
               <Route path="/mantenimiento/qb-items" element={<QBItemsPage />} />
               <Route path="/utilidades/categorias" element={<CategoriesPage />} />
+              <Route path="/utilidades/servicios" element={<UtilServicesPage />} />
               <Route path="/configuracion" element={<ConfigPage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>

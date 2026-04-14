@@ -57,52 +57,33 @@ En la app (**Mantenimiento → Sociedades**) los campos de negocio se alinean co
 |--------------------------------|------------|--------------------------------|------------------------------------------|
 | Nombre Sociedad | Texto | `nombre` | `nombre` |
 | Razón Social | Texto | `razon_social` | `razon_social` |
-| Tipo de Sociedad | Desplegable: **SOCIEDADES**, **FUNDACIONES**, **B.V.I** (texto exacto) | `tipo_sociedad` | `tipo_sociedad` (`TipoSociedad`) |
+| Tipo de Sociedad | Desplegable: **SOCIEDADES**, **FUNDACIONES**, **B.V.I** | `tipo_sociedad` | `tipo_sociedad` (`TipoSociedad`) |
 | Correo | Texto | `correo` | `correo` |
-| Cliente | Desplegable (muestra nombre del cliente) | `client_id` → FK `public.clients(id)` | `client_id` (UUID del cliente) |
+| Cliente | Desplegable (muestra nombre del cliente) | `client_id` FK `public.clients(id)` | `client_id` (UUID del cliente) |
 | ID_QB | Numérico (opcional) | `id_qb` (integer, nullable) | `id_qb` |
 | RUC | Texto | `ruc` | `ruc` |
 | DV | Texto | `dv` | `dv` |
 | NIT | Texto | `nit` | `nit` |
-| Presidente | Desplegable (muestra nombre del director) | `presidente_id` → FK `public.directores(id)`, nullable | `presidente_id` |
-| Tesorero | Desplegable (nombre director) | `tesorero_id` → FK `public.directores(id)`, nullable | `tesorero_id` |
-| Secretario | Desplegable (nombre director) | `secretario_id` → FK `public.directores(id)`, nullable | `secretario_id` |
+| Presidente | Desplegable (nombre del director) | `presidente_id` FK `public.directores(id)`, nullable | `presidente_id` |
+| Tesorero | Desplegable (nombre director) | `tesorero_id` FK `public.directores(id)`, nullable | `tesorero_id` |
+| Secretario | Desplegable (nombre director) | `secretario_id` FK `public.directores(id)`, nullable | `secretario_id` |
 | Pago Tasa Única | Texto | `pago_tasa_unica` | `pago_tasa_unica` |
 | Fecha Insc. | Fecha | `fecha_inscripcion` (date, nullable) | `fecha_inscripcion` (`YYYY-MM-DD` opcional) |
-| Semestre | Solo lectura en formulario: **1** o **2** según el mes de fecha inscripción | *No hay columna en base* | Calculado en app: meses **1–6 → 1**, **7–12 → 2** (`semestreFromFechaInscripcion`) |
-
-**Listado principal (tabla):** se muestran Nombre Sociedad, Cliente (nombre resuelto), Tipo (badge), RUC, DV, NIT, Presidente, Tesorero, Secretario (nombres resueltos), Fecha Inscripción. Razón social, correo, ID_QB, pago tasa única y semestre aparecen en el **formulario** de alta/edición y entran en **búsqueda y filtros** según la pantalla.
+| Semestre | Solo lectura: **1** o **2** | *No hay columna en base* | Calculado: meses 1-6 = 1, 7-12 = 2 |
 
 **Claves técnicas:**
 
-- La PK de sociedad es **`id` (UUID)**. `client_id`, `presidente_id`, `tesorero_id` y `secretario_id` deben ser **UUID existentes** en `clients` y `directores`; en CSV/import no uses el nombre visible como valor de esas columnas salvo que hagas un paso previo de **mapeo nombre → UUID**.
-- **Orden de migración:** cargar **`clients`** y **`directores`** antes que **`societies`**, para que las FK no fallen.
-- **Tipo de sociedad:** en base y CSV debe coincidir con uno de los tres literales **`SOCIEDADES`**, **`FUNDACIONES`**, **`B.V.I`** (incluido el punto en `B.V.I`). Valores antiguos tipo `S.A.` conviene normalizarlos en Excel o con un `UPDATE` antes de imponer reglas estrictas.
-- **Semestre:** no se persiste en Postgres en el diseño actual; si lo necesitas en informes SQL, puedes añadir una columna generada o un `EXTRACT(MONTH FROM fecha_inscripcion)` en vistas.
-
-**Columnas que siguen en `societies` por compatibilidad** (pueden quedar vacías al migrar solo desde SharePoint “sociedades”): `telefono`, `identificacion_fiscal`, `quickbooks_customer_id`, `activo`, `created_at`.
+- La PK de sociedad es **`id` (UUID)**. `client_id`, `presidente_id`, `tesorero_id` y `secretario_id` deben ser **UUID existentes** en `clients` y `directores`.
+- **Orden de migración:** cargar **`clients`** y **`directores`** antes que **`societies`**.
+- **Tipo de sociedad:** debe coincidir con uno de los tres literales **`SOCIEDADES`**, **`FUNDACIONES`**, **`B.V.I`**.
 
 #### Import con **muchas celdas vacías** (errores `22P02` en columnas UUID)
 
-**Sí puedes importar**, siempre que lo “vacío” llegue a Postgres como **`NULL` de verdad**, no como texto inválido.
-
-- **`invalid input syntax for type uuid: ""`**: la celda llega como **cadena vacía** `""`. Solución: celda vacía sin comillas, o quitar esas columnas del CSV.
-- **`invalid input syntax for type uuid: "NULL"`**: el CSV trae la **palabra** `NULL` (cuatro letras) como texto. Eso **no** es un UUID ni es el NULL de SQL. Solución: en Excel o en el editor de texto, **reemplaza todo** `NULL` por **celda vacía** en columnas UUID (`client_id`, `presidente_id`, `tesorero_id`, `secretario_id`, `id`). Muchas exportaciones (SQL, Python `to_csv`, etc.) escriben el literal `NULL` en el archivo; el import de Supabase lo interpreta como string.
-
-El importador del Table Editor a veces manda `""` en columnas UUID y por eso falla (`22P02`), **antes** de que un trigger pueda corregirlo.
-
-**Qué sí puede ir vacío (opcional):** `presidente_id`, `tesorero_id`, `secretario_id`, `fecha_inscripcion`, `id_qb`, textos como `ruc` / `dv` / `nit` (según defaults de tu tabla).
-
-**Qué no puede ir vacío:** `client_id` (cada sociedad debe tener un cliente; UUID válido de `clients`).
-
-**Formas prácticas si tienes muchas filas sin presidente/tesorero/secretario:**
-
-1. **Quitar del CSV** las columnas `presidente_id`, `tesorero_id` y `secretario_id` (si el asistente deja el resto). Al no venir en el archivo, Postgres suele rellenarlas con **`NULL`** por defecto.
-2. En Excel: celda **realmente vacía** (no fórmula `=""` ni comillas). Guarda CSV UTF-8 y vuelve a importar.
-3. **Tabla temporal en `text`** (recomendado si el CSV trae nombres o mezcla basura): creas una tabla staging con columnas `text`, importas el CSV ahí sin FK, y luego insertas en `societies` convirtiendo vacíos a `NULL` y textos a UUID:
+- **`invalid input syntax for type uuid: ""`**: la celda llega como cadena vacía. Solución: celda vacía sin comillas, o quitar esas columnas del CSV.
+- **`invalid input syntax for type uuid: "NULL"`**: el CSV trae la palabra `NULL` como texto. Solución: reemplaza `NULL` por celda vacía en columnas UUID.
 
 ```sql
--- Ejemplo: ajusta nombres de columnas a tu CSV. client_id_text debe ser UUID válido por fila.
+-- Tabla staging para importar con texto libre
 create table if not exists public.societies_import_stage (
   client_id text not null,
   nombre text not null,
@@ -118,9 +99,7 @@ create table if not exists public.societies_import_stage (
   fecha_inscripcion text
 );
 
--- 1) Importa Sociedades.csv en societies_import_stage (Table Editor → esa tabla).
--- 2) Inserta en societies convirtiendo '' → NULL en UUID opcionales:
-
+-- Después de importar el CSV a la staging, insertar en societies:
 insert into public.societies (
   client_id, nombre, razon_social, tipo_sociedad, correo,
   presidente_id, tesorero_id, secretario_id,
@@ -148,16 +127,12 @@ select
 from public.societies_import_stage s;
 ```
 
-Si `nullif(trim(x),'')::uuid` falla porque el texto no es UUID, corrige esa celda o deja la columna en el `INSERT` solo cuando tengas UUID válido (puedes usar `CASE WHEN trim(s.presidente_id) = '' THEN NULL ELSE trim(s.presidente_id)::uuid END`).
-
 ## 2. Prerrequisitos en Supabase
 
-1. Ejecutar el esquema del proyecto: `supabase/schema.sql` en el **SQL Editor** del panel de Supabase (o tu pipeline de migraciones).
-2. Confirmar que `public.clients` y `public.directores` existen con las columnas descritas arriba, y que `public.societies` incluye al menos: `id`, `client_id`, `nombre`, `razon_social`, `tipo_sociedad`, `correo`, `telefono`, `activo`, `created_at`, y las columnas extendidas (`id_qb`, `ruc`, `dv`, `nit`, `presidente_id`, `tesorero_id`, `secretario_id`, `pago_tasa_unica`, `fecha_inscripcion`) según el bloque `ALTER` del `schema.sql`.
+1. Ejecutar el esquema del proyecto: `supabase/schema.sql` en el **SQL Editor** del panel de Supabase.
+2. Confirmar que `public.clients` y `public.directores` existen con las columnas descritas arriba.
 
 ## 3. Exportar datos desde SharePoint
-
-Elige **una** vía (la que te resulte más simple en tu tenant):
 
 ### Opción A — Vista de Excel / exportación a Excel
 
@@ -167,30 +142,27 @@ Elige **una** vía (la que te resulte más simple en tu tenant):
 
 ### Opción B — Power Automate / flujo
 
-1. Flujo que lea ítems de la lista **Anc_Clientes** y escriba filas en un archivo CSV en OneDrive/SharePoint o envíe a un script HTTP que inserte en Supabase (requiere **service role** solo en backend, nunca en el navegador).
+Flujo que lea ítems de la lista y escriba filas en un archivo CSV o llame a Supabase REST con service role solo en backend.
 
 ### Opción C — Microsoft Graph API
 
-Adecuada si hay muchos registros o migración repetible: aplicación registrada en Entra ID con permisos a SharePoint, script Node/Python que pagina la lista y genera SQL o llama a la API REST de Supabase.
+Adecuada si hay muchos registros o migración repetible: aplicación registrada en Entra ID con permisos a SharePoint, script Node/Python que pagina la lista y genera SQL.
 
 ## 4. Transformación de datos (reglas prácticas)
 
-- **Activo:** en CSV suele venir como `Sí`/`No`, `1`/`0`, o checkbox. Convierte a booleano SQL: `true` / `false`.
-- **Creado:** SharePoint suele devolver fecha/hora. Convierte a ISO `YYYY-MM-DD` o `YYYY-MM-DDTHH:mm:ssZ` para `timestamptz`. Si solo tienes día, usa medianoche UTC o la zona que definas con el equipo.
-- **Telefono / Correo:** texto; celdas vacías → cadena vacía o `NULL` según prefieras (la app tolera strings vacíos).
-- **numero:** puedes importar el **ID** de SharePoint en `numero` para conservar el correlativo visible. Después de importar, ajusta la secuencia `clients_numero_seq` con `SELECT setval('public.clients_numero_seq', (SELECT COALESCE(MAX(numero),1) FROM public.clients));` para que los **nuevos** clientes en la app no choquen.
-- **id (UUID):** cada fila nueva en Supabase debe tener `gen_random_uuid()` si no la generas en el script (recomendado).
+- **Activo:** en CSV suele venir como `Sí`/`No`, `1`/`0`. Convierte a booleano SQL: `true` / `false`.
+- **Creado:** convierte a ISO `YYYY-MM-DD` o `YYYY-MM-DDTHH:mm:ssZ` para `timestamptz`.
+- **numero:** puedes importar el **ID** de SharePoint en `numero`. Después ajusta la secuencia: `SELECT setval('public.clients_numero_seq', (SELECT COALESCE(MAX(numero),1) FROM public.clients));`
+- **id (UUID):** cada fila nueva debe tener `gen_random_uuid()`.
 
 ## 5. Importar en Supabase
 
 ### 5.1 Desde CSV (Table Editor)
 
-1. Supabase → **Table Editor** → `clients` → **Insert** → **Import data from CSV** (si tu plan lo permite).
-2. Mapea columnas del CSV a columnas de la tabla. **No** omitas `id` si ya generaste UUIDs en el CSV; si el import espera solo columnas “de negocio”, deja que `id` y defaults los rellene la tabla (según lo que permita el asistente).
+1. Supabase → **Table Editor** → `clients` → **Insert** → **Import data from CSV**.
+2. Mapea columnas del CSV a columnas de la tabla.
 
 ### 5.2 SQL generado (control total)
-
-1. A partir del CSV, con Excel fórmulas o un script, genera sentencias `INSERT`:
 
 ```sql
 insert into public.clients (id, nombre, razon_social, numero, email, telefono, activo, created_at)
@@ -198,27 +170,64 @@ values
   (gen_random_uuid(), 'NOMBRE', 'RAZON', 123, 'correo@ejemplo.com', '', true, '2023-11-06T12:00:00Z');
 ```
 
-2. Ejecuta por lotes en el **SQL Editor** (bloques de cientos o miles de filas según límites de tiempo de sesión).
-
-### 5.3 `COPY` desde Postgres (avanzado)
-
-Si tienes acceso directo a Postgres (misma `DATABASE_URL` que usas para `npm run seed:db`), puedes usar `\copy` desde `psql` cargando un CSV a una tabla staging y luego `INSERT INTO clients SELECT ...` con transformaciones.
-
 ## 6. Orden recomendado si migras más listas
 
 1. **Clientes** (`clients`) primero.
-2. **Directores** (`directores`) cuando convenga: no depende de otras tablas del esquema actual; puedes importarla en paralelo con otros catálogos.
-3. **Sociedades** (`societies`) después, porque `client_id` debe existir en `clients.id` (UUID). Si en SharePoint las sociedades guardan el **ID numérico** del cliente, necesitas una tabla de correspondencia **SharePoint ID → UUID** generada en el paso 1 antes de insertar sociedades.
-4. Resto de catálogos y **casos** al final, respetando FKs del `schema.sql`.
+2. **Directores** (`directores`) en paralelo con clientes.
+3. **Categorías** (`categories`) — desde QBO vía webhook o manualmente en Utilidades → Categorías.
+4. **Servicios** (`services`) después de categorías (ver sección 9).
+5. **Sociedades** (`societies`) después de clients y directores.
+6. Resto de catálogos y **casos** al final.
 
 ## 7. Verificación post-migración
 
 - En **Table Editor**, revisa conteos y algunas filas al azar.
-- En la app (`npm run dev` con `.env.local` apuntando al proyecto), abre **Mantenimiento → Clientes**, **Directores** y **Sociedades**; comprueba búsqueda, filtros, vínculo cliente/directores en el formulario de sociedad y edición.
-- Si usas RLS en el futuro, revisa políticas para el rol `anon` / `authenticated`; el esquema actual del repo incluye grants básicos para desarrollo.
+- En la app, abre **Mantenimiento → Clientes**, **Directores** y **Sociedades**; comprueba búsqueda, filtros y edición.
 
 ## 8. Resumen en una frase
 
 **Clientes:** exportas **Anc_Clientes** a CSV, mapeas columnas a `nombre`, `razon_social`, `email`, `telefono`, `activo`, `numero`, `created_at`, generas `id` UUID por fila, e importas en `public.clients` con SQL o asistente de Supabase, y reajustas la secuencia de `numero` para altas nuevas desde la aplicación.
 
-**Sociedades:** después de tener **UUID** de `clients` y `directores`, importas filas en `public.societies` con los campos de la tabla de la sección “Lista Sociedades” (`client_id`, `nombre`, `razon_social`, `tipo_sociedad` ∈ {SOCIEDADES, FUNDACIONES, B.V.I}, correo, id_qb, ruc, dv, nit, presidente_id, tesorero_id, secretario_id, pago_tasa_unica, fecha_inscripcion); el **semestre** lo calcula la app, no el CSV.
+**Sociedades:** después de tener **UUID** de `clients` y `directores`, importas filas en `public.societies` con los campos del formulario; el **semestre** lo calcula la app, no el CSV.
+
+---
+
+## 9. Migración — Servicios (`public.services`)
+
+Campos: **Nombre Servicio**, **Categorías**, **ID QB**.
+
+### Paso 1 — Alteración de tabla (una sola vez en SQL Editor)
+
+```sql
+alter table public.services
+  add column if not exists category_id uuid references public.categories(id) on delete set null,
+  add column if not exists id_qb integer;
+```
+
+### Paso 2 — Importar servicios
+
+> Primero deben existir las categorías en **Utilidades → Categorías**.
+
+```sql
+insert into public.services (id, nombre, category_id, id_qb)
+values
+  (gen_random_uuid(), 'Sociedad Anonima',                         (select id from public.categories where upper(nombre) = upper('CONSTITUCION DE PERSONA JURIDICA') limit 1), null),
+  (gen_random_uuid(), 'Sociedad de Responsabilidad Limitada',     (select id from public.categories where upper(nombre) = upper('CONSTITUCION DE PERSONA JURIDICA') limit 1), null),
+  (gen_random_uuid(), 'Fundaciones de Interes Privado',           (select id from public.categories where upper(nombre) = upper('CONSTITUCION DE PERSONA JURIDICA') limit 1), null),
+  (gen_random_uuid(), 'SOCIEDADES DE JURISDICCION EXTRANJERA',    (select id from public.categories where upper(nombre) = upper('CONSTITUCION DE PERSONA JURIDICA') limit 1), null),
+  (gen_random_uuid(), 'COMPRAVENTAS',                             (select id from public.categories where upper(nombre) = upper('COMPRAVENTAS') limit 1),                     null),
+  (gen_random_uuid(), 'Servicios Bancarios',                      (select id from public.categories where upper(nombre) = upper('BANCARIOS') limit 1),                        null),
+  (gen_random_uuid(), 'OTROS SERVICIOS CORPORATIVOS',             (select id from public.categories where upper(nombre) = upper('OTROS SERVICIOS CORPORATIVOS') limit 1),     null),
+  (gen_random_uuid(), 'SERVICIOS TERCERIZADOS',                   (select id from public.categories where upper(nombre) = upper('SERVICIOS TERCERIZADOS') limit 1),           null),
+  (gen_random_uuid(), 'OTROS SERVICIOS DE LA FIRMA',              (select id from public.categories where upper(nombre) = upper('OTROS SERVICIOS DE LA FIRMA') limit 1),      null)
+on conflict do nothing;
+```
+
+### Paso 3 — Verificar
+
+```sql
+select s.nombre, c.nombre as categorias, s.id_qb
+from public.services s
+left join public.categories c on c.id = s.category_id
+order by s.nombre;
+```

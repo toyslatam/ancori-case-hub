@@ -116,7 +116,9 @@ export function rowToService(row: Record<string, unknown>): Service {
   return {
     id: String(row.id),
     nombre: String(row.nombre),
-    categoria: String(row.categoria),
+    categoria: String(row.categoria ?? ''),
+    category_id: row.category_id ? String(row.category_id) : undefined,
+    id_qb: row.id_qb != null ? Number(row.id_qb) : undefined,
     descripcion: String(row.descripcion ?? ''),
     codigo: row.codigo ? String(row.codigo) : undefined,
     tarifa_base: row.tarifa_base != null ? Number(row.tarifa_base) : undefined,
@@ -129,7 +131,9 @@ export function serviceToRow(s: Service): Record<string, unknown> {
   return {
     id: s.id,
     nombre: s.nombre,
-    categoria: s.categoria,
+    categoria: s.categoria ?? '',
+    category_id: s.category_id ?? null,
+    id_qb: s.id_qb ?? null,
     descripcion: s.descripcion,
     codigo: s.codigo ?? null,
     tarifa_base: s.tarifa_base ?? null,
