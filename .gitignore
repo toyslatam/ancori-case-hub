@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Archivos locales con secretos (nunca subir a GitHub)
+SECRETS.md
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
