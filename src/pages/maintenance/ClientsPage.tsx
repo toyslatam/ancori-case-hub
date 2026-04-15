@@ -13,13 +13,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableCombo, type ComboOption } from '@/components/ui/searchable-combo';
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -93,6 +87,18 @@ export default function ClientsPage() {
   const [advOpen, setAdvOpen] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
+  const activoOptions: ComboOption[] = useMemo(
+    () => [
+      { value: FILTER_ALL, label: 'Todos' },
+      { value: 'activo', label: 'Activo' },
+      { value: 'inactivo', label: 'Inactivo' },
+    ],
+    [],
+  );
+  const clientOptions = useMemo<ComboOption[]>(
+    () => [{ value: FILTER_ALL, label: 'Todos' }, ...clients.map(cl => ({ value: cl.id, label: cl.nombre }))],
+    [clients],
+  );
 
   const filtered = useMemo(() => {
     return clients.filter(c => {
@@ -316,21 +322,18 @@ export default function ClientsPage() {
                   Borrar
                 </Button>
               </div>
-              <Select
+              <SearchableCombo
+                options={activoOptions}
                 value={panelFilters.activo || FILTER_ALL}
-                onValueChange={v =>
-                  setPanelFilters(f => ({ ...f, activo: v === FILTER_ALL ? '' : (v as PanelFilters['activo']) }))
+                onChange={v =>
+                  setPanelFilters(f => ({
+                    ...f,
+                    activo: v === FILTER_ALL || !v ? '' : (v as PanelFilters['activo']),
+                  }))
                 }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar Activo/Inactivo" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={FILTER_ALL}>Seleccionar Activo/Inactivo</SelectItem>
-                  <SelectItem value="activo">Activo</SelectItem>
-                  <SelectItem value="inactivo">Inactivo</SelectItem>
-                </SelectContent>
-              </Select>
+                placeholder="Seleccionar activo/inactivo"
+                emptyLabel="Sin resultados"
+              />
             </div>
 
             <div className="space-y-2">
@@ -345,22 +348,18 @@ export default function ClientsPage() {
                   Borrar
                 </Button>
               </div>
-              <Select
+              <SearchableCombo
+                options={clientOptions}
                 value={panelFilters.clienteId || FILTER_ALL}
-                onValueChange={v => setPanelFilters(f => ({ ...f, clienteId: v === FILTER_ALL ? '' : v }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar Cliente" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={FILTER_ALL}>Seleccionar Cliente</SelectItem>
-                  {clients.map(cl => (
-                    <SelectItem key={cl.id} value={cl.id}>
-                      {cl.nombre}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                onChange={v =>
+                  setPanelFilters(f => ({
+                    ...f,
+                    clienteId: v === FILTER_ALL || !v ? '' : v,
+                  }))
+                }
+                placeholder="Seleccionar cliente"
+                emptyLabel="Sin clientes"
+              />
             </div>
 
             <div className="space-y-2">
