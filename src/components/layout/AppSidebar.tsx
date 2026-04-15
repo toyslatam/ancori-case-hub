@@ -78,8 +78,11 @@ export function AppSidebar() {
   const location = useLocation();
   const isMaintActive = maintItems.some(i => location.pathname === i.url);
   const isUtilActive = utilItems.some(i => location.pathname === i.url);
-  const { user, signOut } = useAuth();
+  const { user, session, signOut } = useAuth();
   const pendingConflicts = usePendingConflicts();
+  const fallbackName = session?.user?.email?.split('@')[0] ?? 'Usuario';
+  const displayName = user?.nombre?.trim() || fallbackName;
+  const displayInitials = user?.initials || displayName.slice(0, 1).toUpperCase() || 'U';
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border bg-sidebar">
@@ -275,12 +278,12 @@ export function AppSidebar() {
           {/* Avatar + nombre usuario */}
           <div className={cn('flex items-center gap-2 min-w-0', collapsed && 'flex-col')}>
             <div className="flex-shrink-0 h-8 w-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-xs font-bold ring-1 ring-orange-200">
-              {user?.initials ?? '?'}
+              {displayInitials}
             </div>
-            {!collapsed && user && (
+            {!collapsed && (
               <div className="min-w-0">
                 <p className="text-xs font-semibold text-sidebar-foreground truncate leading-tight">
-                  {user.nombre.split(' ')[0]}
+                  {displayName.split(' ')[0]}
                 </p>
                 {user.puesto && (
                   <p className="text-[10px] text-muted-foreground truncate leading-tight">{user.puesto}</p>

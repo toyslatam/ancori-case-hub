@@ -82,25 +82,62 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [qbItems, setQbItems] = useState<QBItem[]>(() => (useRemote ? [] : mockQBItems));
   const [directores, setDirectores] = useState<Director[]>(() => (useRemote ? [] : mockDirectores));
 
+  const CACHE_KEY = 'ancori_app_cache_v1';
+  const applyLoadedData = useCallback((data: Awaited<ReturnType<typeof db.loadAllFromSupabase>>) => {
+    setClients(data.clients);
+    setSocieties(data.societies);
+    setServices(data.services);
+    setServiceItems(data.serviceItems);
+    setEtapas(data.etapas);
+    setUsuarios(data.usuarios);
+    setInvoiceTerms(data.invoiceTerms);
+    setCategories(data.categories);
+    setQbItems(data.qbItems);
+    setDirectores(data.directores);
+    setCases(data.cases);
+    setAllInvoices(data.allInvoices);
+  }, []);
+
   useEffect(() => {
     if (!useRemote || !sb) return;
     let cancelled = false;
     (async () => {
+      // 1) Cache local para evitar pantalla vacía al refrescar
       try {
-        const data = await db.loadAllFromSupabase(sb);
+        const raw = localStorage.getItem(CACHE_KEY);
+        if (raw) {
+          const cached = JSON.parse(raw) as Awaited<ReturnType<typeof db.loadAllFromSupabase>>;
+          if (!cancelled) applyLoadedData(cached);
+        }
+      } catch {
+        // ignore cache parsing errors
+      }
+
+      try {
+        // 2) Reintento corto para mitigar fallos intermitentes de red/session
+        let data: Awaited<ReturnType<typeof db.loadAllFromSupabase>> | null = null;
+        let lastError: unknown = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            data = await db.loadAllFromSupabase(sb);
+            break;
+          } catch (e) {
+            lastError = e;
+            await new Promise(resolve => setTimeout(resolve, 400 * (attempt + 1)));
+          }
+        }
+        if (!data) throw (lastError ?? new Error('No se pudo cargar desde Supabase'));
+
         if (cancelled) return;
-        setClients(data.clients);
-        setSocieties(data.societies);
-        setServices(data.services);
-        setServiceItems(data.serviceItems);
-        setEtapas(data.etapas);
-        setUsuarios(data.usuarios);
-        setInvoiceTerms(data.invoiceTerms);
-        setCategories(data.categories);
-        setQbItems(data.qbItems);
-        setDirectores(data.directores);
-        setCases(data.cases);
-        setAllInvoices(data.allInvoices);
+        applyLoadedData(data);
+
+        // 3) Guardar cache de último estado bueno
+        try {
+          localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+        } catch {
+          // ignore storage write errors
+        }
+
         if (data.loadWarnings.length) {
           toast.warning(
             `Datos sincronizados con Supabase. Algunas tablas no cargaron (revisa SQL/políticas): ${data.loadWarnings.slice(0, 3).join(' · ')}${data.loadWarnings.length > 3 ? '…' : ''}`,
@@ -109,24 +146,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       } catch (e) {
         console.error(e);
-        toast.error('No se pudo cargar desde Supabase; usando datos locales.');
-        setClients(mockClients);
-        setSocieties(mockSocieties);
-        setServices(mockServices);
-        setServiceItems(mockServiceItems);
-        setEtapas(mockEtapas);
-        setUsuarios(mockUsuarios);
-        setInvoiceTerms(mockInvoiceTerms);
-        setCategories(mockCategories);
-        setQbItems(mockQBItems);
-        setDirectores(mockDirectores);
-        setCases(mockCases);
+        // Si falla remoto, mantenemos cache (si existe) para evitar "pantalla en blanco".
+        // Solo si no hay cache visible, usamos mock como último recurso.
+        const hasVisibleData =
+          cases.length || clients.length || societies.length || services.length || serviceItems.length;
+        if (!hasVisibleData) {
+          setClients(mockClients);
+          setSocieties(mockSocieties);
+          setServices(mockServices);
+          setServiceItems(mockServiceItems);
+          setEtapas(mockEtapas);
+          setUsuarios(mockUsuarios);
+          setInvoiceTerms(mockInvoiceTerms);
+          setCategories(mockCategories);
+          setQbItems(mockQBItems);
+          setDirectores(mockDirectores);
+          setCases(mockCases);
+        }
+        toast.error('No se pudo refrescar desde Supabase. Mostrando datos locales/cache.');
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [useRemote, sb]);
+  }, [useRemote, sb, applyLoadedData]);
 
   const addCase = useCallback((c: Case) => {
     setCases(prev => [c, ...prev]);
