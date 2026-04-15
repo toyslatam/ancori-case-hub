@@ -56,32 +56,29 @@ export default function FacturasPage() {
   const [selectedCase, setSelectedCase] = useState<Case | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<RichInvoice | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [sendingId, setSendingId] = useState<string | null>(null);
 
   // Facturas directamente de Supabase (independiente del nested en cases)
   const [dbInvoices, setDbInvoices] = useState<RichInvoice[]>([]);
 
   const loadInvoices = async () => {
+    setLoading(true);
+    setLoadError('');
+
     const sb = getSupabase();
     if (!sb) {
-      const local: RichInvoice[] = cases.flatMap(c =>
-        (c.invoices ?? []).map(inv => ({
-          ...inv,
-          case: c,
-          _clientName: getClientName(c.client_id),
-          _societyName: getSocietyName(c.society_id),
-          _caseNum: c.n_tarea != null ? String(c.n_tarea).padStart(7, '0') : c.numero_caso,
-        }))
-      );
-      setDbInvoices(local);
+      setDbInvoices([]);
+      setLoading(false);
       return;
     }
 
-    setLoading(true);
-
-    // Timeout de seguridad: si la query cuelga más de 15s, liberar el spinner
-    const safetyTimer = setTimeout(() => setLoading(false), 15_000);
+    // Timeout de seguridad: 10 s máximo
+    const safetyTimer = setTimeout(() => {
+      setLoading(false);
+      setLoadError('La consulta tardó demasiado. Haz clic en "Actualizar".');
+    }, 10_000);
 
     try {
       const [invRes, linesRes] = await Promise.all([
@@ -89,7 +86,11 @@ export default function FacturasPage() {
         sb.from('invoice_lines').select('*'),
       ]);
 
-      if (invRes.error) { toast.error(invRes.error.message); return; }
+      if (invRes.error) {
+        setLoadError(invRes.error.message);
+        setDbInvoices([]);
+        return;
+      }
 
       const linesByInv = new Map<string, InvoiceLine[]>();
       for (const r of (linesRes.data ?? [])) {
@@ -145,13 +146,14 @@ export default function FacturasPage() {
       });
 
       setDbInvoices(rich);
+    } catch (err) {
+      setLoadError(`Error: ${String(err)}`);
     } finally {
       clearTimeout(safetyTimer);
       setLoading(false);
     }
   };
 
-  // Cargar solo una vez al montar (no depender de `cases` para evitar bucles)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadInvoices(); }, []);
 
@@ -326,11 +328,19 @@ export default function FacturasPage() {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {loading && dbInvoices.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-sm text-gray-400">
                     <RefreshCw className="h-4 w-4 animate-spin inline mr-2" />
                     Cargando facturas...
+                  </td>
+                </tr>
+              ) : loadError && dbInvoices.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-sm text-red-400">
+                    <p className="font-medium">Error al cargar facturas</p>
+                    <p className="text-xs mt-1 text-red-300">{loadError}</p>
+                    <button onClick={loadInvoices} className="mt-3 text-xs underline text-orange-500">Reintentar</button>
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
