@@ -18,13 +18,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableCombo, type ComboOption } from '@/components/ui/searchable-combo';
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -153,6 +147,31 @@ export default function SocietiesPage() {
   const [deleteTarget, setDeleteTarget] = useState<Society | null>(null);
   const [syncing, setSyncing] = useState(false);
 
+  const clientOptions = useMemo<ComboOption[]>(
+    () => clients.map(c => ({ value: c.id, label: c.nombre })),
+    [clients],
+  );
+  const societyOptions = useMemo<ComboOption[]>(
+    () => societies.map(s => ({ value: s.id, label: s.nombre })),
+    [societies],
+  );
+  const tipoOptions = useMemo<ComboOption[]>(
+    () => TIPOS_SOCIEDAD.map(t => ({ value: t, label: t })),
+    [],
+  );
+  const directorOptions = useMemo<ComboOption[]>(
+    () => [
+      { value: FILTER_NONE, label: '— Sin asignar —' },
+      ...directores.map(d => ({ value: d.id, label: d.nombre })),
+    ],
+    [directores],
+  );
+  const semestreOptions: ComboOption[] = [
+    { value: FILTER_ALL, label: 'Todos' },
+    { value: '1', label: 'Semestre 1' },
+    { value: '2', label: 'Semestre 2' },
+  ];
+
   const handleSyncNames = async () => {
     if (!QBO_CRON_SECRET) { toast.error('VITE_QBO_CRON_SECRET no configurado'); return; }
     setSyncing(true);
@@ -228,7 +247,7 @@ export default function SocietiesPage() {
       nit: '',
       pago_tasa_unica: '',
       fecha_inscripcion: '',
-      cliente_id: clients[0]?.id ?? '',
+      client_id: clients[0]?.id ?? '',
     });
     setEditItem(null);
     setShowForm(true);
@@ -458,25 +477,18 @@ export default function SocietiesPage() {
                   Borrar
                 </Button>
               </div>
-              <Select
+              <SearchableCombo
+                options={[{ value: FILTER_ALL, label: 'Todos' }, ...tipoOptions]}
                 value={panelFilters.tipoSociedad || FILTER_ALL}
-                onValueChange={v =>
+                onChange={v =>
                   setPanelFilters(f => ({
                     ...f,
-                    tipoSociedad: v === FILTER_ALL ? '' : (v as TipoSociedad),
+                    tipoSociedad: v === FILTER_ALL || !v ? '' : (v as TipoSociedad),
                   }))
                 }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar Estado" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={FILTER_ALL}>Seleccionar Estado</SelectItem>
-                  {TIPOS_SOCIEDAD.map(t => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                placeholder="Seleccionar tipo"
+                emptyLabel="Sin tipos"
+              />
             </div>
 
             <div className="space-y-2">
@@ -486,20 +498,13 @@ export default function SocietiesPage() {
                   Borrar
                 </Button>
               </div>
-              <Select
+              <SearchableCombo
+                options={[{ value: FILTER_ALL, label: 'Todos' }, ...clientOptions]}
                 value={panelFilters.clienteId || FILTER_ALL}
-                onValueChange={v => setPanelFilters(f => ({ ...f, clienteId: v === FILTER_ALL ? '' : v }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar Cliente" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={FILTER_ALL}>Seleccionar Cliente</SelectItem>
-                  {clients.map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                onChange={v => setPanelFilters(f => ({ ...f, clienteId: v === FILTER_ALL || !v ? '' : v }))}
+                placeholder="Seleccionar cliente"
+                emptyLabel="Sin clientes"
+              />
             </div>
 
             <div className="space-y-2">
@@ -509,20 +514,13 @@ export default function SocietiesPage() {
                   Borrar
                 </Button>
               </div>
-              <Select
+              <SearchableCombo
+                options={[{ value: FILTER_ALL, label: 'Todas' }, ...societyOptions]}
                 value={panelFilters.societyId || FILTER_ALL}
-                onValueChange={v => setPanelFilters(f => ({ ...f, societyId: v === FILTER_ALL ? '' : v }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar Sociedad" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={FILTER_ALL}>Seleccionar Sociedad</SelectItem>
-                  {societies.map(so => (
-                    <SelectItem key={so.id} value={so.id}>{so.nombre}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                onChange={v => setPanelFilters(f => ({ ...f, societyId: v === FILTER_ALL || !v ? '' : v }))}
+                placeholder="Seleccionar sociedad"
+                emptyLabel="Sin sociedades"
+              />
             </div>
 
             <div className="space-y-2">
@@ -532,24 +530,18 @@ export default function SocietiesPage() {
                   Borrar
                 </Button>
               </div>
-              <Select
+              <SearchableCombo
+                options={semestreOptions}
                 value={panelFilters.semestre || FILTER_ALL}
-                onValueChange={v =>
+                onChange={v =>
                   setPanelFilters(f => ({
                     ...f,
-                    semestre: v === FILTER_ALL ? '' : (v as '1' | '2'),
+                    semestre: v === FILTER_ALL || !v ? '' : (v as '1' | '2'),
                   }))
                 }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Semestre" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={FILTER_ALL}>Todos</SelectItem>
-                  <SelectItem value="1">1</SelectItem>
-                  <SelectItem value="2">2</SelectItem>
-                </SelectContent>
-              </Select>
+                placeholder="Semestre"
+                emptyLabel="Sin resultados"
+              />
             </div>
 
             <div className="space-y-2">
@@ -607,17 +599,13 @@ export default function SocietiesPage() {
             </div>
             <div>
               <Label>Tipo de Sociedad *</Label>
-              <Select
+              <SearchableCombo
+                options={tipoOptions}
                 value={form.tipo_sociedad ?? 'SOCIEDADES'}
-                onValueChange={v => setForm(f => ({ ...f, tipo_sociedad: v as TipoSociedad }))}
-              >
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {TIPOS_SOCIEDAD.map(t => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                onChange={v => setForm(f => ({ ...f, tipo_sociedad: (v || 'SOCIEDADES') as TipoSociedad }))}
+                placeholder="Seleccionar tipo"
+                emptyLabel="Sin tipos"
+              />
             </div>
             <div>
               <Label>Correo</Label>
@@ -629,17 +617,13 @@ export default function SocietiesPage() {
             </div>
             <div>
               <Label>Cliente *</Label>
-              <Select
+              <SearchableCombo
+                options={clientOptions}
                 value={form.client_id || ''}
-                onValueChange={v => setForm(f => ({ ...f, client_id: v }))}
-              >
-                <SelectTrigger><SelectValue placeholder="Seleccionar cliente" /></SelectTrigger>
-                <SelectContent>
-                  {clients.map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                onChange={v => setForm(f => ({ ...f, client_id: v }))}
+                placeholder="Seleccionar cliente"
+                emptyLabel="Sin clientes"
+              />
             </div>
             <div>
               <Label>ID_QB</Label>
@@ -665,48 +649,33 @@ export default function SocietiesPage() {
             </div>
             <div>
               <Label>Presidente</Label>
-              <Select
+              <SearchableCombo
+                options={directorOptions}
                 value={form.presidente_id || FILTER_NONE}
-                onValueChange={v => setForm(f => ({ ...f, presidente_id: v === FILTER_NONE ? undefined : v }))}
-              >
-                <SelectTrigger><SelectValue placeholder="Seleccionar director" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={FILTER_NONE}>— Sin asignar —</SelectItem>
-                  {directores.map(d => (
-                    <SelectItem key={d.id} value={d.id}>{d.nombre}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                onChange={v => setForm(f => ({ ...f, presidente_id: !v || v === FILTER_NONE ? undefined : v }))}
+                placeholder="Seleccionar director"
+                emptyLabel="Sin directores"
+              />
             </div>
             <div>
               <Label>Tesorero</Label>
-              <Select
+              <SearchableCombo
+                options={directorOptions}
                 value={form.tesorero_id || FILTER_NONE}
-                onValueChange={v => setForm(f => ({ ...f, tesorero_id: v === FILTER_NONE ? undefined : v }))}
-              >
-                <SelectTrigger><SelectValue placeholder="Seleccionar director" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={FILTER_NONE}>— Sin asignar —</SelectItem>
-                  {directores.map(d => (
-                    <SelectItem key={d.id} value={d.id}>{d.nombre}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                onChange={v => setForm(f => ({ ...f, tesorero_id: !v || v === FILTER_NONE ? undefined : v }))}
+                placeholder="Seleccionar director"
+                emptyLabel="Sin directores"
+              />
             </div>
             <div>
               <Label>Secretario</Label>
-              <Select
+              <SearchableCombo
+                options={directorOptions}
                 value={form.secretario_id || FILTER_NONE}
-                onValueChange={v => setForm(f => ({ ...f, secretario_id: v === FILTER_NONE ? undefined : v }))}
-              >
-                <SelectTrigger><SelectValue placeholder="Seleccionar director" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={FILTER_NONE}>— Sin asignar —</SelectItem>
-                  {directores.map(d => (
-                    <SelectItem key={d.id} value={d.id}>{d.nombre}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                onChange={v => setForm(f => ({ ...f, secretario_id: !v || v === FILTER_NONE ? undefined : v }))}
+                placeholder="Seleccionar director"
+                emptyLabel="Sin directores"
+              />
             </div>
             <div>
               <Label>Pago Tasa Única</Label>
