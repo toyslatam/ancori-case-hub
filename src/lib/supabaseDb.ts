@@ -576,14 +576,19 @@ export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFr
   }
 
   const invoicesByCase = new Map<string, CaseInvoice[]>();
+  const allInvoices: CaseInvoice[] = [];
   for (const r of invoicesRes.error ? [] : (invoicesRes.data ?? [])) {
     const inv = r as Record<string, unknown>;
     const id = String(inv.id);
     const lines = linesByInvoice.get(id) ?? [];
     const ci = rowToInvoice(inv, lines);
-    const list = invoicesByCase.get(ci.case_id) ?? [];
-    list.push(ci);
-    invoicesByCase.set(ci.case_id, list);
+    allInvoices.push(ci);
+    // solo agrupar por caso si tiene case_id válido
+    if (ci.case_id) {
+      const list = invoicesByCase.get(ci.case_id) ?? [];
+      list.push(ci);
+      invoicesByCase.set(ci.case_id, list);
+    }
   }
 
   const cases = (casesRes.error ? [] : (casesRes.data ?? [])).map(r => {
@@ -596,7 +601,7 @@ export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFr
     });
   });
 
-  return { clients, societies, services, serviceItems, etapas, usuarios, invoiceTerms, categories, qbItems, directores, cases, loadWarnings };
+  return { clients, societies, services, serviceItems, etapas, usuarios, invoiceTerms, categories, qbItems, directores, cases, allInvoices, loadWarnings };
 }
 
 export async function insertCase(sb: SupabaseClient, c: Case) {

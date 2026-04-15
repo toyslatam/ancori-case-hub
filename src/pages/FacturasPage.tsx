@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { CaseInvoice, InvoiceLine, Case } from '@/data/mockData';
+import { CaseInvoice, Case } from '@/data/mockData';
 import { InvoiceModal } from '@/components/cases/InvoiceModal';
 import { Input } from '@/components/ui/input';
 import {
@@ -48,7 +48,7 @@ function formatDate(d?: string) {
 }
 
 export default function FacturasPage() {
-  const { cases, clients, societies, getClientName, getSocietyName, deleteInvoice } = useApp();
+  const { cases, allInvoices, getClientName, getSocietyName, deleteInvoice } = useApp();
 
   const [tab, setTab] = useState<Tab>('todas');
   const [search, setSearch] = useState('');
@@ -56,86 +56,19 @@ export default function FacturasPage() {
   const [selectedCase, setSelectedCase] = useState<Case | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<RichInvoice | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
   const [sendingId, setSendingId] = useState<string | null>(null);
 
-  // Facturas directamente de Supabase (independiente del nested en cases)
-  const [dbInvoices, setDbInvoices] = useState<RichInvoice[]>([]);
-
-  const loadInvoices = async () => {
-    setLoading(true);
-    setLoadError('');
-
-    const sb = getSupabase();
-    if (!sb) {
-      setDbInvoices([]);
-      setLoading(false);
-      return;
-    }
-
-    // Timeout de seguridad: 10 s máximo
-    const safetyTimer = setTimeout(() => {
-      setLoading(false);
-      setLoadError('La consulta tardó demasiado. Haz clic en "Actualizar".');
-    }, 10_000);
-
-    try {
-      const [invRes, linesRes] = await Promise.all([
-        sb.from('case_invoices').select('*').order('fecha_factura', { ascending: false }),
-        sb.from('invoice_lines').select('*'),
-      ]);
-
-      if (invRes.error) {
-        setLoadError(invRes.error.message);
-        setDbInvoices([]);
-        return;
-      }
-
-      const linesByInv = new Map<string, InvoiceLine[]>();
-      for (const r of (linesRes.data ?? [])) {
-        const row = r as Record<string, unknown>;
-        const invId = String(row.invoice_id);
-        const existing = linesByInv.get(invId) ?? [];
-        existing.push({
-          id: String(row.id),
-          invoice_id: invId,
-          servicio_id: row.servicio_id ? String(row.servicio_id) : undefined,
-          qb_item_id: row.qb_item_id ? String(row.qb_item_id) : undefined,
-          descripcion: String(row.descripcion ?? ''),
-          cantidad: Number(row.cantidad ?? 1),
-          tarifa: Number(row.tarifa ?? 0),
-          importe: Number(row.cantidad ?? 1) * Number(row.tarifa ?? 0),
-          itbms: Number(row.itbms ?? 0),
-          categoria: row.categoria ? String(row.categoria) : undefined,
-        });
-        linesByInv.set(invId, existing);
-      }
-
-      const rich: RichInvoice[] = (invRes.data ?? []).map(r => {
-        const row = r as Record<string, unknown>;
-        const caseId = row.case_id ? String(row.case_id) : undefined;
-        const matchedCase = caseId ? cases.find(c => c.id === caseId) : undefined;
-        const clientId = row.client_id ? String(row.client_id) : matchedCase?.client_id;
-        const societyId = row.society_id ? String(row.society_id) : matchedCase?.society_id;
-        const id = String(row.id);
-
+  // Facturas enriquecidas — derivadas del AppContext (ya cargadas, sin query extra)
+  const dbInvoices = useMemo<RichInvoice[]>(() => {
+    return allInvoices
+      .slice()
+      .sort((a, b) => (b.fecha_factura ?? '').localeCompare(a.fecha_factura ?? ''))
+      .map(inv => {
+        const matchedCase = inv.case_id ? cases.find(c => c.id === inv.case_id) : undefined;
+        const clientId = inv.client_id ?? matchedCase?.client_id;
+        const societyId = inv.society_id ?? matchedCase?.society_id;
         return {
-          id,
-          case_id: caseId ?? '',
-          client_id: clientId,
-          society_id: societyId,
-          term_id: row.term_id ? String(row.term_id) : undefined,
-          fecha_factura: String(row.fecha_factura ?? ''),
-          fecha_vencimiento: String(row.fecha_vencimiento ?? ''),
-          subtotal: Number(row.subtotal ?? 0),
-          impuesto: Number(row.impuesto ?? 0),
-          total: Number(row.total ?? 0),
-          estado: (row.estado as CaseInvoice['estado']) ?? 'pendiente',
-          qb_invoice_id: row.qb_invoice_id ? String(row.qb_invoice_id) : undefined,
-          numero_factura: row.numero_factura ? String(row.numero_factura) : undefined,
-          nota_cliente: row.nota_cliente ? String(row.nota_cliente) : undefined,
-          lines: linesByInv.get(id) ?? [],
+          ...inv,
           case: matchedCase,
           _clientName: getClientName(clientId),
           _societyName: getSocietyName(societyId),
@@ -144,18 +77,14 @@ export default function FacturasPage() {
             : undefined,
         };
       });
+  }, [allInvoices, cases, getClientName, getSocietyName]);
 
-      setDbInvoices(rich);
-    } catch (err) {
-      setLoadError(`Error: ${String(err)}`);
-    } finally {
-      clearTimeout(safetyTimer);
-      setLoading(false);
-    }
+  // Para el botón "Actualizar" — recarga la página completa
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = () => {
+    setRefreshing(true);
+    window.location.reload();
   };
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { loadInvoices(); }, []);
 
   const counts = useMemo(() => ({
     todas:     dbInvoices.length,
@@ -253,11 +182,11 @@ export default function FacturasPage() {
           </p>
         </div>
         <button
-          onClick={loadInvoices}
-          disabled={loading}
+          onClick={handleRefresh}
+          disabled={refreshing}
           className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
         >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
           Actualizar
         </button>
       </div>
@@ -328,22 +257,7 @@ export default function FacturasPage() {
               </tr>
             </thead>
             <tbody>
-              {loading && dbInvoices.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-12 text-center text-sm text-gray-400">
-                    <RefreshCw className="h-4 w-4 animate-spin inline mr-2" />
-                    Cargando facturas...
-                  </td>
-                </tr>
-              ) : loadError && dbInvoices.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-12 text-center text-sm text-red-400">
-                    <p className="font-medium">Error al cargar facturas</p>
-                    <p className="text-xs mt-1 text-red-300">{loadError}</p>
-                    <button onClick={loadInvoices} className="mt-3 text-xs underline text-orange-500">Reintentar</button>
-                  </td>
-                </tr>
-              ) : filtered.length === 0 ? (
+              {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-sm text-gray-400">
                     {search ? 'Sin resultados para tu búsqueda' : 'No hay facturas en esta vista'}
@@ -442,7 +356,7 @@ export default function FacturasPage() {
         caseData={selectedCase}
         invoice={selectedInvoice}
         open={modalOpen && !!selectedCase}
-        onClose={() => { setModalOpen(false); setSelectedInvoice(null); setSelectedCase(null); loadInvoices(); }}
+        onClose={() => { setModalOpen(false); setSelectedInvoice(null); setSelectedCase(null); }}
       />
 
       {/* Delete confirm */}

@@ -15,6 +15,7 @@ import * as db from '@/lib/supabaseDb';
 
 interface AppContextType {
   cases: Case[];
+  allInvoices: CaseInvoice[];
   clients: Client[];
   societies: Society[];
   services: Service[];
@@ -69,6 +70,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const useRemote = isSupabaseConfigured();
 
   const [cases, setCases] = useState<Case[]>(() => (useRemote ? [] : mockCases));
+  const [allInvoices, setAllInvoices] = useState<CaseInvoice[]>([]);
   const [clients, setClients] = useState<Client[]>(() => (useRemote ? [] : mockClients));
   const [societies, setSocieties] = useState<Society[]>(() => (useRemote ? [] : mockSocieties));
   const [services, setServices] = useState<Service[]>(() => (useRemote ? [] : mockServices));
@@ -98,6 +100,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setQbItems(data.qbItems);
         setDirectores(data.directores);
         setCases(data.cases);
+        setAllInvoices(data.allInvoices);
         if (data.loadWarnings.length) {
           toast.warning(
             `Datos sincronizados con Supabase. Algunas tablas no cargaron (revisa SQL/políticas): ${data.loadWarnings.slice(0, 3).join(' · ')}${data.loadWarnings.length > 3 ? '…' : ''}`,
@@ -520,7 +523,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      cases, clients, societies, services, serviceItems, etapas, usuarios, invoiceTerms, categories, qbItems, directores,
+      cases, allInvoices, clients, societies, services, serviceItems, etapas, usuarios, invoiceTerms, categories, qbItems, directores,
       addCase, updateCase, addComment, addExpense, updateExpenses, saveInvoice, deleteInvoice, removeCase,
       saveClient, deleteClient, saveSociety, deleteSociety, saveService, deleteService,
       saveServiceItem, deleteServiceItem, saveEtapa, deleteEtapa, saveUsuario, deleteUsuario,
