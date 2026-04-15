@@ -285,7 +285,7 @@ export function AppSidebar() {
                 <p className="text-xs font-semibold text-sidebar-foreground truncate leading-tight">
                   {displayName.split(' ')[0]}
                 </p>
-                {user.puesto && (
+                {user?.puesto && (
                   <p className="text-[10px] text-muted-foreground truncate leading-tight">{user.puesto}</p>
                 )}
               </div>
