@@ -480,11 +480,24 @@ Deno.serve(async (req) => {
               }
             }
           } else if (rows && rows.length === 0) {
-            // Customer en QBO sin fila local: crear sociedad (mismo flujo que create/update manual en QBO).
-            const defaultClientId = Deno.env.get('QBO_WEBHOOK_DEFAULT_CLIENT_ID')?.trim();
+            // Customer en QBO sin fila local: crear sociedad.
+            // Prioridad:
+            // 1) QBO_WEBHOOK_DEFAULT_CLIENT_ID (si existe)
+            // 2) primer cliente activo (fallback automático para no perder webhooks)
+            let defaultClientId = Deno.env.get('QBO_WEBHOOK_DEFAULT_CLIENT_ID')?.trim() ?? '';
+            if (!defaultClientId) {
+              const { data: fallbackClient } = await supabase
+                .from('clients')
+                .select('id')
+                .eq('activo', true)
+                .order('created_at', { ascending: true })
+                .limit(1)
+                .maybeSingle();
+              defaultClientId = fallbackClient?.id ? String(fallbackClient.id) : '';
+            }
             if (!defaultClientId) {
               errors.push(
-                `${id}: set_QBO_WEBHOOK_DEFAULT_CLIENT_ID_uuid_de_cliente_para_importar_desde_QBO`
+                `${id}: missing_default_client_for_create (set_QBO_WEBHOOK_DEFAULT_CLIENT_ID_or_have_active_client)`
               );
               continue;
             }
