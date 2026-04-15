@@ -112,12 +112,12 @@ Deno.serve(async (req) => {
     return json(500, { error: 'missing_env' });
   }
 
-  let mode: 'from_qb' | 'to_qb' | 'both' = 'from_qb';
+  let mode: 'from_qb' | 'to_qb' | 'both' | 'sync_names' = 'from_qb';
   try {
     const t = await req.text();
     if (t.trim()) {
       const b = JSON.parse(t) as { mode?: string };
-      if (b.mode === 'to_qb' || b.mode === 'both' || b.mode === 'from_qb') mode = b.mode;
+      if (b.mode === 'to_qb' || b.mode === 'both' || b.mode === 'from_qb' || b.mode === 'sync_names') mode = b.mode;
     }
   } catch {
     return json(400, { error: 'invalid_json_body' });
@@ -241,6 +241,66 @@ Deno.serve(async (req) => {
       id_qb_repaired: idQbRepaired,
       conflicts_detected: conflictsDetected,
     };
+  }
+
+  // ── sync_names: actualiza nombre/razon_social en BD desde QB para sociedades ya vinculadas ──
+  if (mode === 'sync_names') {
+    let customers: QboCustomer[];
+    try {
+      customers = await qboQueryAllCustomers(realmId, accessToken);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return json(502, { error: 'qbo_fetch_customers', detail: msg });
+    }
+
+    const byId = new Map<string, QboCustomer>();
+    for (const c of customers) {
+      if (c.Id) byId.set(String(c.Id), c);
+    }
+
+    const { data: societies, error: socErr } = await supabase
+      .from('societies')
+      .select('id, nombre, razon_social, quickbooks_customer_id')
+      .not('quickbooks_customer_id', 'is', null);
+
+    if (socErr) return json(500, { error: 'db_societies', detail: socErr.message });
+
+    let nameUpdated = 0;
+    const changes: { id: string; nombre_anterior: string; nombre_nuevo: string }[] = [];
+
+    for (const s of (societies ?? []) as SocietyRow[]) {
+      const qbId = s.quickbooks_customer_id?.trim();
+      if (!qbId) continue;
+      const cust = byId.get(qbId);
+      if (!cust) continue;
+
+      const newNombre = (cust.DisplayName ?? '').trim();
+      const newRazon  = (cust.CompanyName ?? cust.DisplayName ?? '').trim();
+      if (!newNombre) continue;
+
+      const nameChanged  = newNombre && newNombre !== s.nombre;
+      const razonChanged = newRazon  && newRazon  !== s.razon_social;
+      if (!nameChanged && !razonChanged) continue;
+
+      const patch: Record<string, string> = {};
+      if (nameChanged)  patch.nombre       = newNombre;
+      if (razonChanged) patch.razon_social  = newRazon;
+
+      const { error: upErr } = await supabase.from('societies').update(patch).eq('id', s.id);
+      if (!upErr) {
+        nameUpdated++;
+        changes.push({ id: s.id, nombre_anterior: s.nombre, nombre_nuevo: newNombre });
+      }
+    }
+
+    return json(200, {
+      ok: true,
+      mode: 'sync_names',
+      realm_id: realmId,
+      societies_checked: (societies ?? []).length,
+      names_updated: nameUpdated,
+      changes: changes.slice(0, 100),
+    });
   }
 
   if (mode === 'to_qb' || mode === 'both') {

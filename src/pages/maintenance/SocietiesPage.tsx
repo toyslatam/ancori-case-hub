@@ -34,9 +34,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, Trash2, Search, Filter } from 'lucide-react';
+import { Plus, Trash2, Search, Filter, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+
+const SUPABASE_URL    = import.meta.env.VITE_SUPABASE_URL as string;
+const QBO_CRON_SECRET = import.meta.env.VITE_QBO_CRON_SECRET as string;
 
 const FILTER_ALL = '__all__';
 const FILTER_NONE = '__none__';
@@ -148,6 +151,40 @@ export default function SocietiesPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<Partial<Society>>({});
   const [deleteTarget, setDeleteTarget] = useState<Society | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSyncNames = async () => {
+    if (!QBO_CRON_SECRET) { toast.error('VITE_QBO_CRON_SECRET no configurado'); return; }
+    setSyncing(true);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/qbo-sync-societies`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-qbo-cron-secret': QBO_CRON_SECRET },
+        body: JSON.stringify({ mode: 'sync_names' }),
+      });
+      const data = await res.json() as { ok?: boolean; names_updated?: number; changes?: { nombre_anterior: string; nombre_nuevo: string }[]; error?: string; detail?: string };
+      if (!res.ok || !data.ok) {
+        toast.error(`Error: ${data.detail ?? data.error ?? 'Sin detalle'}`);
+        return;
+      }
+      if (data.names_updated === 0) {
+        toast.success('Todo sincronizado — no hubo cambios de nombre');
+      } else {
+        toast.success(`${data.names_updated} sociedad(es) actualizadas desde QB`);
+        if (data.changes?.length) {
+          data.changes.slice(0, 3).forEach(c =>
+            toast.info(`"${c.nombre_anterior}" → "${c.nombre_nuevo}"`, { duration: 6000 })
+          );
+        }
+        // Recargar la página para mostrar los nuevos nombres
+        window.location.reload();
+      }
+    } catch (err) {
+      toast.error(`Error de red: ${String(err)}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     return societies.filter(s => {
@@ -292,6 +329,15 @@ export default function SocietiesPage() {
               className="pl-9 h-11 rounded-lg bg-card border-border"
             />
           </div>
+          <Button
+            variant="outline"
+            onClick={handleSyncNames}
+            disabled={syncing}
+            className="gap-1.5 shrink-0 w-full sm:w-auto border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing ? 'Sincronizando...' : 'Sincronizar nombres QB'}
+          </Button>
           <Button onClick={openNew} className="gap-1 shrink-0 w-full sm:w-auto">
             <Plus className="h-4 w-4" /> Nueva Sociedad
           </Button>
