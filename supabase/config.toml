@@ -43,3 +43,11 @@ verify_jwt = false
 # Verificación PEP/AML vía AgileCheck.
 [functions.agilecheck-verify]
 verify_jwt = false
+
+# Crear factura en QBO desde la app (secreto compartido).
+[functions.qbo-create-invoice]
+verify_jwt = false
+
+# Descargar PDF de factura QBO → Storage.
+[functions.qbo-invoice-pdf-sync]
+verify_jwt = false

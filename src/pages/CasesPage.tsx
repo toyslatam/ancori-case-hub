@@ -160,7 +160,12 @@ export default function CasesPage() {
       />
       <CommentsDrawer caseData={currentCommentsCase} open={!!commentsCase} onClose={() => setCommentsCase(null)} />
       <ExpensesModal caseData={currentExpensesCase} open={!!expensesCase} onClose={() => setExpensesCase(null)} />
-      <InvoiceModal caseData={invoiceCase} open={!!invoiceCase} onClose={() => setInvoiceCase(null)} />
+      <InvoiceModal
+        key={invoiceCase?.id ?? 'closed'}
+        caseData={invoiceCase}
+        open={!!invoiceCase}
+        onClose={() => setInvoiceCase(null)}
+      />
       <FiltersModal open={showFilters} onClose={() => setShowFilters(false)} onApply={setFilters} />
     </div>
   );

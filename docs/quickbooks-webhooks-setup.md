@@ -7,7 +7,7 @@ Este documento aclara **qué hace cada canal** y cómo configurar Intuit y Supab
 | Dirección | Mecanismo en este proyecto | Para qué sirve |
 |-----------|----------------------------|----------------|
 | **App → QuickBooks** | Edge Function `qbo-society-push` llamada al **guardar o eliminar** una sociedad en la app | Alta, edición y “baja” lógica (Customer **desactivado** en QBO al borrar en la app). |
-| **QuickBooks → App** | Edge Function `qbo-webhook` (notificaciones de Intuit) | **Customer:** GET Customer → `public.societies`. **Item:** GET Item → solo si `Type === "Category"` → `public.categories`. Ver [quickbooks-item-category-webhook.md](./quickbooks-item-category-webhook.md). |
+| **QuickBooks → App** | Edge Function `qbo-webhook` (notificaciones de Intuit) | **Customer:** GET Customer → `public.societies`. **Item:** GET Item → solo si `Type === "Category"` → `public.categories`. **Invoice:** GET Invoice → actualiza `case_invoices` por `qb_invoice_id` o registra en `qbo_invoice_unmatched`. Ver [quickbooks-item-category-webhook.md](./quickbooks-item-category-webhook.md). |
 
 El **webhook de Intuit no sustituye** el push desde la app: Intuit notifica cambios **originados en QBO**, no intercepta lo que hace tu frontend. Por eso las altas/edits/bajas desde la plataforma usan `qbo-society-push`.
 
@@ -58,6 +58,7 @@ En el portal de la app Intuit, en la sección de **Webhooks**, suscribe:
 
 - **Customer** — para `public.societies` (crear, actualizar, borrar/anular según permita el portal).
 - **Item** — para sincronizar **categorías** en `public.categories` (la función filtra por `Type: Category` tras el GET a la API; el resto de items se ignoran).
+- **Invoice** — para sincronizar facturas enviadas desde la app (`qb_invoice_id`) con cambios en QBO (totales, fechas, anulación). Si el Id de factura no existe en `case_invoices`, se guarda en `qbo_invoice_unmatched`.
 
 Detalle del flujo Item → categoría: [quickbooks-item-category-webhook.md](./quickbooks-item-category-webhook.md).
 

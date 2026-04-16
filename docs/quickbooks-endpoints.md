@@ -157,7 +157,37 @@ curl -sS -X POST "https://<REF>.supabase.co/functions/v1/qbo-society-push" \
 
 ---
 
-## 7. `qbo-webhook` — Notificaciones Intuit → App (POST)
+## 7. `qbo-create-invoice` — Crear factura en QBO desde Supabase (POST)
+
+Crea un **Invoice** en QuickBooks a partir de `case_invoices` + `invoice_lines`, y actualiza la fila con `qb_invoice_id`, `estado = enviada`, totales QBO y trazabilidad. Si falla la validación o la API de QBO, persiste `estado = error` y `error_detalle`.
+
+| | |
+|--|--|
+| **Método** | `POST` |
+| **Headers** | `Content-Type: application/json`, `x-ancori-secret: <FUNCTION_SECRET>` (mismo valor que en la app `VITE_FUNCTION_SECRET`) |
+| **Body** | `{ "invoice_id": "<uuid>" }` |
+
+**Respuesta `200` (éxito):** `ok`, `qb_invoice_id`, `doc_number`, `txn_date`, `due_date`, `total_amt`, `balance`.
+
+**Errores frecuentes:** `422` (`no_qb_customer`, `no_qb_item_line`, `no_lines`), `502` (`qbo_api_error`), `503` (`qbo_token`). Si `persisted: true`, el estado de error ya está guardado en `case_invoices`.
+
+---
+
+## 8. `qbo-invoice-pdf-sync` — PDF de factura QBO → Storage (POST)
+
+Descarga el PDF desde QBO (`GET .../invoice/{id}/pdf`), lo sube al bucket **`invoices`** y actualiza `pdf_path`, `pdf_status`, `pdf_synced_at`. Si el PDF ya existe y está `ok`, puede devolver solo una URL firmada.
+
+| | |
+|--|--|
+| **Método** | `POST` |
+| **Headers** | `Content-Type: application/json`, `x-ancori-secret: <FUNCTION_SECRET>` |
+| **Body** | `{ "invoice_id": "<uuid>", "force": false }` — `force` vuelve a descargar aunque ya exista PDF OK. |
+
+**Respuesta `200`:** `ok`, `path`, `signed_url` (si Supabase pudo firmar).
+
+---
+
+## 9. `qbo-webhook` — Notificaciones Intuit → App (POST)
 
 La invoca **Intuit** con el cuerpo JSON del evento. La función comprueba la firma con `INTUIT_WEBHOOK_VERIFIER_TOKEN` (cabecera `intuit-signature`, HMAC-SHA256 del cuerpo en bruto).
 
@@ -172,6 +202,7 @@ La invoca **Intuit** con el cuerpo JSON del evento. La función comprueba la fir
 |----------------------|----------------|
 | **Customer** | GET `/customer/{id}` → upsert en `societies` (ver documentación de sociedades). |
 | **Item** | GET `/item/{id}` → solo si en JSON `Item.Type === "Category"` → insert/update en `public.categories` (`nombre`, `id_qb`, `activo`). Otros tipos de Item generan `skip_item_not_category` en `processed`. Delete/void → `activo: false` en la categoría con ese `id_qb`. |
+| **Invoice** | GET `/invoice/{id}` (create/update) → actualiza `case_invoices` por `qb_invoice_id` (`numero_factura`, fechas, `qb_total`, `qb_balance`, `qb_last_sync_at`). Delete/void → `estado = anulada`. Si no hay fila local con ese `qb_invoice_id`, se inserta en `qbo_invoice_unmatched`. |
 
 Equivale al flujo **webhook → token OAuth ya guardado → GET API → filtrar `Type: Category` → guardar** (como en Power Automate). Detalle: [quickbooks-item-category-webhook.md](./quickbooks-item-category-webhook.md).
 
@@ -193,10 +224,11 @@ Respuesta típica: `{ "ok": true, "processed": [...], "errors": [...] }`.
 | `INTUIT_WEBHOOK_VERIFIER_TOKEN` | Validación de firma en `qbo-webhook` |
 | `QBO_WEBHOOK_DEFAULT_CLIENT_ID` | UUID de `clients`: cliente por defecto al **crear** `societies` desde Customer nuevo en QBO |
 | `QBO_SOCIETY_PUSH_SECRET` | (Opcional) Auth para `qbo-society-push` vía cabecera dedicada |
+| `FUNCTION_SECRET` | Compartido con la app (`VITE_FUNCTION_SECRET`) para `qbo-create-invoice` y `qbo-invoice-pdf-sync` |
 
 `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` suelen inyectarse en el entorno hosted.
 
-En la app (Vite), para llamar a `qbo-society-push` desde el navegador: `VITE_QBO_SOCIETY_PUSH_SECRET` (ver advertencia de seguridad en [quickbooks-webhooks-setup.md](./quickbooks-webhooks-setup.md)).
+En la app (Vite), para llamar a `qbo-society-push` desde el navegador: `VITE_QBO_SOCIETY_PUSH_SECRET` (ver advertencia de seguridad en [quickbooks-webhooks-setup.md](./quickbooks-webhooks-setup.md)). Para facturas/PDF, la app usa `VITE_FUNCTION_SECRET` alineado con `FUNCTION_SECRET` en Supabase.
 
 ---
 
@@ -206,7 +238,7 @@ En la app (Vite), para llamar a `qbo-society-push` desde el navegador: `VITE_QBO
 npm run deploy:qbo-functions
 ```
 
-Incluye `qbo-sync-societies`, `qbo-webhook` y `qbo-society-push` junto al resto de funciones QBO.
+Incluye `qbo-sync-societies`, `qbo-webhook`, `qbo-society-push`, `qbo-create-invoice`, `qbo-invoice-pdf-sync` y el resto de funciones QBO del script.
 
 ---
 

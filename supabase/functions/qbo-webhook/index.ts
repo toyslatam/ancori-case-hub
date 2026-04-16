@@ -2,6 +2,7 @@
  * Webhook de Intuit (QuickBooks Online) → sincroniza hacia la app:
  * - **Customer** → public.societies
  * - **Item** con Type **Category** → public.categories (resto de tipos de Item se ignoran)
+ * - **Invoice** → public.case_invoices por `qb_invoice_id` (o `qbo_invoice_unmatched` si no hay fila local)
  *
  * POST: cuerpo JSON firmado; cabecera intuit-signature = base64(HMAC-SHA256(verifierToken, rawBody))
  *
@@ -26,6 +27,7 @@ import {
   type QboCustomerFull,
 } from '../_shared/qbo-customers.ts';
 import { qboGetItem } from '../_shared/qbo-items.ts';
+import { qboGetInvoice } from '../_shared/qbo-invoices.ts';
 import { extractQboCustomFields } from '../_shared/qbo-custom-fields.ts';
 import {
   compareFields,
@@ -148,14 +150,14 @@ function normalizeNotifications(payload: unknown): QboDataChangeNotification[] {
   return [];
 }
 
-/** GET en QBO (Customer/Item) solo en create/update/merge; delete/void va solo a Supabase. */
+/** GET en QBO (Customer/Item/Invoice) solo en create/update/merge; delete/void va solo a Supabase. */
 function notificationsNeedQboAccessToken(list: QboDataChangeNotification[]): boolean {
   for (const n of list) {
     for (const ent of n.dataChangeEvent?.entities ?? []) {
       const entityName = (ent.name ?? '').toLowerCase();
       const op = (ent.operation ?? '').toLowerCase();
       if (op === 'delete' || op === 'void') continue;
-      if (entityName === 'item' || entityName === 'customer') return true;
+      if (entityName === 'item' || entityName === 'customer' || entityName === 'invoice') return true;
     }
   }
   return false;
@@ -194,6 +196,91 @@ function mapCustomerToSocietyFields(c: QboCustomerFull): {
     correo: email,
     telefono,
   };
+}
+
+async function processInvoiceFromWebhook(
+  supabase: SupabaseClient,
+  realmId: string,
+  accessToken: string,
+  ent: { id?: string; operation?: string },
+  processed: string[],
+  errors: string[]
+): Promise<void> {
+  const id = ent.id;
+  const op = (ent.operation ?? '').toLowerCase();
+  if (!id) return;
+  const idStr = String(id);
+
+  try {
+    if (op === 'delete' || op === 'void') {
+      const { data: rows } = await supabase.from('case_invoices').select('id').eq('qb_invoice_id', idStr);
+      if (!rows?.length) {
+        await supabase.from('qbo_invoice_unmatched').insert({
+          qb_invoice_id: idStr,
+          realm_id: realmId,
+          payload: { operation: op, reason: 'void_delete_no_local' },
+        });
+        processed.push(`invoice_void_no_local:${idStr}`);
+        return;
+      }
+      const { error } = await supabase.from('case_invoices').update({
+        estado: 'anulada',
+        qb_last_sync_at: new Date().toISOString(),
+        qb_balance: 0,
+        qb_total: 0,
+      }).eq('qb_invoice_id', idStr);
+      if (error) errors.push(`invoice:${idStr}: ${error.message}`);
+      else processed.push(`invoice_void:${idStr}`);
+      return;
+    }
+
+    if (op === 'create' || op === 'update' || op === 'merge' || op === '') {
+      const q = await qboGetInvoice(realmId, accessToken, idStr);
+      const qbId = String(q.Id ?? '');
+      const docNumber = String(q.DocNumber ?? '');
+      const txnDate = String(q.TxnDate ?? '').slice(0, 10);
+      const dueDate = String(q.DueDate ?? '').slice(0, 10);
+      const qbTotal = Number(q.TotalAmt ?? 0);
+      const qbBalance = Number(q.Balance ?? 0);
+
+      const { data: rows } = await supabase
+        .from('case_invoices')
+        .select('id, estado')
+        .eq('qb_invoice_id', qbId)
+        .limit(2);
+
+      if (rows && rows.length === 1) {
+        const row0 = rows[0] as { id: string; estado: string };
+        const patch: Record<string, unknown> = {
+          numero_factura: docNumber,
+          fecha_factura: txnDate,
+          fecha_vencimiento: dueDate,
+          qb_total: qbTotal,
+          qb_balance: qbBalance,
+          qb_last_sync_at: new Date().toISOString(),
+        };
+        if (row0.estado === 'borrador' || row0.estado === 'pendiente') {
+          patch.estado = 'enviada';
+        }
+        const { error } = await supabase.from('case_invoices').update(patch).eq('id', row0.id);
+        if (error) errors.push(`invoice:${idStr}: ${error.message}`);
+        else processed.push(`invoice_sync:${idStr}`);
+      } else if (!rows || rows.length === 0) {
+        await supabase.from('qbo_invoice_unmatched').insert({
+          qb_invoice_id: qbId,
+          doc_number: docNumber || null,
+          realm_id: realmId,
+          payload: { TotalAmt: qbTotal, Balance: qbBalance, TxnDate: txnDate },
+        });
+        processed.push(`invoice_unmatched:${idStr}`);
+      } else {
+        errors.push(`invoice:${idStr}: multiple_local_invoice_rows`);
+      }
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    errors.push(`invoice:${idStr}: ${msg.slice(0, 120)}`);
+  }
 }
 
 async function processItemCategoryFromWebhook(
@@ -383,6 +470,18 @@ Deno.serve(async (req) => {
 
       if (entityName === 'item') {
         await processItemCategoryFromWebhook(
+          supabase,
+          realmId || effectiveRealm,
+          accessToken,
+          ent,
+          processed,
+          errors
+        );
+        continue;
+      }
+
+      if (entityName === 'invoice') {
+        await processInvoiceFromWebhook(
           supabase,
           realmId || effectiveRealm,
           accessToken,

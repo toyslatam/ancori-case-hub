@@ -217,7 +217,8 @@ export interface Director {
 
 export interface CaseInvoice {
   id: string;
-  case_id: string;
+  /** Vacío o ausente si la factura no está vinculada a un caso. */
+  case_id?: string;
   client_id?: string;
   society_id?: string;
   term_id?: string;
@@ -230,6 +231,17 @@ export interface CaseInvoice {
   qb_invoice_id?: string;
   numero_factura?: string;
   nota_cliente?: string;
+  /** Último error al enviar o sincronizar con QuickBooks. */
+  error_detalle?: string;
+  /** TotalAmt en QBO (última sync). */
+  qb_total?: number;
+  /** Balance (saldo pendiente) en QBO. */
+  qb_balance?: number;
+  qb_last_sync_at?: string;
+  pdf_path?: string;
+  pdf_url_signed_last?: string;
+  pdf_synced_at?: string;
+  pdf_status?: 'pending' | 'ok' | 'error';
   lines: InvoiceLine[];
 }
 

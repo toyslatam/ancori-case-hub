@@ -303,6 +303,8 @@ create index if not exists idx_case_expenses_case_id on public.case_expenses(cas
 create index if not exists idx_case_invoices_case_id on public.case_invoices(case_id);
 create index if not exists idx_invoice_lines_invoice_id on public.invoice_lines(invoice_id);
 
+alter table public.invoice_lines add column if not exists categoria text;
+
 -- Clientes: razón social + número correlativo (instalaciones previas sin columnas).
 alter table public.clients add column if not exists razon_social text not null default '';
 alter table public.clients add column if not exists numero integer;
@@ -440,3 +442,45 @@ comment on table public.compliance_checks is 'Verificaciones PEP/AML vía AgileC
 
 grant select, insert, update, delete on table public.compliance_checks to anon, authenticated;
 grant all on table public.compliance_checks to service_role;
+
+-- Facturas huérfanas (solo QBO / import) pueden existir sin caso vinculado.
+alter table public.case_invoices alter column case_id drop not null;
+
+-- Facturas: columnas extendidas (errores QBO, sync QB, PDF en Storage, conciliación).
+alter table public.case_invoices add column if not exists numero_factura text;
+alter table public.case_invoices add column if not exists nota_cliente text;
+alter table public.case_invoices add column if not exists error_detalle text;
+alter table public.case_invoices add column if not exists qb_total numeric(12,2);
+alter table public.case_invoices add column if not exists qb_balance numeric(12,2);
+alter table public.case_invoices add column if not exists qb_last_sync_at timestamptz;
+alter table public.case_invoices add column if not exists pdf_path text;
+alter table public.case_invoices add column if not exists pdf_url_signed_last text;
+alter table public.case_invoices add column if not exists pdf_synced_at timestamptz;
+alter table public.case_invoices add column if not exists pdf_status text
+  check (pdf_status is null or pdf_status in ('pending', 'ok', 'error'));
+
+comment on column public.case_invoices.error_detalle is 'Último error al enviar o sincronizar con QuickBooks.';
+comment on column public.case_invoices.qb_total is 'TotalAmt en QBO (última sync webhook o creación).';
+comment on column public.case_invoices.qb_balance is 'Balance en QBO (saldo pendiente).';
+
+-- Cola simple: factura en QBO sin fila local enlazada por qb_invoice_id.
+create table if not exists public.qbo_invoice_unmatched (
+  id uuid primary key default gen_random_uuid(),
+  qb_invoice_id text not null,
+  doc_number text,
+  realm_id text,
+  payload jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_qbo_invoice_unmatched_qb_id on public.qbo_invoice_unmatched(qb_invoice_id);
+
+comment on table public.qbo_invoice_unmatched is 'Eventos Invoice de QBO sin case_invoices.qb_invoice_id correspondiente.';
+
+grant select, insert, update, delete on table public.qbo_invoice_unmatched to anon, authenticated;
+grant all on table public.qbo_invoice_unmatched to service_role;
+
+-- Bucket Storage para PDFs de factura (subida vía Edge Function con service_role).
+insert into storage.buckets (id, name, public)
+values ('invoices', 'invoices', false)
+on conflict (id) do nothing;

@@ -29,7 +29,7 @@ const PIN_CLIENTE_W = 176;
 export function CasesTable({
   cases, onOpenComments, onOpenExpenses, onOpenInvoice, onEditCase, onDeleteCase,
 }: CasesTableProps) {
-  const { getClientName, getSocietyName, getServiceItemName, getUsuarioName } = useApp();
+  const { getClientName, getSocietyName, getServiceItemName, getUsuarioName, allInvoices } = useApp();
   const [sortField, setSortField] = useState<string>('n_tarea');
   const [sortDir, setSortDir]     = useState<'asc' | 'desc'>('desc');
   const [page, setPage]           = useState(0);
@@ -152,6 +152,7 @@ export function CasesTable({
               const responsable    = getUsuarioName(c.usuario_asignado_id) || c.responsable;
               const observaciones  = c.notas || c.observaciones || '';
               const commentCount   = c.comments?.length ?? 0;
+              const invoiceCount   = allInvoices.filter(i => i.case_id === c.id).length;
               const rowBg          = idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40';
 
               return (
@@ -277,9 +278,14 @@ export function CasesTable({
                     <button
                       onClick={() => onOpenInvoice(c)}
                       title="Facturas"
-                      className="h-7 w-7 inline-flex items-center justify-center rounded-lg text-gray-300 hover:text-sky-500 hover:bg-sky-50 transition-all duration-100"
+                      className="relative h-7 w-7 inline-flex items-center justify-center rounded-lg text-gray-300 hover:text-sky-500 hover:bg-sky-50 transition-all duration-100"
                     >
                       <FileText className="h-3.5 w-3.5" />
+                      {invoiceCount > 0 && (
+                        <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 px-0.5 rounded-full bg-sky-500 text-white text-[8px] font-bold leading-none flex items-center justify-center">
+                          {invoiceCount > 9 ? '9+' : invoiceCount}
+                        </span>
+                      )}
                     </button>
                   </td>
 

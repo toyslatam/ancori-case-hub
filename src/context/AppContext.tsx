@@ -32,6 +32,8 @@ interface AppContextType {
   addExpense: (caseId: string, expense: CaseExpense) => void;
   updateExpenses: (caseId: string, expenses: CaseExpense[]) => void;
   saveInvoice: (caseId: string, invoice: CaseInvoice, isEdit: boolean) => Promise<boolean>;
+  /** Actualiza una factura en `allInvoices` y en el caso anidado (p. ej. tras enviar a QB). */
+  patchInvoice: (invoiceId: string, patch: Partial<CaseInvoice>) => void;
   deleteInvoice: (caseId: string, invoiceId: string) => Promise<boolean>;
   removeCase: (id: string) => Promise<boolean>;
   saveClient: (client: Client, isEdit: boolean) => Promise<boolean>;
@@ -242,10 +244,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [sb]);
 
   const saveInvoice = useCallback(async (caseId: string, invoice: CaseInvoice, isEdit: boolean): Promise<boolean> => {
-    const { error } = isEdit
-      ? await db.updateInvoice(sb!, invoice)
-      : await db.insertInvoice(sb!, invoice);
-    if (error) { toast.error(error.message); return false; }
+    if (sb) {
+      const { error } = isEdit
+        ? await db.updateInvoice(sb, invoice)
+        : await db.insertInvoice(sb, invoice);
+      if (error) { toast.error(error.message); return false; }
+    }
+    setAllInvoices(prev => {
+      if (isEdit) return prev.map(i => (i.id === invoice.id ? invoice : i));
+      if (prev.some(i => i.id === invoice.id)) return prev.map(i => (i.id === invoice.id ? invoice : i));
+      return [...prev, invoice];
+    });
     setCases(prev => prev.map(c => {
       if (c.id !== caseId) return c;
       const invoices = isEdit
@@ -256,14 +265,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return true;
   }, [sb]);
 
+  const patchInvoice = useCallback((invoiceId: string, patch: Partial<CaseInvoice>) => {
+    setAllInvoices(prev => prev.map(i => (i.id === invoiceId ? { ...i, ...patch } : i)));
+    setCases(prev => prev.map(c => ({
+      ...c,
+      invoices: c.invoices.map(inv => (inv.id === invoiceId ? { ...inv, ...patch } : inv)),
+    })));
+  }, []);
+
   const deleteInvoice = useCallback(async (caseId: string, invoiceId: string): Promise<boolean> => {
     if (sb) {
       const { error } = await db.deleteInvoiceRow(sb, invoiceId);
       if (error) { toast.error(error.message); return false; }
     }
-    setCases(prev => prev.map(c =>
-      c.id !== caseId ? c : { ...c, invoices: c.invoices.filter(i => i.id !== invoiceId) }
-    ));
+    setAllInvoices(prev => prev.filter(i => i.id !== invoiceId));
+    setCases(prev => prev.map(c => ({
+      ...c,
+      invoices: c.invoices.filter(i => i.id !== invoiceId),
+    })));
     return true;
   }, [sb]);
 
@@ -567,7 +586,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider value={{
       cases, allInvoices, clients, societies, services, serviceItems, etapas, usuarios, invoiceTerms, categories, qbItems, directores,
-      addCase, updateCase, addComment, addExpense, updateExpenses, saveInvoice, deleteInvoice, removeCase,
+      addCase, updateCase, addComment, addExpense, updateExpenses, saveInvoice, patchInvoice, deleteInvoice, removeCase,
       saveClient, deleteClient, saveSociety, deleteSociety, saveService, deleteService,
       saveServiceItem, deleteServiceItem, saveEtapa, deleteEtapa, saveUsuario, deleteUsuario,
       saveInvoiceTerm, deleteInvoiceTerm, saveCategory, deleteCategory, saveQBItem, deleteQBItem,

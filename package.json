@@ -13,7 +13,7 @@
     "test:watch": "vitest",
     "seed:db": "node scripts/run-seed.mjs",
     "fix:sociedades-csv": "node scripts/fix-sociedades-csv.mjs",
-    "deploy:qbo-functions": "supabase functions deploy qbo-oauth-start && supabase functions deploy qbo-oauth-callback && supabase functions deploy qbo-oauth-refresh && supabase functions deploy qbo-oauth-status && supabase functions deploy qbo-sync-societies && supabase functions deploy qbo-webhook && supabase functions deploy qbo-society-push",
+    "deploy:qbo-functions": "supabase functions deploy qbo-oauth-start && supabase functions deploy qbo-oauth-callback && supabase functions deploy qbo-oauth-refresh && supabase functions deploy qbo-oauth-status && supabase functions deploy qbo-sync-societies && supabase functions deploy qbo-webhook && supabase functions deploy qbo-society-push && supabase functions deploy qbo-create-invoice && supabase functions deploy qbo-invoice-pdf-sync",
     "supabase:login": "supabase login",
     "supabase:link": "supabase link"
   },

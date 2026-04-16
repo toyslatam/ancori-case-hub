@@ -18,6 +18,8 @@ interface SearchableComboProps {
   placeholder?: string;
   emptyLabel?: string;
   className?: string;
+  /** Clases extra del panel desplegable (p. ej. ancho mínimo mayor que la celda). */
+  contentClassName?: string;
   disabled?: boolean;
 }
 
@@ -28,6 +30,7 @@ export function SearchableCombo({
   placeholder = 'Seleccionar…',
   emptyLabel = 'Sin resultados',
   className,
+  contentClassName,
   disabled = false,
 }: SearchableComboProps) {
   const [open, setOpen] = useState(false);
@@ -92,7 +95,7 @@ export function SearchableCombo({
         align="start"
         sideOffset={4}
         avoidCollisions={false}
-        className="w-[--radix-popover-trigger-width] p-0 z-[200]"
+        className={cn('p-0 z-[200] w-[--radix-popover-trigger-width]', contentClassName)}
         onOpenAutoFocus={e => {
           e.preventDefault();
           setTimeout(() => inputRef.current?.focus(), 0);

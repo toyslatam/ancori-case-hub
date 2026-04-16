@@ -356,7 +356,7 @@ function rowToInvoiceLine(row: Record<string, unknown>): InvoiceLine {
 function rowToInvoice(row: Record<string, unknown>, lines: InvoiceLine[]): CaseInvoice {
   return {
     id: String(row.id),
-    case_id: String(row.case_id),
+    case_id: row.case_id != null ? String(row.case_id) : undefined,
     client_id: row.client_id ? String(row.client_id) : undefined,
     society_id: row.society_id ? String(row.society_id) : undefined,
     term_id: row.term_id ? String(row.term_id) : undefined,
@@ -369,6 +369,14 @@ function rowToInvoice(row: Record<string, unknown>, lines: InvoiceLine[]): CaseI
     qb_invoice_id: row.qb_invoice_id ? String(row.qb_invoice_id) : undefined,
     numero_factura: row.numero_factura ? String(row.numero_factura) : undefined,
     nota_cliente: row.nota_cliente ? String(row.nota_cliente) : undefined,
+    error_detalle: row.error_detalle ? String(row.error_detalle) : undefined,
+    qb_total: row.qb_total != null ? Number(row.qb_total) : undefined,
+    qb_balance: row.qb_balance != null ? Number(row.qb_balance) : undefined,
+    qb_last_sync_at: row.qb_last_sync_at ? String(row.qb_last_sync_at) : undefined,
+    pdf_path: row.pdf_path ? String(row.pdf_path) : undefined,
+    pdf_url_signed_last: row.pdf_url_signed_last ? String(row.pdf_url_signed_last) : undefined,
+    pdf_synced_at: row.pdf_synced_at ? String(row.pdf_synced_at) : undefined,
+    pdf_status: row.pdf_status ? (row.pdf_status as CaseInvoice['pdf_status']) : undefined,
     lines,
   };
 }
@@ -784,7 +792,7 @@ export async function deleteDirectorRow(sb: SupabaseClient, id: string) {
 function invoiceToRow(inv: CaseInvoice): Record<string, unknown> {
   return {
     id: inv.id,
-    case_id: inv.case_id,
+    case_id: inv.case_id ?? null,
     client_id: inv.client_id ?? null,
     society_id: inv.society_id ?? null,
     term_id: inv.term_id ?? null,
@@ -797,6 +805,14 @@ function invoiceToRow(inv: CaseInvoice): Record<string, unknown> {
     qb_invoice_id: inv.qb_invoice_id ?? null,
     numero_factura: inv.numero_factura ?? null,
     nota_cliente: inv.nota_cliente ?? null,
+    error_detalle: inv.error_detalle ?? null,
+    qb_total: inv.qb_total ?? null,
+    qb_balance: inv.qb_balance ?? null,
+    qb_last_sync_at: inv.qb_last_sync_at ?? null,
+    pdf_path: inv.pdf_path ?? null,
+    pdf_url_signed_last: inv.pdf_url_signed_last ?? null,
+    pdf_synced_at: inv.pdf_synced_at ?? null,
+    pdf_status: inv.pdf_status ?? null,
   };
 }
 

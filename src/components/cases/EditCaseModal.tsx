@@ -58,7 +58,13 @@ export function EditCaseModal({ caseData, open, onClose, onOpenExpenses, onOpenI
   const {
     clients, societies, services, serviceItems, etapas, usuarios,
     updateCase, addComment, saveSociety, getClientName, getSocietyName,
+    allInvoices,
   } = useApp();
+
+  const invoiceCountForCase = useMemo(
+    () => (caseData ? allInvoices.filter(i => i.case_id === caseData.id).length : 0),
+    [allInvoices, caseData?.id],
+  );
 
   const [form, setForm]                     = useState<Partial<Case> & { gastos_str: string }>({ gastos_str: '' });
   const [commentText, setComment]           = useState('');
@@ -503,6 +509,11 @@ export function EditCaseModal({ caseData, open, onClose, onOpenExpenses, onOpenI
             >
               <FileText className="h-4 w-4" />
               Facturas
+              {invoiceCountForCase > 0 && (
+                <span className="ml-auto rounded-full bg-sky-100 px-1.5 text-[10px] font-bold text-sky-700">
+                  {invoiceCountForCase}
+                </span>
+              )}
             </button>
           </div>
 
