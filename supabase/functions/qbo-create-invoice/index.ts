@@ -85,6 +85,88 @@ async function queryActiveTaxCodes(
   return (qr?.TaxCode as QboTaxCodeRow[] | undefined) ?? [];
 }
 
+/** Fila mínima de TaxRate (tasa) devuelta por la query QBO. */
+interface QboTaxRateRow {
+  Id?: string;
+  Name?: string;
+  RateValue?: number | string;
+  Active?: boolean;
+}
+
+async function queryActiveTaxRates(
+  apiBase: string,
+  realmId: string,
+  accessToken: string,
+): Promise<QboTaxRateRow[]> {
+  const sql = 'SELECT * FROM TaxRate WHERE Active = true MAXRESULTS 200';
+  const url = `${apiBase}/v3/company/${realmId}/query?query=${encodeURIComponent(sql)}&minorversion=73`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+  });
+  const text = await res.text();
+  let data: Record<string, unknown> = {};
+  try {
+    data = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return [];
+  }
+  if (!res.ok) {
+    logStructured({
+      operation: 'tax_rate_query',
+      ok: false,
+      status: res.status,
+      snippet: text.slice(0, 400),
+    });
+    return [];
+  }
+  const qr = data.QueryResponse as Record<string, unknown> | undefined;
+  return (qr?.TaxRate as QboTaxRateRow[] | undefined) ?? [];
+}
+
+function parseTaxRateValue(r: QboTaxRateRow): number {
+  const raw = r.RateValue;
+  if (raw == null) return NaN;
+  const n = typeof raw === 'number' ? raw : Number(String(raw).replace(',', '.'));
+  return Number.isFinite(n) ? n : NaN;
+}
+
+/**
+ * Id de TaxRate en QBO para un % de línea (p. ej. 7 = ITBMS).
+ * Opcional: `QBO_TAX_RATE_ITBMS` cuando el % es 7 (o muy cercano).
+ */
+function resolveTaxRateIdForPercent(
+  rates: QboTaxRateRow[],
+  percent: number,
+): { ok: true; id: string } | { ok: false; message: string } {
+  const p = Number(percent);
+  const itbmsEnv = Deno.env.get('QBO_TAX_RATE_ITBMS')?.trim();
+  if (itbmsEnv && Math.abs(p - 7) < 0.01) {
+    return { ok: true, id: itbmsEnv };
+  }
+
+  const withId = rates.filter((r) => r.Id && String(r.Id).trim().length > 0);
+  const byValue = withId.find((r) => {
+    const v = parseTaxRateValue(r);
+    return Number.isFinite(v) && Math.abs(v - p) < 0.06;
+  });
+  if (byValue?.Id) return { ok: true, id: String(byValue.Id) };
+
+  const name = (r: QboTaxRateRow) => String(r.Name ?? '').toLowerCase();
+  const byName = withId.find((r) => /\bitbms\b|iva|sales\s*tax/.test(name(r)));
+  if (byName?.Id) {
+    const v = parseTaxRateValue(byName);
+    if (!Number.isFinite(v) || Math.abs(v - p) < 0.51) {
+      return { ok: true, id: String(byName.Id) };
+    }
+  }
+
+  return {
+    ok: false,
+    message:
+      `No hay un TaxRate activo en QBO para el ${p}% usado en una línea. En muchas compañías (modelo global) hace falta un TaxRate además del TaxCode en línea. Consulta en QBO o por API: SELECT * FROM TaxRate WHERE Active = true, o define el secreto QBO_TAX_RATE_ITBMS con el Id del TaxRate de ITBMS.`,
+  };
+}
+
 /**
  * Resuelve los Id de TaxCode de QBO para líneas gravadas vs exentas.
  * - Opcional: `QBO_TAX_CODE_LINE_TAXABLE` y `QBO_TAX_CODE_LINE_EXEMPT` (Ids exactos en QBO).
@@ -270,6 +352,8 @@ Deno.serve(async (req) => {
   });
 
   const qboLines: Record<string, unknown>[] = [];
+  /** Base imponible y cuota por porcentaje de ITBMS (mismo criterio que las líneas). */
+  const taxBuckets = new Map<number, { base: number; tax: number }>();
 
   for (const line of linesArr) {
     const row = line as Record<string, unknown>;
@@ -281,6 +365,11 @@ Deno.serve(async (req) => {
     const tarifa = Number(row.tarifa ?? 0);
     const importe = cantidad * tarifa;
     const itbms = Number(row.itbms ?? 0);
+    const pctKey = Number.isFinite(itbms) ? Math.round(itbms * 1e6) / 1e6 : 0;
+    const bucket = taxBuckets.get(pctKey) ?? { base: 0, tax: 0 };
+    bucket.base += importe;
+    bucket.tax += (importe * itbms) / 100;
+    taxBuckets.set(pctKey, bucket);
 
     const lineObj: Record<string, unknown> = {
       DetailType: 'SalesItemLineDetail',
@@ -302,7 +391,58 @@ Deno.serve(async (req) => {
     return json(422, { ok: false, error: 'no_lines', detail: msg, persisted: true });
   }
 
+  let totalTaxRaw = 0;
+  for (const [, b] of taxBuckets) totalTaxRaw += b.tax;
+  const totalTaxRounded = Number(totalTaxRaw.toFixed(2));
+
+  const taxLinesOut: Record<string, unknown>[] = [];
+  if (totalTaxRounded > 0) {
+    const taxRateList = await queryActiveTaxRates(apiBase, realmId, accessToken);
+    logStructured({
+      invoice_id,
+      operation: 'tax_rates',
+      ok: true,
+      qbo_tax_rate_count: taxRateList.length,
+    });
+
+    const positiveBuckets = [...taxBuckets.entries()].filter(([pct]) => pct > 0).sort((a, b) => b[0] - a[0]);
+    for (const [pct, bucket] of positiveBuckets) {
+      const rr = resolveTaxRateIdForPercent(taxRateList, pct);
+      if (!rr.ok) {
+        await persistInvoiceError(sb, invoice_id, `qbo_tax_rates: ${rr.message}`);
+        logStructured({ invoice_id, operation: 'tax_rates', ok: false, percent: pct });
+        return json(422, {
+          ok: false,
+          error: 'qbo_tax_rate_config',
+          detail: rr.message,
+          persisted: true,
+        });
+      }
+      const amt = Number(bucket.tax.toFixed(2));
+      const net = Number(bucket.base.toFixed(2));
+      taxLinesOut.push({
+        Amount: amt,
+        DetailType: 'TaxLineDetail',
+        TaxLineDetail: {
+          TaxRateRef: { value: rr.id },
+          PercentBased: true,
+          TaxPercent: pct,
+          NetAmountTaxable: net,
+        },
+      });
+    }
+  }
+
+  const taxLineSum = taxLinesOut.reduce((s, tl) => s + Number(tl.Amount ?? 0), 0);
+  const txnTaxDetail: Record<string, unknown> = {
+    TxnTaxCodeRef: { value: totalTaxRounded > 0 ? taxableId : exemptId },
+    TotalTax: taxLinesOut.length > 0 ? Number(taxLineSum.toFixed(2)) : totalTaxRounded,
+  };
+  if (taxLinesOut.length > 0) txnTaxDetail.TaxLine = taxLinesOut;
+
   const invoicePayload: Record<string, unknown> = {
+    GlobalTaxCalculation: 'TaxExcluded',
+    TxnTaxDetail: txnTaxDetail,
     Line: qboLines,
     CustomerRef: { value: qbCustomerId },
     TxnDate: inv.fecha_factura,
