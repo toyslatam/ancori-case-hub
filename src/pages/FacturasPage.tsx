@@ -11,6 +11,7 @@ import {
 import { FileText, Clock, CheckCircle, Search, Trash2, ExternalLink, RefreshCw, Send, Loader2, FileDown, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { findCaseForInvoice } from '@/lib/invoiceCaseLink';
+import { postQboCreateInvoice } from '@/lib/qboCreateInvoiceFetch';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const FUNCTION_SECRET = import.meta.env.VITE_FUNCTION_SECRET as string;
@@ -163,6 +164,7 @@ export default function FacturasPage() {
   const handleSendToQB = async (inv: RichInvoice, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!FUNCTION_SECRET) { toast.error('VITE_FUNCTION_SECRET no configurado'); return; }
+    if (!SUPABASE_URL?.trim()) { toast.error('VITE_SUPABASE_URL no configurado'); return; }
     if (!hasQbCustomer(inv, cases, clients, societies)) {
       toast.error('Configura quickbooks_customer_id en el cliente o en la sociedad antes de enviar.');
       return;
@@ -174,23 +176,7 @@ export default function FacturasPage() {
     }
     setSendingId(inv.id);
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/qbo-create-invoice`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-ancori-secret': FUNCTION_SECRET,
-        },
-        body: JSON.stringify({ invoice_id: inv.id }),
-      });
-      const data = await res.json() as {
-        ok?: boolean;
-        qb_invoice_id?: string;
-        doc_number?: string;
-        total_amt?: number;
-        balance?: number;
-        error?: string;
-        detail?: string;
-      };
+      const { res, data } = await postQboCreateInvoice(SUPABASE_URL, FUNCTION_SECRET, inv.id);
       if (!res.ok || !data.ok) {
         const errText = typeof data.detail === 'string'
           ? data.detail
@@ -210,7 +196,10 @@ export default function FacturasPage() {
         qb_last_sync_at: new Date().toISOString(),
       });
     } catch (err) {
-      toast.error(`Error de red: ${String(err)}`);
+      const msg = err instanceof Error && err.name === 'AbortError'
+        ? 'Tiempo de espera agotado al contactar QuickBooks (120 s).'
+        : `Error de red: ${String(err)}`;
+      toast.error(msg);
     } finally {
       setSendingId(null);
     }

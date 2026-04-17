@@ -14,6 +14,7 @@ import {
   classifyServiceLineType,
   resolveHonorariosAndGastosServices,
 } from '@/lib/invoiceLineProduct';
+import { postQboCreateInvoice } from '@/lib/qboCreateInvoiceFetch';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const FUNCTION_SECRET = import.meta.env.VITE_FUNCTION_SECRET as string;
@@ -367,6 +368,14 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
       const confirm = window.confirm('Algunas líneas no tienen un item de QuickBooks asignado. ¿Continuar de todas formas?');
       if (!confirm) return;
     }
+    if (!SUPABASE_URL?.trim()) {
+      toast.error('VITE_SUPABASE_URL no está configurado');
+      return;
+    }
+    if (!FUNCTION_SECRET?.trim()) {
+      toast.error('VITE_FUNCTION_SECRET no está configurado');
+      return;
+    }
 
     setSending(true);
     try {
@@ -381,20 +390,7 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
       if (!saved) return;
 
       try {
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/qbo-create-invoice`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-ancori-secret': FUNCTION_SECRET },
-          body: JSON.stringify({ invoice_id: inv.id }),
-        });
-        const data = await res.json() as {
-          ok?: boolean;
-          qb_invoice_id?: string;
-          doc_number?: string;
-          total_amt?: number;
-          balance?: number;
-          error?: string;
-          detail?: string;
-        };
+        const { res, data } = await postQboCreateInvoice(SUPABASE_URL, FUNCTION_SECRET, inv.id);
 
         if (!res.ok || !data.ok) {
           const errText = typeof data.detail === 'string'
@@ -415,7 +411,10 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
           toast.success(`¡Enviada a QuickBooks! Factura QB #${data.doc_number ?? data.qb_invoice_id}`);
         }
       } catch (e) {
-        toast.warning(`Factura guardada. Error de red al enviar a QB: ${String(e)}`);
+        const msg = e instanceof Error && e.name === 'AbortError'
+          ? 'Tiempo de espera agotado al contactar QuickBooks (120 s). Revisa la función Edge o la red.'
+          : `Factura guardada. Error al enviar a QB: ${String(e)}`;
+        toast.warning(msg);
       }
       onClose();
     } catch (e) {
