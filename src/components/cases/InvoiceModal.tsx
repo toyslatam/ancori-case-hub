@@ -339,10 +339,25 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
     if (!fechaFactura || !fechaVencimiento) { toast.error('Completa las fechas'); return; }
     if (lines.every(l => !String(l.descripcion ?? '').trim())) { toast.error('Agrega al menos una línea'); return; }
     setSaving(true);
-    const inv = buildInvoice();
-    const ok = await saveInvoice(caseData.id, inv, isEdit);
-    setSaving(false);
-    if (ok) { toast.success(isEdit ? 'Factura actualizada' : 'Factura guardada'); onClose(); }
+    try {
+      let inv: CaseInvoice;
+      try {
+        inv = buildInvoice();
+      } catch (e) {
+        toast.error(`No se pudo armar la factura: ${String(e)}`);
+        return;
+      }
+      const ok = await saveInvoice(caseData.id, inv, isEdit);
+      if (ok) {
+        toast.success(isEdit ? 'Factura actualizada' : 'Factura guardada');
+        onClose();
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error(`Error al guardar: ${String(e)}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSendToQB = async () => {
@@ -354,49 +369,60 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
     }
 
     setSending(true);
-    const inv = { ...buildInvoice(), estado: 'pendiente' as CaseInvoice['estado'] };
-    const saved = await saveInvoice(caseData.id, inv, isEdit);
-    if (!saved) { setSending(false); return; }
-
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/qbo-create-invoice`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-ancori-secret': FUNCTION_SECRET },
-        body: JSON.stringify({ invoice_id: inv.id }),
-      });
-      const data = await res.json() as {
-        ok?: boolean;
-        qb_invoice_id?: string;
-        doc_number?: string;
-        total_amt?: number;
-        balance?: number;
-        error?: string;
-        detail?: string;
-      };
-
-      if (!res.ok || !data.ok) {
-        const errText = typeof data.detail === 'string'
-          ? data.detail
-          : JSON.stringify(data.detail ?? data.error ?? res.status);
-        patchInvoice(inv.id, { estado: 'error', error_detalle: errText.slice(0, 2000) });
-        toast.warning(`Factura guardada, pero no se pudo enviar a QB: ${errText.slice(0, 200)}`);
-      } else {
-        patchInvoice(inv.id, {
-          estado: 'enviada',
-          qb_invoice_id: data.qb_invoice_id,
-          numero_factura: data.doc_number ?? inv.numero_factura,
-          error_detalle: undefined,
-          qb_total: typeof data.total_amt === 'number' ? data.total_amt : undefined,
-          qb_balance: typeof data.balance === 'number' ? data.balance : undefined,
-          qb_last_sync_at: new Date().toISOString(),
-        });
-        toast.success(`¡Enviada a QuickBooks! Factura QB #${data.doc_number ?? data.qb_invoice_id}`);
+      let inv: CaseInvoice;
+      try {
+        inv = { ...buildInvoice(), estado: 'pendiente' as CaseInvoice['estado'] };
+      } catch (e) {
+        toast.error(`No se pudo armar la factura: ${String(e)}`);
+        return;
       }
+      const saved = await saveInvoice(caseData.id, inv, isEdit);
+      if (!saved) return;
+
+      try {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/qbo-create-invoice`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-ancori-secret': FUNCTION_SECRET },
+          body: JSON.stringify({ invoice_id: inv.id }),
+        });
+        const data = await res.json() as {
+          ok?: boolean;
+          qb_invoice_id?: string;
+          doc_number?: string;
+          total_amt?: number;
+          balance?: number;
+          error?: string;
+          detail?: string;
+        };
+
+        if (!res.ok || !data.ok) {
+          const errText = typeof data.detail === 'string'
+            ? data.detail
+            : JSON.stringify(data.detail ?? data.error ?? res.status);
+          patchInvoice(inv.id, { estado: 'error', error_detalle: errText.slice(0, 2000) });
+          toast.warning(`Factura guardada, pero no se pudo enviar a QB: ${errText.slice(0, 200)}`);
+        } else {
+          patchInvoice(inv.id, {
+            estado: 'enviada',
+            qb_invoice_id: data.qb_invoice_id,
+            numero_factura: data.doc_number ?? inv.numero_factura,
+            error_detalle: undefined,
+            qb_total: typeof data.total_amt === 'number' ? data.total_amt : undefined,
+            qb_balance: typeof data.balance === 'number' ? data.balance : undefined,
+            qb_last_sync_at: new Date().toISOString(),
+          });
+          toast.success(`¡Enviada a QuickBooks! Factura QB #${data.doc_number ?? data.qb_invoice_id}`);
+        }
+      } catch (e) {
+        toast.warning(`Factura guardada. Error de red al enviar a QB: ${String(e)}`);
+      }
+      onClose();
     } catch (e) {
-      toast.warning(`Factura guardada. Error de red al enviar a QB: ${String(e)}`);
+      console.error(e);
+      toast.error(`Error al guardar o enviar: ${String(e)}`);
     } finally {
       setSending(false);
-      onClose();
     }
   };
 

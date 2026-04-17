@@ -789,13 +789,19 @@ export async function deleteDirectorRow(sb: SupabaseClient, id: string) {
 
 // ─── Facturas (case_invoices + invoice_lines) ────────────────────────────────
 
+/** Evita enviar `''` a columnas uuid (Postgres rechaza cadena vacía). */
+function uuidOrNull(v: string | undefined | null): string | null {
+  if (v == null || String(v).trim() === '') return null;
+  return v;
+}
+
 function invoiceToRow(inv: CaseInvoice): Record<string, unknown> {
   return {
     id: inv.id,
-    case_id: inv.case_id ?? null,
-    client_id: inv.client_id ?? null,
-    society_id: inv.society_id ?? null,
-    term_id: inv.term_id ?? null,
+    case_id: uuidOrNull(inv.case_id ?? null),
+    client_id: uuidOrNull(inv.client_id ?? null),
+    society_id: uuidOrNull(inv.society_id ?? null),
+    term_id: uuidOrNull(inv.term_id ?? null),
     fecha_factura: inv.fecha_factura,
     fecha_vencimiento: inv.fecha_vencimiento,
     subtotal: inv.subtotal,
@@ -820,8 +826,8 @@ function lineToRow(line: InvoiceLine, invoiceId: string): Record<string, unknown
   return {
     id: line.id,
     invoice_id: invoiceId,
-    servicio_id: line.servicio_id ?? null,
-    qb_item_id: line.qb_item_id ?? null,
+    servicio_id: uuidOrNull(line.servicio_id ?? null),
+    qb_item_id: uuidOrNull(line.qb_item_id ?? null),
     descripcion: line.descripcion,
     cantidad: line.cantidad,
     tarifa: line.tarifa,
@@ -835,7 +841,10 @@ export async function insertInvoice(sb: SupabaseClient, inv: CaseInvoice) {
   if (error) return { error };
   if (inv.lines.length > 0) {
     const { error: le } = await sb.from('invoice_lines').insert(inv.lines.map(l => lineToRow(l, inv.id)));
-    if (le) return { error: le };
+    if (le) {
+      await sb.from('case_invoices').delete().eq('id', inv.id);
+      return { error: le };
+    }
   }
   return { error: null };
 }

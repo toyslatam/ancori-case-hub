@@ -244,25 +244,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [sb]);
 
   const saveInvoice = useCallback(async (caseId: string, invoice: CaseInvoice, isEdit: boolean): Promise<boolean> => {
-    if (sb) {
-      const { error } = isEdit
-        ? await db.updateInvoice(sb, invoice)
-        : await db.insertInvoice(sb, invoice);
-      if (error) { toast.error(error.message); return false; }
+    try {
+      if (sb) {
+        const { error } = isEdit
+          ? await db.updateInvoice(sb, invoice)
+          : await db.insertInvoice(sb, invoice);
+        if (error) {
+          toast.error(error.message);
+          return false;
+        }
+      }
+      setAllInvoices(prev => {
+        if (isEdit) return prev.map(i => (i.id === invoice.id ? invoice : i));
+        if (prev.some(i => i.id === invoice.id)) return prev.map(i => (i.id === invoice.id ? invoice : i));
+        return [...prev, invoice];
+      });
+      setCases(prev => prev.map(c => {
+        if (c.id !== caseId) return c;
+        const invoices = isEdit
+          ? c.invoices.map(i => i.id === invoice.id ? invoice : i)
+          : [...c.invoices, invoice];
+        return { ...c, invoices };
+      }));
+      return true;
+    } catch (e) {
+      console.error(e);
+      toast.error(`Error al guardar la factura: ${String(e)}`);
+      return false;
     }
-    setAllInvoices(prev => {
-      if (isEdit) return prev.map(i => (i.id === invoice.id ? invoice : i));
-      if (prev.some(i => i.id === invoice.id)) return prev.map(i => (i.id === invoice.id ? invoice : i));
-      return [...prev, invoice];
-    });
-    setCases(prev => prev.map(c => {
-      if (c.id !== caseId) return c;
-      const invoices = isEdit
-        ? c.invoices.map(i => i.id === invoice.id ? invoice : i)
-        : [...c.invoices, invoice];
-      return { ...c, invoices };
-    }));
-    return true;
   }, [sb]);
 
   const patchInvoice = useCallback((invoiceId: string, patch: Partial<CaseInvoice>) => {

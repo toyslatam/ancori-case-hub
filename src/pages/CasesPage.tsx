@@ -76,6 +76,7 @@ export default function CasesPage() {
 
   const currentCommentsCase = commentsCase ? cases.find(c => c.id === commentsCase.id) || null : null;
   const currentExpensesCase = expensesCase ? cases.find(c => c.id === expensesCase.id) || null : null;
+  const currentInvoiceCase = invoiceCase ? cases.find(c => c.id === invoiceCase.id) ?? invoiceCase : null;
 
   return (
     <div className="flex flex-col gap-5 p-5 min-w-0 w-full">
@@ -162,7 +163,7 @@ export default function CasesPage() {
       <ExpensesModal caseData={currentExpensesCase} open={!!expensesCase} onClose={() => setExpensesCase(null)} />
       <InvoiceModal
         key={invoiceCase?.id ?? 'closed'}
-        caseData={invoiceCase}
+        caseData={currentInvoiceCase}
         open={!!invoiceCase}
         onClose={() => setInvoiceCase(null)}
       />
