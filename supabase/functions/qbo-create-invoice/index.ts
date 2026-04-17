@@ -408,7 +408,20 @@ Deno.serve(async (req) => {
     const positiveBuckets = [...taxBuckets.entries()].filter(([pct]) => pct > 0).sort((a, b) => b[0] - a[0]);
     for (const [pct, bucket] of positiveBuckets) {
       const rr = resolveTaxRateIdForPercent(taxRateList, pct);
-      if (!rr.ok) {
+      if (rr.ok) {
+        const amt = Number(bucket.tax.toFixed(2));
+        const net = Number(bucket.base.toFixed(2));
+        taxLinesOut.push({
+          Amount: amt,
+          DetailType: 'TaxLineDetail',
+          TaxLineDetail: {
+            TaxRateRef: { value: rr.id },
+            PercentBased: true,
+            TaxPercent: pct,
+            NetAmountTaxable: net,
+          },
+        });
+      } else {
         await persistInvoiceError(sb, invoice_id, `qbo_tax_rates: ${rr.message}`);
         logStructured({ invoice_id, operation: 'tax_rates', ok: false, percent: pct });
         return json(422, {
@@ -418,18 +431,6 @@ Deno.serve(async (req) => {
           persisted: true,
         });
       }
-      const amt = Number(bucket.tax.toFixed(2));
-      const net = Number(bucket.base.toFixed(2));
-      taxLinesOut.push({
-        Amount: amt,
-        DetailType: 'TaxLineDetail',
-        TaxLineDetail: {
-          TaxRateRef: { value: rr.id },
-          PercentBased: true,
-          TaxPercent: pct,
-          NetAmountTaxable: net,
-        },
-      });
     }
   }
 
