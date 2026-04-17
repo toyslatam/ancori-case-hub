@@ -67,6 +67,16 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+function withTimeout<T>(p: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let tid: number | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    tid = window.setTimeout(() => reject(new Error(`Timeout (${timeoutMs} ms): ${label}`)), timeoutMs);
+  });
+  return Promise.race([p, timeout]).finally(() => {
+    if (tid != null) window.clearTimeout(tid);
+  }) as Promise<T>;
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const sb = useMemo(() => getSupabase(), []);
   const useRemote = isSupabaseConfigured();
@@ -246,9 +256,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const saveInvoice = useCallback(async (caseId: string, invoice: CaseInvoice, isEdit: boolean): Promise<boolean> => {
     try {
       if (sb) {
-        const { error } = isEdit
-          ? await db.updateInvoice(sb, invoice)
-          : await db.insertInvoice(sb, invoice);
+        const op = isEdit ? db.updateInvoice(sb, invoice) : db.insertInvoice(sb, invoice);
+        const { error } = await withTimeout(op, 30_000, 'Guardar factura (Supabase)');
         if (error) {
           toast.error(error.message);
           return false;

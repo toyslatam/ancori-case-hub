@@ -45,6 +45,32 @@ function logStructured(payload: Record<string, unknown>) {
   console.info(JSON.stringify({ source: 'qbo-create-invoice', ...payload }));
 }
 
+function envBool(name: string, defaultValue = false): boolean {
+  const v = (Deno.env.get(name) ?? '').trim().toLowerCase();
+  if (!v) return defaultValue;
+  return ['1', 'true', 'yes', 'y', 'si', 'sí'].includes(v);
+}
+
+function msFromEnv(name: string, fallbackMs: number): number {
+  const raw = (Deno.env.get(name) ?? '').trim();
+  if (!raw) return fallbackMs;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return fallbackMs;
+  return Math.floor(n);
+}
+
+const QBO_FETCH_TIMEOUT_MS = msFromEnv('QBO_FETCH_TIMEOUT_MS', 45_000);
+
+async function fetchWithTimeout(input: string, init: RequestInit, timeoutMs = QBO_FETCH_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(tid);
+  }
+}
+
 /** Fila mínima de TaxCode devuelta por la query QBO. */
 interface QboTaxCodeRow {
   Id?: string;
@@ -62,7 +88,7 @@ async function queryActiveTaxCodes(
 ): Promise<QboTaxCodeRow[]> {
   const sql = 'SELECT * FROM TaxCode WHERE Active = true MAXRESULTS 200';
   const url = `${apiBase}/v3/company/${realmId}/query?query=${encodeURIComponent(sql)}&minorversion=73`;
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
   });
   const text = await res.text();
@@ -100,7 +126,7 @@ async function queryActiveTaxRates(
 ): Promise<QboTaxRateRow[]> {
   const sql = 'SELECT * FROM TaxRate WHERE Active = true MAXRESULTS 200';
   const url = `${apiBase}/v3/company/${realmId}/query?query=${encodeURIComponent(sql)}&minorversion=73`;
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
   });
   const text = await res.text();
@@ -390,9 +416,9 @@ Deno.serve(async (req) => {
   }
   const { taxableId, exemptId } = taxResolved;
   /** Por defecto solo líneas + GlobalTaxCalculation (como la columna IVA en la UI). TxnTaxDetail/TaxLine solo si lo exige tu archivo QBO. */
-  const useTxnTaxDetail = ['1', 'true', 'yes'].includes(
-    (Deno.env.get('QBO_INVOICE_TXN_TAX_DETAIL') ?? '').trim().toLowerCase(),
-  );
+  const useTxnTaxDetail = envBool('QBO_INVOICE_TXN_TAX_DETAIL', false);
+  /** Si true, NO enviamos DocNumber y QBO asigna el siguiente correlativo. */
+  const useQboAutoDocNumber = envBool('QBO_INVOICE_USE_QBO_AUTONUMBER', true);
   logStructured({
     invoice_id,
     operation: 'tax_codes',
@@ -401,6 +427,7 @@ Deno.serve(async (req) => {
     exempt_id: exemptId,
     qbo_tax_code_count: taxCodeList.length,
     invoice_tax_mode: useTxnTaxDetail ? 'txn_tax_detail' : 'line_tax_code_only',
+    invoice_doc_number_mode: useQboAutoDocNumber ? 'qbo_auto' : 'app_doc_number',
   });
 
   const qboLines: Record<string, unknown>[] = [];
@@ -454,6 +481,10 @@ Deno.serve(async (req) => {
     DueDate: inv.fecha_vencimiento,
     ...(inv.nota_cliente ? { CustomerMemo: { value: inv.nota_cliente } } : {}),
   };
+  if (!useQboAutoDocNumber) {
+    const doc = String(inv.numero_factura ?? '').trim();
+    if (doc) invoicePayload.DocNumber = doc;
+  }
 
   if (useTxnTaxDetail) {
     let totalTaxRaw = 0;
@@ -511,7 +542,7 @@ Deno.serve(async (req) => {
   const url = `${apiBase}/v3/company/${realmId}/invoice?minorversion=73`;
   let qboResp: Record<string, unknown> = {};
   try {
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -546,9 +577,11 @@ Deno.serve(async (req) => {
     }
   } catch (e) {
     const detail = String(e);
-    await persistInvoiceError(sb, invoice_id, `qbo_fetch_error: ${detail}`);
-    logStructured({ invoice_id, operation: 'qbo_fetch', ok: false });
-    return json(502, { ok: false, error: 'qbo_fetch_error', detail, persisted: true });
+    const isTimeout = e instanceof Error && e.name === 'AbortError';
+    const errCode = isTimeout ? 'qbo_timeout' : 'qbo_fetch_error';
+    await persistInvoiceError(sb, invoice_id, `${errCode}: ${detail}`);
+    logStructured({ invoice_id, operation: 'qbo_fetch', ok: false, timeout: isTimeout });
+    return json(isTimeout ? 504 : 502, { ok: false, error: errCode, detail, persisted: true });
   }
 
   const qboInvoice = (qboResp as Record<string, unknown>).Invoice as Record<string, unknown> | undefined;
