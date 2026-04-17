@@ -169,7 +169,9 @@ Crea un **Invoice** en QuickBooks a partir de `case_invoices` + `invoice_lines`,
 
 **Respuesta `200` (éxito):** `ok`, `qb_invoice_id`, `doc_number`, `txn_date`, `due_date`, `total_amt`, `balance`.
 
-**Errores frecuentes:** `422` (`no_qb_customer`, `no_qb_item_line`, `no_lines`), `502` (`qbo_api_error`), `503` (`qbo_token`). Si `persisted: true`, el estado de error ya está guardado en `case_invoices`.
+**Impuestos (ITBMS / error QBO 6000):** Cada línea envía `SalesItemLineDetail.TaxCodeRef` con el **Id real** de un `TaxCode` activo en la compañía de QBO (no se usan los literales `TAX`/`NON`, que en muchas compañías fuera de EE.UU. provocan *“todas las transacciones deben tener una tasa impositiva a las ventas”*). La función consulta `SELECT * FROM TaxCode WHERE Active = true` e infiere códigos **gravado** vs **exento** por el campo `Taxable` y por nombre (exento, ITBMS, etc.). Si la inferencia falla, configura en Supabase (secretos de la función) **`QBO_TAX_CODE_LINE_TAXABLE`** y **`QBO_TAX_CODE_LINE_EXEMPT`** con los Ids exactos que ves en QBO para la tasa con ITBMS y la exenta.
+
+**Errores frecuentes:** `422` (`no_qb_customer`, `no_qb_item_line`, `no_lines`, `qbo_tax_config`), `502` (`qbo_api_error`), `503` (`qbo_token`). Si `persisted: true`, el estado de error ya está guardado en `case_invoices`.
 
 ---
 
@@ -225,6 +227,7 @@ Respuesta típica: `{ "ok": true, "processed": [...], "errors": [...] }`.
 | `QBO_WEBHOOK_DEFAULT_CLIENT_ID` | UUID de `clients`: cliente por defecto al **crear** `societies` desde Customer nuevo en QBO |
 | `QBO_SOCIETY_PUSH_SECRET` | (Opcional) Auth para `qbo-society-push` vía cabecera dedicada |
 | `FUNCTION_SECRET` | Compartido con la app (`VITE_FUNCTION_SECRET`) para `qbo-create-invoice` y `qbo-invoice-pdf-sync` |
+| `QBO_TAX_CODE_LINE_TAXABLE` / `QBO_TAX_CODE_LINE_EXEMPT` | (Opcional) Ids de `TaxCode` en QBO para líneas con ITBMS y sin impuesto; ver sección `qbo-create-invoice` arriba |
 
 `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` suelen inyectarse en el entorno hosted.
 

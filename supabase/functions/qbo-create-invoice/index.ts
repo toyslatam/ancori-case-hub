@@ -45,6 +45,100 @@ function logStructured(payload: Record<string, unknown>) {
   console.info(JSON.stringify({ source: 'qbo-create-invoice', ...payload }));
 }
 
+/** Fila mínima de TaxCode devuelta por la query QBO. */
+interface QboTaxCodeRow {
+  Id?: string;
+  Name?: string;
+  Description?: string;
+  Active?: boolean;
+  /** Si false, suele ser exento / sin impuesto a las ventas. */
+  Taxable?: boolean;
+}
+
+async function queryActiveTaxCodes(
+  apiBase: string,
+  realmId: string,
+  accessToken: string,
+): Promise<QboTaxCodeRow[]> {
+  const sql = 'SELECT * FROM TaxCode WHERE Active = true MAXRESULTS 200';
+  const url = `${apiBase}/v3/company/${realmId}/query?query=${encodeURIComponent(sql)}&minorversion=73`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+  });
+  const text = await res.text();
+  let data: Record<string, unknown> = {};
+  try {
+    data = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return [];
+  }
+  if (!res.ok) {
+    logStructured({
+      operation: 'tax_code_query',
+      ok: false,
+      status: res.status,
+      snippet: text.slice(0, 400),
+    });
+    return [];
+  }
+  const qr = data.QueryResponse as Record<string, unknown> | undefined;
+  return (qr?.TaxCode as QboTaxCodeRow[] | undefined) ?? [];
+}
+
+/**
+ * Resuelve los Id de TaxCode de QBO para líneas gravadas vs exentas.
+ * - Opcional: `QBO_TAX_CODE_LINE_TAXABLE` y `QBO_TAX_CODE_LINE_EXEMPT` (Ids exactos en QBO).
+ * - Si no hay env: infiere desde la query (Taxable, nombre Exento/ITBMS, etc.).
+ * Los literales "TAX"/"NON" solo aplican a algunas compañías EE.UU.; en Panamá suelen fallar (error 6000).
+ */
+function resolveLineTaxCodeIds(codes: QboTaxCodeRow[]): { ok: true; taxableId: string; exemptId: string } | { ok: false; message: string } {
+  const envTax = Deno.env.get('QBO_TAX_CODE_LINE_TAXABLE')?.trim();
+  const envExempt = Deno.env.get('QBO_TAX_CODE_LINE_EXEMPT')?.trim();
+  if (envTax && envExempt) {
+    return { ok: true, taxableId: envTax, exemptId: envExempt };
+  }
+
+  const withId = codes.filter((c) => c.Id && String(c.Id).trim().length > 0);
+  if (withId.length === 0) {
+    return {
+      ok: false,
+      message:
+        'No se obtuvieron TaxCode activos desde QuickBooks. Revisa impuestos en QBO o define los secretos QBO_TAX_CODE_LINE_TAXABLE y QBO_TAX_CODE_LINE_EXEMPT con los Id de TaxCode (Consulta en QBO: Impuestos o API query TaxCode).',
+    };
+  }
+
+  const name = (c: QboTaxCodeRow) => String(c.Name ?? c.Description ?? '').toLowerCase();
+
+  let exempt = withId.find((c) => c.Taxable === false);
+  if (!exempt) {
+    exempt = withId.find((c) =>
+      /\bexempt\b|exento|exenta|non\b|sin\s*imp|0\s*%|fuera\s*de\s*alcance|out\s*of\s*scope/.test(name(c))
+    );
+  }
+
+  let taxable = withId.find((c) => c.Taxable === true);
+  if (!taxable) {
+    taxable = withId.find((c) => /\bitbms\b|iva|grav|7\s*%|taxable/.test(name(c)));
+  }
+  if (!taxable) {
+    taxable = withId.find((c) => c.Id !== exempt?.Id);
+  }
+  if (!taxable && exempt) taxable = exempt;
+  if (!exempt && taxable) exempt = taxable;
+
+  if (!exempt || !taxable) {
+    return {
+      ok: false,
+      message:
+        `No se pudo inferir TaxCode exento/gravado entre ${withId.length} códigos en QBO. Configura QBO_TAX_CODE_LINE_TAXABLE (línea con ITBMS) y QBO_TAX_CODE_LINE_EXEMPT (línea sin impuesto). Ids disponibles (muestra): ${
+          withId.slice(0, 8).map((c) => `${c.Id}:${c.Name ?? '?'}`).join('; ')
+        }`,
+    };
+  }
+
+  return { ok: true, taxableId: String(taxable.Id), exemptId: String(exempt.Id) };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
   if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });
@@ -153,10 +247,34 @@ Deno.serve(async (req) => {
     return json(503, { ok: false, error: 'qbo_token', detail, persisted: true });
   }
 
+  const taxCodeList = await queryActiveTaxCodes(apiBase, realmId, accessToken);
+  const taxResolved = resolveLineTaxCodeIds(taxCodeList);
+  if (!taxResolved.ok) {
+    await persistInvoiceError(sb, invoice_id, `qbo_tax_codes: ${taxResolved.message}`);
+    logStructured({ invoice_id, operation: 'tax_codes', ok: false, tax_codes_found: taxCodeList.length });
+    return json(422, {
+      ok: false,
+      error: 'qbo_tax_config',
+      detail: taxResolved.message,
+      persisted: true,
+    });
+  }
+  const { taxableId, exemptId } = taxResolved;
+  logStructured({
+    invoice_id,
+    operation: 'tax_codes',
+    ok: true,
+    taxable_id: taxableId,
+    exempt_id: exemptId,
+    qbo_tax_code_count: taxCodeList.length,
+  });
+
   const qboLines: Record<string, unknown>[] = [];
 
   for (const line of linesArr) {
     const row = line as Record<string, unknown>;
+    if (!String(row.descripcion ?? '').trim()) continue;
+
     const qbItem = row.qb_items as { qb_item_id?: string; impuesto_default?: number } | null | undefined;
     const qbItemId = qbItem?.qb_item_id;
     const cantidad = Number(row.cantidad ?? 1);
@@ -172,7 +290,7 @@ Deno.serve(async (req) => {
         Qty: cantidad,
         UnitPrice: tarifa,
         ...(qbItemId ? { ItemRef: { value: qbItemId } } : {}),
-        TaxCodeRef: { value: itbms > 0 ? 'TAX' : 'NON' },
+        TaxCodeRef: { value: itbms > 0 ? taxableId : exemptId },
       },
     };
     qboLines.push(lineObj);
