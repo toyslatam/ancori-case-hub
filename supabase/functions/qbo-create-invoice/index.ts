@@ -167,10 +167,19 @@ function resolveTaxRateIdForPercent(
   };
 }
 
+function labelOf(c: QboTaxCodeRow): string {
+  return `${c.Name ?? ''} ${c.Description ?? ''}`.trim();
+}
+
+/** Normaliza para reconocer "I.T.B.M.S." como ITBMS. */
+function compactAlnum(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9%]+/g, '');
+}
+
 /**
  * Resuelve los Id de TaxCode de QBO para líneas gravadas vs exentas.
  * - Opcional: `QBO_TAX_CODE_LINE_TAXABLE` y `QBO_TAX_CODE_LINE_EXEMPT` (Ids exactos en QBO).
- * - Si no hay env: infiere desde la query (Taxable, nombre Exento/ITBMS, etc.).
+ * - Si no hay env: infiere desde la query (Taxable, nombre tipo "I.T.B.M.S. (7%)", Exento, etc.).
  * Los literales "TAX"/"NON" solo aplican a algunas compañías EE.UU.; en Panamá suelen fallar (error 6000).
  */
 function resolveLineTaxCodeIds(codes: QboTaxCodeRow[]): { ok: true; taxableId: string; exemptId: string } | { ok: false; message: string } {
@@ -191,29 +200,67 @@ function resolveLineTaxCodeIds(codes: QboTaxCodeRow[]): { ok: true; taxableId: s
 
   const name = (c: QboTaxCodeRow) => String(c.Name ?? c.Description ?? '').toLowerCase();
 
-  let exempt = withId.find((c) => c.Taxable === false);
+  const scoreTaxable = (c: QboTaxCodeRow): number => {
+    const raw = labelOf(c).toLowerCase();
+    const compact = compactAlnum(raw);
+    let s = 0;
+    if (/\bitbms\b/i.test(raw)) s += 60;
+    if (compact.includes('itbms')) s += 55;
+    if (/i\.?\s*t\.?\s*b\.?\s*m\.?\s*s/i.test(raw)) s += 50;
+    if (/7\s*%|7%|\(7/.test(raw)) s += 25;
+    if (c.Taxable === true) s += 12;
+    if (/grav|taxable|sujet/.test(raw)) s += 8;
+    if (/\biva\b/.test(raw) && !/exclu/.test(raw)) s += 5;
+    return s;
+  };
+
+  const scoreExempt = (c: QboTaxCodeRow): number => {
+    const raw = labelOf(c).toLowerCase();
+    let s = 0;
+    if (c.Taxable === false) s += 40;
+    if (/\bexempt\b|exento|exenta|no\s*sujet|0\s*%|sin\s*imp|fuera\s*de\s*alcance|out\s*of\s*scope/.test(raw)) s += 35;
+    if (/exclu/.test(raw) && !/inclu/.test(raw)) s += 5;
+    return s;
+  };
+
+  const byTaxableScore = [...withId].sort((a, b) => scoreTaxable(b) - scoreTaxable(a));
+  let taxable: QboTaxCodeRow = byTaxableScore[0] as QboTaxCodeRow;
+  const bestTaxable = byTaxableScore.find((c) => scoreTaxable(c) > 0);
+  if (bestTaxable) taxable = bestTaxable;
+  if (scoreTaxable(taxable) === 0) {
+    taxable = withId.find((c) => c.Taxable === true) ?? taxable;
+  }
+  if (scoreTaxable(taxable) === 0) {
+    taxable = withId.find((c) => /\bitbms\b|iva|grav|7\s*%|taxable/.test(name(c))) ?? taxable;
+  }
+
+  const candidatesExempt = [...withId]
+    .filter((c) => String(c.Id) !== String(taxable.Id))
+    .sort((a, b) => scoreExempt(b) - scoreExempt(a));
+  let exempt: QboTaxCodeRow | undefined = candidatesExempt.find((c) => scoreExempt(c) > 0) ??
+    candidatesExempt[0] ??
+    withId.find((c) => c.Taxable === false);
   if (!exempt) {
     exempt = withId.find((c) =>
       /\bexempt\b|exento|exenta|non\b|sin\s*imp|0\s*%|fuera\s*de\s*alcance|out\s*of\s*scope/.test(name(c))
     );
   }
 
-  let taxable = withId.find((c) => c.Taxable === true);
-  if (!taxable) {
-    taxable = withId.find((c) => /\bitbms\b|iva|grav|7\s*%|taxable/.test(name(c)));
+  if (!taxable || scoreTaxable(taxable) === 0) {
+    taxable = withId.find((c) => c.Id !== exempt?.Id) ?? taxable;
   }
-  if (!taxable) {
-    taxable = withId.find((c) => c.Id !== exempt?.Id);
+  if (!exempt || String(exempt.Id) === String(taxable?.Id)) {
+    exempt = withId.find((c) => String(c.Id) !== String(taxable?.Id)) ?? exempt;
   }
   if (!taxable && exempt) taxable = exempt;
   if (!exempt && taxable) exempt = taxable;
 
-  if (!exempt || !taxable) {
+  if (!exempt || !taxable || String(exempt.Id) === String(taxable.Id)) {
     return {
       ok: false,
       message:
-        `No se pudo inferir TaxCode exento/gravado entre ${withId.length} códigos en QBO. Configura QBO_TAX_CODE_LINE_TAXABLE (línea con ITBMS) y QBO_TAX_CODE_LINE_EXEMPT (línea sin impuesto). Ids disponibles (muestra): ${
-          withId.slice(0, 8).map((c) => `${c.Id}:${c.Name ?? '?'}`).join('; ')
+        `No se pudo inferir TaxCode exento vs gravado (ITBMS) entre ${withId.length} códigos en QBO. En la factura, la columna IVA equivale a TaxCode en API: configura QBO_TAX_CODE_LINE_TAXABLE = Id del código "I.T.B.M.S. (7%)" y QBO_TAX_CODE_LINE_EXEMPT = Id del exento. Muestra de códigos: ${
+          withId.slice(0, 12).map((c) => `${c.Id}:${c.Name ?? '?'}`).join('; ')
         }`,
     };
   }
@@ -342,6 +389,10 @@ Deno.serve(async (req) => {
     });
   }
   const { taxableId, exemptId } = taxResolved;
+  /** Por defecto solo líneas + GlobalTaxCalculation (como la columna IVA en la UI). TxnTaxDetail/TaxLine solo si lo exige tu archivo QBO. */
+  const useTxnTaxDetail = ['1', 'true', 'yes'].includes(
+    (Deno.env.get('QBO_INVOICE_TXN_TAX_DETAIL') ?? '').trim().toLowerCase(),
+  );
   logStructured({
     invoice_id,
     operation: 'tax_codes',
@@ -349,10 +400,11 @@ Deno.serve(async (req) => {
     taxable_id: taxableId,
     exempt_id: exemptId,
     qbo_tax_code_count: taxCodeList.length,
+    invoice_tax_mode: useTxnTaxDetail ? 'txn_tax_detail' : 'line_tax_code_only',
   });
 
   const qboLines: Record<string, unknown>[] = [];
-  /** Base imponible y cuota por porcentaje de ITBMS (mismo criterio que las líneas). */
+  /** Solo se usa si QBO_INVOICE_TXN_TAX_DETAIL está activado. */
   const taxBuckets = new Map<number, { base: number; tax: number }>();
 
   for (const line of linesArr) {
@@ -365,11 +417,13 @@ Deno.serve(async (req) => {
     const tarifa = Number(row.tarifa ?? 0);
     const importe = cantidad * tarifa;
     const itbms = Number(row.itbms ?? 0);
-    const pctKey = Number.isFinite(itbms) ? Math.round(itbms * 1e6) / 1e6 : 0;
-    const bucket = taxBuckets.get(pctKey) ?? { base: 0, tax: 0 };
-    bucket.base += importe;
-    bucket.tax += (importe * itbms) / 100;
-    taxBuckets.set(pctKey, bucket);
+    if (useTxnTaxDetail) {
+      const pctKey = Number.isFinite(itbms) ? Math.round(itbms * 1e6) / 1e6 : 0;
+      const bucket = taxBuckets.get(pctKey) ?? { base: 0, tax: 0 };
+      bucket.base += importe;
+      bucket.tax += (importe * itbms) / 100;
+      taxBuckets.set(pctKey, bucket);
+    }
 
     const lineObj: Record<string, unknown> = {
       DetailType: 'SalesItemLineDetail',
@@ -391,65 +445,68 @@ Deno.serve(async (req) => {
     return json(422, { ok: false, error: 'no_lines', detail: msg, persisted: true });
   }
 
-  let totalTaxRaw = 0;
-  for (const [, b] of taxBuckets) totalTaxRaw += b.tax;
-  const totalTaxRounded = Number(totalTaxRaw.toFixed(2));
-
-  const taxLinesOut: Record<string, unknown>[] = [];
-  if (totalTaxRounded > 0) {
-    const taxRateList = await queryActiveTaxRates(apiBase, realmId, accessToken);
-    logStructured({
-      invoice_id,
-      operation: 'tax_rates',
-      ok: true,
-      qbo_tax_rate_count: taxRateList.length,
-    });
-
-    const positiveBuckets = [...taxBuckets.entries()].filter(([pct]) => pct > 0).sort((a, b) => b[0] - a[0]);
-    for (const [pct, bucket] of positiveBuckets) {
-      const rr = resolveTaxRateIdForPercent(taxRateList, pct);
-      if (rr.ok) {
-        const amt = Number(bucket.tax.toFixed(2));
-        const net = Number(bucket.base.toFixed(2));
-        taxLinesOut.push({
-          Amount: amt,
-          DetailType: 'TaxLineDetail',
-          TaxLineDetail: {
-            TaxRateRef: { value: rr.id },
-            PercentBased: true,
-            TaxPercent: pct,
-            NetAmountTaxable: net,
-          },
-        });
-      } else {
-        await persistInvoiceError(sb, invoice_id, `qbo_tax_rates: ${rr.message}`);
-        logStructured({ invoice_id, operation: 'tax_rates', ok: false, percent: pct });
-        return json(422, {
-          ok: false,
-          error: 'qbo_tax_rate_config',
-          detail: rr.message,
-          persisted: true,
-        });
-      }
-    }
-  }
-
-  const taxLineSum = taxLinesOut.reduce((s, tl) => s + Number(tl.Amount ?? 0), 0);
-  const txnTaxDetail: Record<string, unknown> = {
-    TxnTaxCodeRef: { value: totalTaxRounded > 0 ? taxableId : exemptId },
-    TotalTax: taxLinesOut.length > 0 ? Number(taxLineSum.toFixed(2)) : totalTaxRounded,
-  };
-  if (taxLinesOut.length > 0) txnTaxDetail.TaxLine = taxLinesOut;
-
   const invoicePayload: Record<string, unknown> = {
+    /** Misma idea que en QBO: "Impuestos no incluidos" (importe de línea sin ITBMS). */
     GlobalTaxCalculation: 'TaxExcluded',
-    TxnTaxDetail: txnTaxDetail,
     Line: qboLines,
     CustomerRef: { value: qbCustomerId },
     TxnDate: inv.fecha_factura,
     DueDate: inv.fecha_vencimiento,
     ...(inv.nota_cliente ? { CustomerMemo: { value: inv.nota_cliente } } : {}),
   };
+
+  if (useTxnTaxDetail) {
+    let totalTaxRaw = 0;
+    for (const [, b] of taxBuckets) totalTaxRaw += b.tax;
+    const totalTaxRounded = Number(totalTaxRaw.toFixed(2));
+
+    const taxLinesOut: Record<string, unknown>[] = [];
+    if (totalTaxRounded > 0) {
+      const taxRateList = await queryActiveTaxRates(apiBase, realmId, accessToken);
+      logStructured({
+        invoice_id,
+        operation: 'tax_rates',
+        ok: true,
+        qbo_tax_rate_count: taxRateList.length,
+      });
+
+      const positiveBuckets = [...taxBuckets.entries()].filter(([pct]) => pct > 0).sort((a, b) => b[0] - a[0]);
+      for (const [pct, bucket] of positiveBuckets) {
+        const rr = resolveTaxRateIdForPercent(taxRateList, pct);
+        if (rr.ok) {
+          const amt = Number(bucket.tax.toFixed(2));
+          const net = Number(bucket.base.toFixed(2));
+          taxLinesOut.push({
+            Amount: amt,
+            DetailType: 'TaxLineDetail',
+            TaxLineDetail: {
+              TaxRateRef: { value: rr.id },
+              PercentBased: true,
+              TaxPercent: pct,
+              NetAmountTaxable: net,
+            },
+          });
+        } else {
+          await persistInvoiceError(sb, invoice_id, `qbo_tax_rates: ${rr.message}`);
+          logStructured({ invoice_id, operation: 'tax_rates', ok: false, percent: pct });
+          return json(422, {
+            ok: false,
+            error: 'qbo_tax_rate_config',
+            detail: rr.message,
+            persisted: true,
+          });
+        }
+      }
+    }
+
+    const taxLineSum = taxLinesOut.reduce((s, tl) => s + Number(tl.Amount ?? 0), 0);
+    const txnTaxDetail: Record<string, unknown> = {
+      TxnTaxCodeRef: { value: totalTaxRounded > 0 ? taxableId : exemptId },
+      TotalTax: taxLinesOut.length > 0 ? Number(taxLineSum.toFixed(2)) : totalTaxRounded,
+    };
+    if (taxLinesOut.length > 0) txnTaxDetail.TaxLine = taxLinesOut;
+    invoicePayload.TxnTaxDetail = txnTaxDetail;
+  }
 
   const url = `${apiBase}/v3/company/${realmId}/invoice?minorversion=73`;
   let qboResp: Record<string, unknown> = {};
