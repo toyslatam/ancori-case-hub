@@ -9,6 +9,10 @@ export function isSupabaseConfigured(): boolean {
   return Boolean(url && anonKey);
 }
 
+export function getSupabaseConfig(): { url?: string; anonKey?: string } {
+  return { url, anonKey };
+}
+
 export function getSupabase(): SupabaseClient | null {
   if (!url || !anonKey) return null;
   if (!client) client = createClient(url, anonKey);

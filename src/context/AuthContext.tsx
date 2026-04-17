@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { Session, User } from '@supabase/supabase-js';
-import { getSupabase } from '@/lib/supabaseClient';
+import { getSupabase, getSupabaseConfig } from '@/lib/supabaseClient';
 
 interface AuthUser {
   id: string;
@@ -100,14 +100,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = async (email: string, password: string): Promise<{ error: string | null }> => {
     const sb = getSupabase();
     if (!sb) return { error: 'Supabase no configurado' };
-    const { error } = await sb.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
-    if (error) {
-      if (error.message.includes('Invalid login credentials')) {
-        return { error: 'Correo o contraseña incorrectos' };
+    try {
+      const { error } = await sb.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
+      if (error) {
+        if (error.message.includes('Invalid login credentials')) {
+          return { error: 'Correo o contraseña incorrectos' };
+        }
+        return { error: error.message };
       }
-      return { error: error.message };
+      return { error: null };
+    } catch (e) {
+      const msg = String(e);
+      // Navegador suele lanzar TypeError: Failed to fetch ante CORS/DNS/offline/SSL bloqueado
+      if (/failed to fetch/i.test(msg)) {
+        // Diagnóstico rápido: el health endpoint requiere apikey; si responde, la red llega.
+        const { url, anonKey } = getSupabaseConfig();
+        if (url && anonKey) {
+          try {
+            const controller = new AbortController();
+            const tid = window.setTimeout(() => controller.abort(), 6000);
+            const res = await fetch(`${url.replace(/\\/$/, '')}/auth/v1/health`, {
+              headers: { apikey: anonKey },
+              signal: controller.signal,
+            }).finally(() => window.clearTimeout(tid));
+            if (res.ok) {
+              return {
+                error:
+                  'No se pudo conectar con Supabase (Failed to fetch). La red sí llega a Supabase, así que suele ser bloqueo del navegador (extensión/adblock), proxy corporativo, o un error CORS. Prueba modo incógnito sin extensiones o otra red (hotspot).',
+              };
+            }
+          } catch {
+            // si hasta este fetch falla, es red/DNS/SSL/proxy
+          }
+        }
+        return {
+          error:
+            'No se pudo conectar con el servidor (Failed to fetch). Esto suele ser red/VPN/DNS/SSL/proxy bloqueando `*.supabase.co`. Prueba otra red (hotspot) o pide a TI permitir `supabase.co` por HTTPS (443).',
+        };
+      }
+      return { error: `Error de red: ${msg}` };
     }
-    return { error: null };
   };
 
   const signOut = async () => {

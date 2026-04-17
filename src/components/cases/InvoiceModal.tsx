@@ -340,6 +340,10 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
     if (!fechaFactura || !fechaVencimiento) { toast.error('Completa las fechas'); return; }
     if (lines.every(l => !String(l.descripcion ?? '').trim())) { toast.error('Agrega al menos una línea'); return; }
     setSaving(true);
+    const watchdog = window.setTimeout(() => {
+      setSaving(false);
+      toast.error('Guardar borrador tardó demasiado (timeout). Revisa tu conexión o Supabase.');
+    }, 35_000);
     try {
       let inv: CaseInvoice;
       try {
@@ -348,15 +352,21 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
         toast.error(`No se pudo armar la factura: ${String(e)}`);
         return;
       }
-      const ok = await saveInvoice(caseData.id, inv, isEdit);
+      const ok = await Promise.race([
+        saveInvoice(caseData.id, inv, isEdit),
+        new Promise<boolean>((resolve) => window.setTimeout(() => resolve(false), 30_000)),
+      ]);
       if (ok) {
         toast.success(isEdit ? 'Factura actualizada' : 'Factura guardada');
         onClose();
+      } else {
+        toast.error('No se pudo guardar la factura (timeout o error).');
       }
     } catch (e) {
       console.error(e);
       toast.error(`Error al guardar: ${String(e)}`);
     } finally {
+      window.clearTimeout(watchdog);
       setSaving(false);
     }
   };
