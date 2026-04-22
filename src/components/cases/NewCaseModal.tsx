@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { SearchableCombo } from '@/components/ui/searchable-combo';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
 import { Case, formatNTarea } from '@/data/mockData';
 import { Building2, User, CalendarDays, GitBranch, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -16,6 +17,7 @@ const inputCls = 'bg-white border-gray-200 rounded-xl focus-visible:ring-2 focus
 
 export function NewCaseModal({ open, onClose, onCreated }: NewCaseModalProps) {
   const { clients, societies, services, serviceItems, etapas, cases } = useApp();
+  const { user, session } = useAuth();
 
   const [isJuridica, setIsJuridica] = useState(false);
   const [entityId, setEntityId]     = useState('');
@@ -49,6 +51,10 @@ export function NewCaseModal({ open, onClose, onCreated }: NewCaseModalProps) {
     if (!entityId || !serviceItemId) return;
     const selectedItem    = serviceItems.find(si => si.id === serviceItemId);
     const selectedSociety = isJuridica ? societies.find(s => s.id === entityId) : null;
+    const actorName =
+      user?.nombre?.trim()
+      || session?.user?.email?.split('@')[0]
+      || 'Usuario';
 
     const newCase: Case = {
       id:              crypto.randomUUID(),
@@ -66,8 +72,8 @@ export function NewCaseModal({ open, onClose, onCreated }: NewCaseModalProps) {
       cliente_temporal: false,
       prioridad_urgente: false,
       prioridad:       'Media',
-      creado_por:      'Usuario Actual',
-      responsable:     'Usuario Actual',
+      creado_por:      actorName,
+      responsable:     actorName,
       observaciones:   '',
       fecha_caso:      new Date().toISOString().split('T')[0],
       created_at:      new Date().toISOString(),
