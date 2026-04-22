@@ -84,6 +84,7 @@ export default function ClientsPage() {
   const [editItem, setEditItem] = useState<Client | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<Partial<Client>>({});
+  const [saving, setSaving] = useState(false);
   const [advOpen, setAdvOpen] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
@@ -143,6 +144,8 @@ export default function ClientsPage() {
       toast.error('Nombre cliente es obligatorio');
       return;
     }
+    if (saving) return;
+    setSaving(true);
     const razon = form.razon_social?.trim() || form.nombre.trim();
     const base = {
       ...form,
@@ -164,10 +167,17 @@ export default function ClientsPage() {
           // Evita colisiones cuando el estado local no está al día o hay varios usuarios creando a la vez.
           numero: undefined,
         } as Client;
-    const ok = await saveClient(client, !!editItem);
-    if (!ok) return;
-    toast.success(editItem ? 'Cliente actualizado' : 'Cliente creado');
-    setShowForm(false);
+    try {
+      const ok = await saveClient(client, !!editItem);
+      if (!ok) return;
+      toast.success(editItem ? 'Cliente actualizado' : 'Cliente creado');
+      setShowForm(false);
+    } catch (e) {
+      console.error(e);
+      toast.error(`No se pudo guardar el cliente: ${String(e)}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const confirmDelete = async () => {
@@ -491,7 +501,9 @@ export default function ClientsPage() {
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
-            <Button onClick={handleSave}>Guardar</Button>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? 'Guardando…' : 'Guardar'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
