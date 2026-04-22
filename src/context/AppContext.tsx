@@ -394,33 +394,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
       let merged: Society = society;
-      if (sb && isQboSocietyPushConfigured()) {
-        try {
-          // QBO puede colgarse por red/DNS: nunca bloquear la UI indefinidamente.
-          const qb = await withTimeout(
-            pushSocietyToQuickbooksUpsert(society),
-            30_000,
-            'Enlazar sociedad con QuickBooks',
-          );
-          if (qb.quickbooks_customer_id || qb.id_qb != null) {
-            merged = { ...society };
-            if (qb.quickbooks_customer_id) merged = { ...merged, quickbooks_customer_id: qb.quickbooks_customer_id };
-            if (qb.id_qb != null) merged = { ...merged, id_qb: qb.id_qb };
-          }
-          const needsPatch =
-            (qb.quickbooks_customer_id && !society.quickbooks_customer_id) ||
-            (qb.id_qb != null && qb.id_qb !== society.id_qb);
-          if (needsPatch) {
-            const patchRes = await withTimeout(db.updateSocietyRow(sb, merged), 30_000, 'Actualizar sociedad tras QB (Supabase)');
-            if (patchRes.error) {
-              toast.warning(`QuickBooks enlazado; no se guardó el Id en la base: ${patchRes.error.message}`);
-            }
-          }
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          toast.error(`Sociedad guardada; QuickBooks: ${msg}`);
-        }
-      }
+      // Desactivado temporalmente por solicitud: evitar que QuickBooks bloquee el guardado/edición.
       setSocieties(prev => (isEdit ? prev.map(s => s.id === merged.id ? merged : s) : [...prev, merged]));
       return true;
     } catch (e) {
@@ -430,18 +404,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [sb]);
 
   const deleteSociety = useCallback(async (id: string): Promise<boolean> => {
-    const society = societies.find(s => s.id === id);
-    const qbIdDelete =
-      society?.quickbooks_customer_id?.trim() ||
-      (society?.id_qb != null ? String(society.id_qb) : '');
-    if (sb && society && isQboSocietyPushConfigured() && qbIdDelete) {
-      try {
-        await pushSocietyToQuickbooksDelete(qbIdDelete);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        toast.warning(`QuickBooks no actualizado (${msg}). Se elimina la sociedad solo en la app.`);
-      }
-    }
+    // Desactivado temporalmente por solicitud: no tocar QuickBooks al borrar sociedades.
     if (sb) {
       const { error } = await db.deleteSocietyRow(sb, id);
       if (error) {

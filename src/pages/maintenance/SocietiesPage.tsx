@@ -34,6 +34,7 @@ import { cn } from '@/lib/utils';
 
 const SUPABASE_URL    = import.meta.env.VITE_SUPABASE_URL as string;
 const QBO_CRON_SECRET = import.meta.env.VITE_QBO_CRON_SECRET as string;
+const QBO_SOCIETIES_ENABLED = false; // desactivado temporalmente por solicitud
 
 const FILTER_ALL = '__all__';
 const FILTER_NONE = '__none__';
@@ -176,6 +177,10 @@ export default function SocietiesPage() {
   ];
 
   const handleSyncNames = async () => {
+    if (!QBO_SOCIETIES_ENABLED) {
+      toast.info('QuickBooks está desactivado temporalmente para Sociedades.');
+      return;
+    }
     if (!QBO_CRON_SECRET) { toast.error('VITE_QBO_CRON_SECRET no configurado'); return; }
     setSyncing(true);
     try {
@@ -359,11 +364,11 @@ export default function SocietiesPage() {
           <Button
             variant="outline"
             onClick={handleSyncNames}
-            disabled={syncing}
+            disabled={syncing || !QBO_SOCIETIES_ENABLED}
             className="gap-1.5 shrink-0 w-full sm:w-auto border-emerald-200 text-emerald-700 hover:bg-emerald-50"
           >
             <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-            {syncing ? 'Sincronizando...' : 'Sincronizar nombres QB'}
+            {!QBO_SOCIETIES_ENABLED ? 'QuickBooks desactivado' : (syncing ? 'Sincronizando...' : 'Sincronizar nombres QB')}
           </Button>
           <Button onClick={openNew} className="gap-1 shrink-0 w-full sm:w-auto">
             <Plus className="h-4 w-4" /> Nueva Sociedad
