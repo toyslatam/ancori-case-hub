@@ -322,10 +322,21 @@ export default function SocietiesPage() {
         } as Society;
     setSaving(true);
     try {
-      const ok = await saveSociety(society, !!editItem);
+      // Watchdog UI: aunque Supabase "se quede colgado", desbloquear el botón.
+      const ok = await Promise.race<boolean>([
+        saveSociety(society, !!editItem),
+        new Promise<boolean>((_resolve, reject) =>
+          window.setTimeout(
+            () => reject(new Error('Tiempo de espera al guardar. Verifica conexión/RLS en Supabase.')),
+            35_000,
+          ),
+        ),
+      ]);
       if (!ok) return;
       toast.success(editItem ? 'Sociedad actualizada' : 'Sociedad creada');
       setShowForm(false);
+    } catch (e) {
+      toast.error(String(e));
     } finally {
       setSaving(false);
     }
