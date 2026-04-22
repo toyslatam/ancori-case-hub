@@ -668,7 +668,8 @@ export async function insertExpense(sb: SupabaseClient, caseId: string, expense:
 }
 
 export async function insertClient(sb: SupabaseClient, c: Client) {
-  return sb.from('clients').insert(clientToRow(c));
+  // Devolver la fila insertada para obtener defaults (numero, created_at, etc.)
+  return sb.from('clients').insert(clientToRow(c)).select('*').single();
 }
 
 export async function updateClientRow(sb: SupabaseClient, c: Client) {

@@ -330,6 +330,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           toast.error(res.error.message);
           return false;
         }
+        if (!isEdit && (res as any).data) {
+          // insertClient devuelve single() con la fila completa
+          const saved = db.rowToClient((res as any).data as Record<string, unknown>);
+          setClients(prev => [...prev, saved]);
+          return true;
+        }
       }
       setClients(prev => (isEdit ? prev.map(c => c.id === client.id ? client : c) : [...prev, client]));
       return true;
@@ -352,38 +358,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [sb]);
 
   const saveSociety = useCallback(async (society: Society, isEdit: boolean): Promise<boolean> => {
-    if (sb) {
-      const res = isEdit ? await db.updateSocietyRow(sb, society) : await db.insertSociety(sb, society);
-      if (res.error) {
-        toast.error(res.error.message);
-        return false;
-      }
-    }
-    let merged: Society = society;
-    if (sb && isQboSocietyPushConfigured()) {
-      try {
-        const qb = await pushSocietyToQuickbooksUpsert(society);
-        if (qb.quickbooks_customer_id || qb.id_qb != null) {
-          merged = { ...society };
-          if (qb.quickbooks_customer_id) merged = { ...merged, quickbooks_customer_id: qb.quickbooks_customer_id };
-          if (qb.id_qb != null) merged = { ...merged, id_qb: qb.id_qb };
+    try {
+      if (sb) {
+        const op = isEdit ? db.updateSocietyRow(sb, society) : db.insertSociety(sb, society);
+        const res = await withTimeout(op, 30_000, 'Guardar sociedad (Supabase)');
+        if (res.error) {
+          toast.error(res.error.message);
+          return false;
         }
-        const needsPatch =
-          (qb.quickbooks_customer_id && !society.quickbooks_customer_id) ||
-          (qb.id_qb != null && qb.id_qb !== society.id_qb);
-        if (needsPatch) {
-          const { error: patchErr } = await db.updateSocietyRow(sb, merged);
-          if (patchErr) {
-            toast.warning(`QuickBooks enlazado; no se guardó el Id en la base: ${patchErr.message}`);
+      }
+      let merged: Society = society;
+      if (sb && isQboSocietyPushConfigured()) {
+        try {
+          const qb = await pushSocietyToQuickbooksUpsert(society);
+          if (qb.quickbooks_customer_id || qb.id_qb != null) {
+            merged = { ...society };
+            if (qb.quickbooks_customer_id) merged = { ...merged, quickbooks_customer_id: qb.quickbooks_customer_id };
+            if (qb.id_qb != null) merged = { ...merged, id_qb: qb.id_qb };
           }
+          const needsPatch =
+            (qb.quickbooks_customer_id && !society.quickbooks_customer_id) ||
+            (qb.id_qb != null && qb.id_qb !== society.id_qb);
+          if (needsPatch) {
+            const patchRes = await withTimeout(db.updateSocietyRow(sb, merged), 30_000, 'Actualizar sociedad tras QB (Supabase)');
+            if (patchRes.error) {
+              toast.warning(`QuickBooks enlazado; no se guardó el Id en la base: ${patchRes.error.message}`);
+            }
+          }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          toast.error(`Sociedad guardada; QuickBooks: ${msg}`);
         }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        toast.error(`Sociedad guardada; QuickBooks: ${msg}`);
       }
+      setSocieties(prev => (isEdit ? prev.map(s => s.id === merged.id ? merged : s) : [...prev, merged]));
+      return true;
+    } catch (e) {
+      toast.error(`Error al guardar la sociedad: ${String(e)}`);
+      return false;
     }
-    setSocieties(prev => (isEdit ? prev.map(s => s.id === merged.id ? merged : s) : [...prev, merged]));
-    return true;
   }, [sb]);
 
   const deleteSociety = useCallback(async (id: string): Promise<boolean> => {

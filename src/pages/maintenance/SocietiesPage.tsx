@@ -148,7 +148,9 @@ export default function SocietiesPage() {
   const [syncing, setSyncing] = useState(false);
 
   const clientOptions = useMemo<ComboOption[]>(
-    () => clients.map(c => ({ value: c.id, label: c.nombre })),
+    () => [...clients]
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+      .map(c => ({ value: c.id, label: c.nombre, sublabel: c.razon_social || undefined })),
     [clients],
   );
   const societyOptions = useMemo<ComboOption[]>(
