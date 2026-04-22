@@ -7,7 +7,13 @@ export function AppLayout({ children }: { children: ReactNode }) {
   return (
     <SidebarProvider defaultOpen={true}>
       <AppSidebar />
-      <SidebarInset className="min-h-svh min-w-0 overflow-auto bg-background">{children}</SidebarInset>
+      <SidebarInset className="min-h-svh min-w-0 overflow-auto bg-background">
+        <div className="w-full min-w-0">
+          <div className="mx-auto w-full max-w-7xl min-w-0">
+            {children}
+          </div>
+        </div>
+      </SidebarInset>
     </SidebarProvider>
   );
 }
