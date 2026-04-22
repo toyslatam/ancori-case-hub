@@ -160,7 +160,9 @@ export default function ClientsPage() {
           ...base,
           id: crypto.randomUUID(),
           created_at: new Date().toISOString().split('T')[0],
-          numero: Math.max(0, ...clients.map(x => x.numero ?? 0)) + 1,
+          // Dejar que Postgres asigne el correlativo (clients.numero tiene default sequence).
+          // Evita colisiones cuando el estado local no está al día o hay varios usuarios creando a la vez.
+          numero: undefined,
         } as Client;
     const ok = await saveClient(client, !!editItem);
     if (!ok) return;

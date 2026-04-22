@@ -322,15 +322,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [sb]);
 
   const saveClient = useCallback(async (client: Client, isEdit: boolean): Promise<boolean> => {
-    if (sb) {
-      const res = isEdit ? await db.updateClientRow(sb, client) : await db.insertClient(sb, client);
-      if (res.error) {
-        toast.error(res.error.message);
-        return false;
+    try {
+      if (sb) {
+        const op = isEdit ? db.updateClientRow(sb, client) : db.insertClient(sb, client);
+        const res = await withTimeout(op, 30_000, 'Guardar cliente (Supabase)');
+        if (res.error) {
+          toast.error(res.error.message);
+          return false;
+        }
       }
+      setClients(prev => (isEdit ? prev.map(c => c.id === client.id ? client : c) : [...prev, client]));
+      return true;
+    } catch (e) {
+      toast.error(`Error al guardar el cliente: ${String(e)}`);
+      return false;
     }
-    setClients(prev => (isEdit ? prev.map(c => c.id === client.id ? client : c) : [...prev, client]));
-    return true;
   }, [sb]);
 
   const deleteClient = useCallback(async (id: string): Promise<boolean> => {
