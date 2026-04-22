@@ -119,7 +119,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           try {
             const controller = new AbortController();
             const tid = window.setTimeout(() => controller.abort(), 6000);
-            const res = await fetch(`${url.replace(/\\/$/, '')}/auth/v1/health`, {
+            const baseUrl = url.endsWith('/') ? url.slice(0, -1) : url;
+            const res = await fetch(`${baseUrl}/auth/v1/health`, {
               headers: { apikey: anonKey },
               signal: controller.signal,
             }).finally(() => window.clearTimeout(tid));
