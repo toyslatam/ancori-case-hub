@@ -195,96 +195,131 @@ export default function ClientsPage() {
   const clearPanel = () => setPanelFilters(defaultPanelFilters());
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">CLIENTES</h1>
-        <Button onClick={openNew} className="gap-1 shrink-0 w-full sm:w-auto">
-          <Plus className="h-4 w-4" /> Nueva Cliente
-        </Button>
-      </div>
+    <div className="px-6 py-6">
+      <div className="mx-auto w-full max-w-6xl space-y-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Clientes</h1>
+            <p className="text-sm text-gray-500 mt-1">Administración de clientes y datos de contacto.</p>
+          </div>
 
-      <div className="relative w-full max-w-2xl">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="pl-9 h-11 rounded-lg bg-card border-border"
-        />
-      </div>
+          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
+            <div className="relative w-full sm:w-[360px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Buscar por nombre, correo o razón social…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className={cn(
+                  'pl-9 h-11 rounded-lg border border-gray-200 bg-white shadow-sm',
+                  'focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-0',
+                )}
+              />
+            </div>
 
-      <div className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
-        <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-lg font-semibold text-foreground">Seguimiento de clientes</h2>
-          <Button variant="outline" size="sm" className="gap-1 shrink-0" onClick={() => setPanelOpen(true)}>
-            <Filter className="h-4 w-4" /> Filtro
-          </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="h-11 rounded-lg border-gray-200 bg-white shadow-sm hover:bg-gray-50 gap-2"
+                onClick={() => setPanelOpen(true)}
+              >
+                <Filter className="h-4 w-4" />
+                Filtro
+              </Button>
+              <Button
+                onClick={openNew}
+                className="h-11 rounded-lg bg-orange-500 hover:bg-orange-600 text-white shadow-sm gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Nueva cliente
+              </Button>
+            </div>
+          </div>
         </div>
-        <div className="overflow-x-auto max-h-[min(70vh,720px)] overflow-y-auto">
-          <table className="w-full text-sm min-w-[900px]">
-            <thead className="bg-muted/50 sticky top-0 z-[1]">
-              <tr>
-                <th className="w-1 p-0 bg-border" aria-hidden />
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Nombre Cliente</th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Razón Social</th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Correo</th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Teléfono</th>
-                <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Activo</th>
-                <th className="px-4 py-3 text-right font-semibold text-muted-foreground whitespace-nowrap">
-                  <span className="inline-flex items-center gap-1">
-                    ID
-                    <Info className="h-3.5 w-3.5 text-muted-foreground" aria-label="Identificador interno" />
-                  </span>
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Creado</th>
-                <th className="px-4 py-3 text-center font-semibold text-muted-foreground w-[100px]">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {sorted.map(c => (
-                <tr
-                  key={c.id}
-                  className="hover:bg-muted/30 cursor-pointer"
-                  onClick={e => handleRowClick(c, e)}
-                >
-                  <td className="w-1 p-0 bg-muted-foreground/20" aria-hidden />
-                  <td className="px-4 py-3 font-medium uppercase text-foreground max-w-[220px] truncate" title={c.nombre}>
-                    {c.nombre}
-                  </td>
-                  <td className="px-4 py-3 max-w-[220px] truncate text-foreground/90" title={c.razon_social}>
-                    {c.razon_social}
-                  </td>
-                  <td className="px-4 py-3 max-w-[200px] truncate" title={c.email}>{c.email || '—'}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">{c.telefono || '—'}</td>
-                  <td className="px-4 py-3 text-center">
-                    {c.activo ? (
-                      <Badge variant="success" className="border-green-600 bg-green-50 text-green-800 font-medium">
-                        Activo
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-muted-foreground">
-                        Inactivo
-                      </Badge>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{c.numero ?? '—'}</td>
-                  <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">{toDMY(c.created_at)}</td>
-                  <td className="px-4 py-3 text-center" onClick={e => e.stopPropagation()}>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="text-destructive hover:text-destructive"
-                      aria-label="Eliminar cliente"
-                      onClick={() => setDeleteTarget(c)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </td>
+
+        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <h2 className="text-sm font-semibold text-gray-900">Lista de clientes</h2>
+            <p className="text-xs text-gray-500">{sorted.length} resultado(s)</p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    Cliente
+                  </th>
+                  <th className="hidden sm:table-cell px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    Estado
+                  </th>
+                  <th className="hidden md:table-cell px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    Creado
+                  </th>
+                  <th className="px-5 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide w-[84px]">
+                    Acciones
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {sorted.map(c => (
+                  <tr
+                    key={c.id}
+                    className="hover:bg-gray-50/70 cursor-pointer"
+                    onClick={e => handleRowClick(c, e)}
+                  >
+                    <td className="px-5 py-5">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-gray-900 truncate" title={c.nombre}>
+                          {c.nombre}
+                        </p>
+                        <p className="mt-1 text-sm text-gray-500 truncate" title={c.email || c.razon_social}>
+                          {c.email?.trim() ? c.email : (c.razon_social?.trim() ? c.razon_social : '—')}
+                        </p>
+                      </div>
+                    </td>
+
+                    <td className="hidden sm:table-cell px-5 py-5 text-center">
+                      {c.activo ? (
+                        <Badge variant="success" className="border-green-600 bg-green-50 text-green-800 font-medium">
+                          Activo
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-gray-600 border-gray-200">
+                          Inactivo
+                        </Badge>
+                      )}
+                    </td>
+
+                    <td className="hidden md:table-cell px-5 py-5 whitespace-nowrap text-gray-500">
+                      {toDMY(c.created_at)}
+                    </td>
+
+                    <td className="px-5 py-5 text-right" onClick={e => e.stopPropagation()}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="text-destructive hover:text-destructive hover:bg-red-50"
+                        aria-label="Eliminar cliente"
+                        onClick={() => setDeleteTarget(c)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+
+                {sorted.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-5 py-10 text-center text-sm text-gray-500">
+                      No hay clientes que coincidan con tu búsqueda.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
