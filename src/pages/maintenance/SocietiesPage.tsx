@@ -143,6 +143,7 @@ export default function SocietiesPage() {
 
   const [editItem, setEditItem] = useState<Society | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<Partial<Society>>({});
   const [deleteTarget, setDeleteTarget] = useState<Society | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -314,10 +315,15 @@ export default function SocietiesPage() {
           id: crypto.randomUUID(),
           created_at: new Date().toISOString().split('T')[0],
         } as Society;
-    const ok = await saveSociety(society, !!editItem);
-    if (!ok) return;
-    toast.success(editItem ? 'Sociedad actualizada' : 'Sociedad creada');
-    setShowForm(false);
+    setSaving(true);
+    try {
+      const ok = await saveSociety(society, !!editItem);
+      if (!ok) return;
+      toast.success(editItem ? 'Sociedad actualizada' : 'Sociedad creada');
+      setShowForm(false);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const confirmDelete = async () => {
@@ -704,7 +710,9 @@ export default function SocietiesPage() {
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
-            <Button onClick={() => void handleSave()}>Guardar</Button>
+            <Button onClick={() => void handleSave()} disabled={saving}>
+              {saving ? 'Guardando...' : 'Guardar'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

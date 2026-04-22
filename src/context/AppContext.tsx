@@ -185,13 +185,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const addCase = useCallback((c: Case) => {
     setCases(prev => [c, ...prev]);
+    // Mantener cache local consistente: si refresco falla, no "desaparece" el caso nuevo.
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (raw) {
+        const cached = JSON.parse(raw) as Awaited<ReturnType<typeof db.loadAllFromSupabase>>;
+        const next = {
+          ...cached,
+          cases: [c, ...(cached.cases ?? []).filter(x => x.id !== c.id)],
+        };
+        localStorage.setItem(CACHE_KEY, JSON.stringify(next));
+      }
+    } catch {
+      // ignore cache update errors
+    }
     if (sb) {
-      void db.insertCase(sb, c).then(({ error }) => {
+      void (async () => {
+        const { error } = await withTimeout(db.insertCase(sb, c), 30_000, 'Crear caso (Supabase)');
         if (error) {
           toast.error(error.message);
           setCases(prev => prev.filter(x => x.id !== c.id));
+          // Revertir también cache
+          try {
+            const raw = localStorage.getItem(CACHE_KEY);
+            if (raw) {
+              const cached = JSON.parse(raw) as Awaited<ReturnType<typeof db.loadAllFromSupabase>>;
+              const next = { ...cached, cases: (cached.cases ?? []).filter(x => x.id !== c.id) };
+              localStorage.setItem(CACHE_KEY, JSON.stringify(next));
+            }
+          } catch {
+            // ignore
+          }
         }
-      });
+      })();
     }
   }, [sb]);
 
@@ -370,7 +396,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       let merged: Society = society;
       if (sb && isQboSocietyPushConfigured()) {
         try {
-          const qb = await pushSocietyToQuickbooksUpsert(society);
+          // QBO puede colgarse por red/DNS: nunca bloquear la UI indefinidamente.
+          const qb = await withTimeout(
+            pushSocietyToQuickbooksUpsert(society),
+            30_000,
+            'Enlazar sociedad con QuickBooks',
+          );
           if (qb.quickbooks_customer_id || qb.id_qb != null) {
             merged = { ...society };
             if (qb.quickbooks_customer_id) merged = { ...merged, quickbooks_customer_id: qb.quickbooks_customer_id };
