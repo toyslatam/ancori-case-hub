@@ -777,7 +777,8 @@ export async function deleteQBItemRow(sb: SupabaseClient, id: string) {
 }
 
 export async function insertDirector(sb: SupabaseClient, d: Director) {
-  return sb.from('directores').insert(directorToRow(d));
+  // Devolver la fila insertada para obtener defaults/normalización del servidor
+  return sb.from('directores').insert(directorToRow(d)).select('*').single();
 }
 
 export async function updateDirectorRow(sb: SupabaseClient, d: Director) {

@@ -593,6 +593,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           toast.error(res.error.message);
           return false;
         }
+        if (!isEdit && res.data) {
+          const saved = db.rowToDirector(res.data as unknown as Record<string, unknown>);
+          setDirectores(prev => [...prev, saved]);
+          return true;
+        }
       }
       setDirectores(prev => (isEdit ? prev.map(x => x.id === d.id ? d : x) : [...prev, d]));
       return true;

@@ -91,6 +91,7 @@ export default function DirectoresPage() {
 
   const [editItem, setEditItem] = useState<Director | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<Partial<Director>>({});
   const [deleteTarget, setDeleteTarget] = useState<Director | null>(null);
 
@@ -175,10 +176,15 @@ export default function DirectoresPage() {
           id: crypto.randomUUID(),
           created_at: new Date().toISOString().split('T')[0],
         } as Director;
-    const ok = await saveDirector(row, !!editItem);
-    if (!ok) return;
-    toast.success(editItem ? 'Director actualizado' : 'Director creado');
-    setShowForm(false);
+    setSaving(true);
+    try {
+      const ok = await saveDirector(row, !!editItem);
+      if (!ok) return;
+      toast.success(editItem ? 'Director actualizado' : 'Director creado');
+      setShowForm(false);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const confirmDelete = async () => {
@@ -543,7 +549,9 @@ export default function DirectoresPage() {
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
-            <Button onClick={() => void handleSave()}>Guardar</Button>
+            <Button onClick={() => void handleSave()} disabled={saving}>
+              {saving ? 'Guardando...' : 'Guardar'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
