@@ -573,15 +573,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [sb]);
 
   const saveDirector = useCallback(async (d: Director, isEdit: boolean): Promise<boolean> => {
-    if (sb) {
-      const res = isEdit ? await db.updateDirectorRow(sb, d) : await db.insertDirector(sb, d);
-      if (res.error) {
-        toast.error(res.error.message);
-        return false;
+    try {
+      if (sb) {
+        const op = isEdit ? db.updateDirectorRow(sb, d) : db.insertDirector(sb, d);
+        const res = await withTimeout(op, 30_000, 'Guardar director (Supabase)');
+        if (res.error) {
+          toast.error(res.error.message);
+          return false;
+        }
       }
+      setDirectores(prev => (isEdit ? prev.map(x => x.id === d.id ? d : x) : [...prev, d]));
+      return true;
+    } catch (e) {
+      toast.error(`Error al guardar el director: ${String(e)}`);
+      return false;
     }
-    setDirectores(prev => (isEdit ? prev.map(x => x.id === d.id ? d : x) : [...prev, d]));
-    return true;
   }, [sb]);
 
   const deleteDirector = useCallback(async (id: string): Promise<boolean> => {
