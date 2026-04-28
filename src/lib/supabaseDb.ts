@@ -692,7 +692,9 @@ export async function insertClient(sb: SupabaseClient, c: Client) {
   console.log('[insertClient] INSERT CLIENT PAYLOAD:', safeRow);
   console.time('[insertClient] INSERT');
 
-  const res = await sb.from('clients').insert(safeRow).select('*').single();
+  // No usar .select('*').single() aquí: añade una lectura posterior al INSERT,
+  // depende de policy SELECT/RLS y puede hacer que la UI quede esperando más.
+  const res = await sb.from('clients').insert(safeRow);
   console.timeEnd('[insertClient] INSERT');
   console.log('[insertClient] INSERT RESULT:', { data: res.data, error: res.error });
   if (res.error) {
@@ -712,7 +714,8 @@ export async function testClientsSelectLatency(sb: SupabaseClient) {
 }
 
 export async function updateClientRow(sb: SupabaseClient, c: Client) {
-  const res = await sb.from('clients').update(clientToRow(c)).eq('id', c.id).select('*').single();
+  // Retorno mínimo: PATCH confirmado sin lectura posterior.
+  const res = await sb.from('clients').update(clientToRow(c)).eq('id', c.id);
   if (res.error) {
     console.error('[updateClientRow] SUPABASE ERROR:', res.error);
     throw res.error;

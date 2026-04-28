@@ -415,12 +415,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       // supabaseFetch gestiona timeout (30s) y retry — no añadir AbortController extra.
       if (isEdit) {
-        // updateClientRow lanza si hay error — retorna la fila guardada.
-        const res = await db.updateClientRow(sb, client);
+        // updateClientRow lanza si hay error. Usamos el objeto local porque Supabase
+        // ya confirmó el PATCH y evitamos una lectura posterior lenta.
+        await db.updateClientRow(sb, client);
         console.timeEnd('[saveClient] op');
-        console.log('[saveClient] updated', { data: (res as any).data ?? null });
-        // Para edición: actualizar estado local de inmediato con la fila confirmada por Supabase.
-        const saved = db.rowToClient((res as any).data as Record<string, unknown>);
+        console.log('[saveClient] updated', { id: client.id });
+        const saved = client;
         setClients(prev => prev.map(c => c.id === saved.id ? saved : c));
         try {
           const raw = localStorage.getItem(CACHE_KEY);
@@ -433,11 +433,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
         } catch { /* ignore */ }
       } else {
-        // insertClient hace .select('*').single() → retorna la fila completa con numero asignado por Postgres.
-        // No necesitamos refreshClients() — usamos directamente lo que Supabase ya devuelve.
-        const res = await db.insertClient(sb, client);
+        // insertClient confirma el INSERT con retorno mínimo. No esperamos una lectura
+        // adicional para no bloquear la UI en conexiones lentas.
+        await db.insertClient(sb, client);
         console.timeEnd('[saveClient] op');
-        const saved = db.rowToClient((res as any).data as Record<string, unknown>);
+        const saved = client;
         setClients(prev => [saved, ...prev]);
         try {
           const raw = localStorage.getItem(CACHE_KEY);
@@ -449,6 +449,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             }));
           }
         } catch { /* ignore */ }
+        // Refrescar en segundo plano para traer el `numero` real asignado por Postgres.
+        void refreshClients();
       }
     } catch (e) {
       console.timeEnd('[saveClient] op');
