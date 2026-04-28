@@ -366,6 +366,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return true;
   }, [sb]);
 
+  /**
+   * Recarga `clients` desde Supabase (AbortController 10s).
+   * Declarado ANTES de saveClient/deleteClient para evitar TDZ en dependency arrays.
+   */
+  const refreshClients = useCallback(async (): Promise<void> => {
+    if (!sb) return;
+    console.log('[refreshClients] iniciando...');
+    const controller = new AbortController();
+    const tid = window.setTimeout(() => {
+      controller.abort();
+      console.warn('[refreshClients] Abortado (10s). Posible problema de red/DNS con Supabase.');
+    }, 10_000);
+    try {
+      const { data, error } = await sb
+        .from('clients')
+        .select('*')
+        .order('numero', { ascending: true })
+        .abortSignal(controller.signal);
+      window.clearTimeout(tid);
+      if (error) {
+        console.error('[refreshClients] ERROR Supabase:', error);
+        return;
+      }
+      const fresh = (data ?? []).map(r => db.rowToClient(r as Record<string, unknown>));
+      console.log(`[refreshClients] ${fresh.length} clientes desde Supabase.`);
+      setClients(fresh);
+      try {
+        const raw = localStorage.getItem(CACHE_KEY);
+        if (raw) {
+          const cached = JSON.parse(raw) as Awaited<ReturnType<typeof db.loadAllFromSupabase>>;
+          localStorage.setItem(CACHE_KEY, JSON.stringify({ ...cached, clients: fresh }));
+        }
+      } catch { /* ignore */ }
+    } catch (e) {
+      window.clearTimeout(tid);
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/abort/i.test(msg)) {
+        console.error('[refreshClients] Timeout/Abort (10s): Supabase no respondió. Revisa red/DNS/proxy.');
+      } else {
+        console.error('[refreshClients] Exception:', e);
+      }
+    }
+  }, [sb, CACHE_KEY]);
+
   const saveClient = useCallback(async (client: Client, isEdit: boolean): Promise<boolean> => {
     if (!client.nombre?.trim()) {
       toast.error('Nombre cliente es obligatorio');
@@ -720,55 +764,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setDirectores(prev => prev.filter(x => x.id !== id));
     return true;
   }, [sb]);
-
-  /**
-   * Recarga `clients` directamente desde Supabase (10s timeout).
-   * - Actualiza el estado local.
-   * - Actualiza el cache del usuario.
-   * - Distingue timeout de error real en consola.
-   */
-  const refreshClients = useCallback(async (): Promise<void> => {
-    if (!sb) return;
-    console.log('[refreshClients] iniciando...');
-    const controller = new AbortController();
-    const tid = window.setTimeout(() => {
-      controller.abort();
-      console.warn('[refreshClients] Abortado por timeout (10s). Posible problema de red/DNS con Supabase.');
-    }, 10_000);
-    try {
-      const { data, error } = await sb
-        .from('clients')
-        .select('*')
-        .order('numero', { ascending: true })
-        .abortSignal(controller.signal);
-      window.clearTimeout(tid);
-      if (error) {
-        console.error('[refreshClients] ERROR Supabase:', error);
-        return;
-      }
-      const fresh = (data ?? []).map(r => db.rowToClient(r as Record<string, unknown>));
-      console.log(`[refreshClients] ${fresh.length} clientes cargados desde Supabase.`);
-      setClients(fresh);
-      // Actualizar cache del usuario para que recarga no traiga datos viejos.
-      try {
-        const raw = localStorage.getItem(CACHE_KEY);
-        if (raw) {
-          const cached = JSON.parse(raw) as Awaited<ReturnType<typeof db.loadAllFromSupabase>>;
-          localStorage.setItem(CACHE_KEY, JSON.stringify({ ...cached, clients: fresh }));
-        }
-      } catch {
-        // ignore
-      }
-    } catch (e) {
-      window.clearTimeout(tid);
-      const msg = e instanceof Error ? e.message : String(e);
-      if (/abort/i.test(msg)) {
-        console.error('[refreshClients] Timeout/Abort (10s): Supabase no respondió. Revisa red/DNS/proxy.');
-      } else {
-        console.error('[refreshClients] Exception:', e);
-      }
-    }
-  }, [sb, CACHE_KEY]);
 
   const getClientName = useCallback((id?: string) => clients.find(c => c.id === id)?.nombre || '', [clients]);
   const getSocietyName = useCallback((id?: string) => societies.find(s => s.id === id)?.nombre || '', [societies]);
