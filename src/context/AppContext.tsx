@@ -13,6 +13,7 @@ import {
   pushSocietyToQuickbooksUpsert,
 } from '@/lib/qboIntegration';
 import * as db from '@/lib/supabaseDb';
+import { getSupabaseConfig } from '@/lib/supabaseClient';
 
 interface AppContextType {
   cases: Case[];
@@ -76,6 +77,11 @@ function withTimeout<T>(p: Promise<T>, timeoutMs: number, label: string): Promis
   return Promise.race([p, timeout]).finally(() => {
     if (tid != null) window.clearTimeout(tid);
   }) as Promise<T>;
+}
+
+function isTimeoutError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /Timeout\s*\(\d+\s*ms\)/i.test(msg);
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -367,7 +373,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (sb) {
         console.log('[saveClient] start', { isEdit, id: client.id, numero: client.numero ?? null, nombre: client.nombre });
         const op = isEdit ? db.updateClientRow(sb, client) : db.insertClient(sb, client);
-        const res = await withTimeout(op, 30_000, 'Guardar cliente (Supabase)');
+        console.time('[saveClient] SUPABASE op');
+        const res = await withTimeout(op, 30_000, 'Guardar cliente (Supabase)')
+          .finally(() => console.timeEnd('[saveClient] SUPABASE op'));
         console.log('[saveClient] result', { data: (res as any).data ?? null, error: res.error ?? null });
         if (res.error) {
           console.error('[saveClient] SUPABASE ERROR:', res.error);
@@ -390,6 +398,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return true;
     } catch (e) {
       console.error('[saveClient] Exception:', e);
+      if (isTimeoutError(e) && sb) {
+        try {
+          const cfg = getSupabaseConfig();
+          console.warn('[saveClient] Timeout detectado. Supabase config:', { url: cfg.url, anonKeyPresent: Boolean(cfg.anonKey) });
+          // Test mínimo para distinguir: ¿ni SELECT simple responde?
+          await db.testClientsSelectLatency(sb);
+        } catch (inner) {
+          console.warn('[saveClient] Timeout diagnóstico falló:', inner);
+        }
+      }
       toast.error(`Error al guardar el cliente: ${String(e)}`);
       return false;
     }

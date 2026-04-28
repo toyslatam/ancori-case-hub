@@ -690,13 +690,24 @@ export async function insertClient(sb: SupabaseClient, c: Client) {
   // Asegurar que jamás enviamos `numero` en el insert.
   const { numero: _numero, ...safeRow } = row as Record<string, unknown>;
   console.log('[insertClient] INSERT CLIENT PAYLOAD:', safeRow);
+  console.time('[insertClient] INSERT');
 
   const res = await sb.from('clients').insert(safeRow).select('*').single();
+  console.timeEnd('[insertClient] INSERT');
   console.log('[insertClient] INSERT RESULT:', { data: res.data, error: res.error });
   if (res.error) {
     console.error('[insertClient] SUPABASE INSERT ERROR:', res.error);
     throw res.error;
   }
+  return res;
+}
+
+/** Test rápido de latencia: SELECT mínimo a `clients` (sin cambiar lógica de negocio). */
+export async function testClientsSelectLatency(sb: SupabaseClient) {
+  console.time('[testClientsSelectLatency] SELECT clients');
+  const res = await sb.from('clients').select('id').limit(1);
+  console.timeEnd('[testClientsSelectLatency] SELECT clients');
+  console.log('[testClientsSelectLatency] RESULT:', { data: res.data, error: res.error });
   return res;
 }
 
