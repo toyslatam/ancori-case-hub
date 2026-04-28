@@ -73,7 +73,7 @@ export function NewCaseModal({ open, onClose, onCreated }: NewCaseModalProps) {
       prioridad_urgente: false,
       prioridad:       'Media',
       creado_por:      actorName,
-      responsable:     actorName,
+      responsable:     '',
       observaciones:   '',
       fecha_caso:      new Date().toISOString().split('T')[0],
       created_at:      new Date().toISOString(),

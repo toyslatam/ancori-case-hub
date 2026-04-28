@@ -21,11 +21,6 @@ const estadoBadge: Record<string, string> = {
   'Cancelado':            'bg-gray-100  text-gray-400   ring-1 ring-gray-200',
 };
 
-// ── Ancho de columnas fijas ────────────────────────────────────────────────
-// Caso: 96px | Cliente: 176px (suma = 272px para el second sticky left)
-const PIN_CASO_W    = 96;
-const PIN_CLIENTE_W = 176;
-
 export function CasesTable({
   cases, onOpenComments, onOpenExpenses, onOpenInvoice, onEditCase, onDeleteCase,
 }: CasesTableProps) {
@@ -51,13 +46,12 @@ export function CasesTable({
   const totalPages = Math.ceil(cases.length / perPage);
 
   // ── Helpers de cabecera ────────────────────────────────────────────────
-  const thBase = 'px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-widest text-gray-400 whitespace-nowrap select-none bg-gray-50';
+  const thBase = 'px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-400 whitespace-nowrap select-none bg-gray-50';
 
   const SortTh = ({
-    field, children, style, className,
-  }: { field: string; children: React.ReactNode; style?: React.CSSProperties; className?: string }) => (
+    field, children, className,
+  }: { field: string; children: React.ReactNode; className?: string }) => (
     <th
-      style={style}
       className={cn(thBase, 'cursor-pointer hover:text-gray-600 transition-colors', className)}
       onClick={() => toggleSort(field)}
     >
@@ -68,8 +62,8 @@ export function CasesTable({
     </th>
   );
 
-  const Th = ({ children, style, className }: { children?: React.ReactNode; style?: React.CSSProperties; className?: string }) => (
-    <th style={style} className={cn(thBase, className)}>{children}</th>
+  const Th = ({ children, className }: { children?: React.ReactNode; className?: string }) => (
+    <th className={cn(thBase, className)}>{children}</th>
   );
 
   return (
@@ -81,59 +75,26 @@ export function CasesTable({
         <span className="text-xs text-gray-400">{cases.length} caso{cases.length !== 1 ? 's' : ''}</span>
       </div>
 
-      {/*
-        ── Contenedor de scroll horizontal ───────────────────────────────
-        overflow-x-auto: scroll cuando la tabla es más ancha que el contenedor
-        Scrollbar estilizada para que sea discreta
-      */}
-      <div
-        className={cn(
-          'overflow-x-auto',
-          // scrollbar discreta estilo Linear/Stripe
-          '[&::-webkit-scrollbar]:h-1',
-          '[&::-webkit-scrollbar-track]:bg-transparent',
-          '[&::-webkit-scrollbar-thumb]:bg-gray-200',
-          '[&::-webkit-scrollbar-thumb:hover]:bg-gray-300',
-        )}
-      >
-        {/*
-          La tabla tiene un min-width que garantiza que todas las columnas
-          tengan espacio mínimo. El ancho real se adapta al contenedor.
-        */}
-        <table className="w-full border-collapse" style={{ minWidth: 1360 }}>
+      <div className="w-full overflow-hidden">
+        <table className="w-full table-fixed border-collapse">
+          <colgroup>
+            <col className="w-[10%]" />
+            <col className="w-[28%]" />
+            <col className="w-[21%]" />
+            <col className="w-[12%]" />
+            <col className="w-[11%]" />
+            <col className="w-[18%]" />
+          </colgroup>
 
           {/* ── THEAD sticky ──────────────────────────────────────────── */}
           <thead>
             <tr className="border-b border-gray-100">
-
-              {/* Caso — pinned left-0 */}
-              <SortTh
-                field="n_tarea"
-                style={{ width: PIN_CASO_W, minWidth: PIN_CASO_W, position: 'sticky', left: 0, zIndex: 30 }}
-                className="bg-gray-50 after:absolute after:right-0 after:top-0 after:bottom-0 after:w-px after:bg-gray-200"
-              >
-                Caso
-              </SortTh>
-
-              {/* Cliente — pinned left=PIN_CASO_W */}
-              <Th
-                style={{ width: PIN_CLIENTE_W, minWidth: PIN_CLIENTE_W, position: 'sticky', left: PIN_CASO_W, zIndex: 30 }}
-                className="bg-gray-50 after:absolute after:right-0 after:top-0 after:bottom-0 after:w-px after:bg-gray-200"
-              >
-                Cliente
-              </Th>
-
-              {/* Columnas normales */}
-              <Th style={{ minWidth: 160 }}>Sociedad</Th>
-              <Th style={{ minWidth: 130 }}>Creado Por</Th>
-              <Th style={{ minWidth: 240 }}>Servicio</Th>
-              <SortTh field="estado" style={{ minWidth: 150 }}>Estado</SortTh>
-              <Th style={{ minWidth: 130 }}>Responsable</Th>
-              <Th style={{ minWidth: 200 }}>Observaciones</Th>
-              <Th style={{ minWidth: 110 }} className="text-center">Comentarios</Th>
-              <Th style={{ minWidth: 52 }} className="text-center">$</Th>
-              <Th style={{ minWidth: 52 }} className="text-center">📄</Th>
-              <Th style={{ minWidth: 44 }} />
+              <SortTh field="n_tarea">Caso</SortTh>
+              <Th>Cliente</Th>
+              <Th>Servicio</Th>
+              <SortTh field="estado">Estado</SortTh>
+              <Th>Responsable</Th>
+              <Th className="text-right">Acciones</Th>
             </tr>
           </thead>
 
@@ -141,7 +102,7 @@ export function CasesTable({
           <tbody className="divide-y divide-gray-50">
             {paginated.length === 0 ? (
               <tr>
-                <td colSpan={12} className="px-5 py-16 text-center text-sm text-gray-400">
+                <td colSpan={6} className="px-5 py-16 text-center text-sm text-gray-400">
                   No hay casos que mostrar
                 </td>
               </tr>
@@ -150,10 +111,13 @@ export function CasesTable({
               const sociedadNombre = getSocietyName(c.society_id);
               const servicioNombre = getServiceItemName(c.service_item_id);
               const responsable    = getUsuarioName(c.usuario_asignado_id) || c.responsable;
-              const observaciones  = c.notas || c.observaciones || '';
               const commentCount   = c.comments?.length ?? 0;
               const invoiceCount   = allInvoices.filter(i => i.case_id === c.id).length;
               const rowBg          = idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40';
+              const clienteMeta = [
+                sociedadNombre ? `Sociedad: ${sociedadNombre}` : null,
+                c.creado_por ? `Creado por: ${c.creado_por}` : null,
+              ].filter(Boolean).join(' · ');
 
               return (
                 <tr
@@ -162,55 +126,25 @@ export function CasesTable({
                   onClick={() => onEditCase(c)}
                 >
 
-                  {/* ── Caso (pinned) ───────────────────────────── */}
-                  <td
-                    style={{ position: 'sticky', left: 0, zIndex: 10 }}
-                    className={cn(
-                      'px-3 py-2.5 whitespace-nowrap font-mono text-xs font-bold text-sky-600',
-                      rowBg,
-                      'group-hover:bg-blue-50/30',
-                      'after:absolute after:right-0 after:top-0 after:bottom-0 after:w-px after:bg-gray-100',
-                    )}
-                  >
-                    {formatNTarea(c.n_tarea) || c.numero_caso}
+                  {/* ── Caso ─────────────────────────────────────── */}
+                  <td className="px-4 py-3 whitespace-nowrap font-mono text-xs font-bold text-sky-600">
+                    <span className="block truncate">{formatNTarea(c.n_tarea) || c.numero_caso}</span>
                   </td>
 
-                  {/* ── Cliente (pinned) ────────────────────────── */}
-                  <td
-                    style={{ position: 'sticky', left: PIN_CASO_W, zIndex: 10, maxWidth: PIN_CLIENTE_W }}
-                    className={cn(
-                      'px-3 py-2.5',
-                      rowBg,
-                      'group-hover:bg-blue-50/30',
-                      'after:absolute after:right-0 after:top-0 after:bottom-0 after:w-px after:bg-gray-100',
-                    )}
-                  >
-                    <span className="block truncate text-xs font-medium text-gray-800" title={clienteNombre}>
+                  {/* ── Cliente compuesto ────────────────────────── */}
+                  <td className="px-4 py-3">
+                    <span className="block truncate text-sm font-semibold text-gray-800" title={clienteNombre}>
                       {clienteNombre || '—'}
                     </span>
-                    {c.cliente_temporal && (
-                      <span className="text-[9px] font-semibold text-amber-500 uppercase tracking-wide">Temporal</span>
-                    )}
-                  </td>
-
-                  {/* ── Sociedad ─────────────────────────────────── */}
-                  <td className="px-3 py-2.5" style={{ maxWidth: 160 }}>
-                    <span className="block truncate text-xs text-gray-600" title={sociedadNombre}>
-                      {sociedadNombre || '—'}
-                    </span>
-                  </td>
-
-                  {/* ── Creado Por ───────────────────────────────── */}
-                  <td className="px-3 py-2.5" style={{ maxWidth: 130 }}>
-                    <span className="block truncate text-xs text-gray-500" title={c.creado_por}>
-                      {c.creado_por || '—'}
+                    <span className="mt-0.5 block truncate text-[11px] text-gray-400" title={clienteMeta || undefined}>
+                      {clienteMeta || (c.cliente_temporal ? 'Cliente temporal' : '—')}
                     </span>
                   </td>
 
                   {/* ── Servicio ─────────────────────────────────── */}
-                  <td className="px-3 py-2.5" style={{ maxWidth: 240 }}>
+                  <td className="px-4 py-3">
                     <span
-                      className="block truncate text-xs text-gray-700 leading-snug"
+                      className="block truncate text-sm text-gray-700 leading-snug"
                       title={servicioNombre || c.descripcion}
                     >
                       {servicioNombre || c.descripcion || '—'}
@@ -218,86 +152,68 @@ export function CasesTable({
                   </td>
 
                   {/* ── Estado ───────────────────────────────────── */}
-                  <td className="px-3 py-2.5 whitespace-nowrap">
+                  <td className="px-4 py-3 whitespace-nowrap">
                     <span className={cn(
-                      'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                      'inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-[10px] font-semibold',
                       estadoBadge[c.estado] ?? 'bg-gray-100 text-gray-400',
                     )}>
-                      {c.estado}
+                      <span className="truncate">{c.estado}</span>
                     </span>
                   </td>
 
                   {/* ── Responsable ──────────────────────────────── */}
-                  <td className="px-3 py-2.5" style={{ maxWidth: 130 }}>
-                    <span className="block truncate text-xs text-gray-600" title={responsable}>
+                  <td className="px-4 py-3">
+                    <span className="block truncate text-sm text-gray-600" title={responsable}>
                       {responsable || '—'}
                     </span>
                   </td>
 
-                  {/* ── Observaciones ────────────────────────────── */}
-                  <td className="px-3 py-2.5" style={{ maxWidth: 200 }}>
-                    <span className="block truncate text-xs text-gray-400" title={observaciones}>
-                      {observaciones || '—'}
-                    </span>
-                  </td>
-
-                  {/* ── Comentarios ──────────────────────────────── */}
-                  <td className="px-2 py-2.5 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
-                    <button
-                      onClick={() => onOpenComments(c)}
-                      className={cn(
-                        'inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold transition-all duration-100',
-                        commentCount > 0
-                          ? 'bg-violet-50 text-violet-600 ring-1 ring-violet-200 hover:bg-violet-100'
-                          : 'bg-gray-50 text-gray-400 ring-1 ring-gray-200 hover:bg-gray-100 hover:text-gray-600',
-                      )}
-                    >
-                      <MessageSquare className="h-3 w-3" />
-                      Ver
-                      {commentCount > 0 && (
-                        <span className="rounded-full bg-violet-500 text-white w-3.5 h-3.5 flex items-center justify-center text-[9px] font-bold leading-none">
-                          {commentCount}
+                  {/* ── Acciones ─────────────────────────────────── */}
+                  <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                    <div className="flex flex-wrap items-center justify-end gap-1.5">
+                      <button
+                        onClick={() => onOpenComments(c)}
+                        title="Ver comentarios"
+                        className={cn(
+                          'inline-flex h-8 items-center gap-1 rounded-lg px-2 text-[10px] font-semibold transition-all duration-100',
+                          commentCount > 0
+                            ? 'bg-violet-50 text-violet-600 ring-1 ring-violet-200 hover:bg-violet-100'
+                            : 'bg-gray-50 text-gray-400 ring-1 ring-gray-200 hover:bg-gray-100 hover:text-gray-600',
+                        )}
+                      >
+                        <MessageSquare className="h-3 w-3" />
+                        Ver
+                        <span className="rounded-full bg-white px-1.5 py-0.5 text-[9px] leading-none text-violet-600 ring-1 ring-violet-100">
+                          💬 {commentCount}
                         </span>
-                      )}
-                    </button>
-                  </td>
-
-                  {/* ── Gastos ───────────────────────────────────── */}
-                  <td className="px-2 py-2.5 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
-                    <button
-                      onClick={() => onOpenExpenses(c)}
-                      title="Gastos"
-                      className="h-7 w-7 inline-flex items-center justify-center rounded-lg text-gray-300 hover:text-emerald-500 hover:bg-emerald-50 transition-all duration-100"
-                    >
-                      <DollarSign className="h-3.5 w-3.5" />
-                    </button>
-                  </td>
-
-                  {/* ── Facturas ─────────────────────────────────── */}
-                  <td className="px-2 py-2.5 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
-                    <button
-                      onClick={() => onOpenInvoice(c)}
-                      title="Facturas"
-                      className="relative h-7 w-7 inline-flex items-center justify-center rounded-lg text-gray-300 hover:text-sky-500 hover:bg-sky-50 transition-all duration-100"
-                    >
-                      <FileText className="h-3.5 w-3.5" />
-                      {invoiceCount > 0 && (
-                        <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 px-0.5 rounded-full bg-sky-500 text-white text-[8px] font-bold leading-none flex items-center justify-center">
-                          {invoiceCount > 9 ? '9+' : invoiceCount}
-                        </span>
-                      )}
-                    </button>
-                  </td>
-
-                  {/* ── Eliminar ─────────────────────────────────── */}
-                  <td className="px-2 py-2.5 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
-                    <button
-                      onClick={() => onDeleteCase(c.id)}
-                      title="Eliminar"
-                      className="h-7 w-7 inline-flex items-center justify-center rounded-lg text-gray-200 hover:text-red-400 hover:bg-red-50 transition-all duration-100"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                      </button>
+                      <button
+                        onClick={() => onOpenExpenses(c)}
+                        title="Gastos"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-300 transition-all duration-100 hover:bg-emerald-50 hover:text-emerald-500"
+                      >
+                        <DollarSign className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => onOpenInvoice(c)}
+                        title="Facturas"
+                        className="relative inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-300 transition-all duration-100 hover:bg-sky-50 hover:text-sky-500"
+                      >
+                        <FileText className="h-3.5 w-3.5" />
+                        {invoiceCount > 0 && (
+                          <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-sky-500 px-0.5 text-[8px] font-bold leading-none text-white">
+                            {invoiceCount > 9 ? '9+' : invoiceCount}
+                          </span>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => onDeleteCase(c.id)}
+                        title="Eliminar"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-200 transition-all duration-100 hover:bg-red-50 hover:text-red-400"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );

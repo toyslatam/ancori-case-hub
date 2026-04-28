@@ -32,7 +32,7 @@ export function ExpensesModal({ caseData, open, onClose }: ExpensesModalProps) {
     setExpenses(prev => [...prev, {
       id: crypto.randomUUID(), case_id: caseData.id,
       descripcion: '', cantidad: 1, importe: 0, total: 0,
-      fecha: new Date().toISOString().split('T')[0], observaciones: '',
+      fecha: new Date().toISOString().split('T')[0],
     }]);
   };
 
@@ -73,7 +73,6 @@ export function ExpensesModal({ caseData, open, onClose }: ExpensesModalProps) {
                 <th className="text-right py-2 px-2 font-medium w-24">Importe</th>
                 <th className="text-right py-2 px-2 font-medium w-24">Total</th>
                 <th className="text-left py-2 px-2 font-medium w-28">Fecha</th>
-                <th className="text-left py-2 px-2 font-medium">Observaciones</th>
                 <th className="w-10"></th>
               </tr>
             </thead>
@@ -85,7 +84,6 @@ export function ExpensesModal({ caseData, open, onClose }: ExpensesModalProps) {
                   <td className="py-1 px-2"><Input type="number" step="0.01" value={e.importe} onChange={ev => updateLine(i, 'importe', Number(ev.target.value))} className="h-8 text-right" /></td>
                   <td className="py-1 px-2 text-right font-medium">${e.total.toFixed(2)}</td>
                   <td className="py-1 px-2"><Input type="date" value={e.fecha} onChange={ev => updateLine(i, 'fecha', ev.target.value)} className="h-8" /></td>
-                  <td className="py-1 px-2"><Input value={e.observaciones || ''} onChange={ev => updateLine(i, 'observaciones', ev.target.value)} className="h-8" /></td>
                   <td className="py-1 px-2">
                     <Button variant="ghost" size="icon" onClick={() => removeLine(i)} className="h-7 w-7 text-destructive"><Trash2 className="h-3 w-3" /></Button>
                   </td>

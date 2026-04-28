@@ -197,7 +197,7 @@ export function EditCaseModal({ caseData, open, onClose, onOpenExpenses, onOpenI
               to: u.correo, nombre: u.nombre, cliente: entityLabel,
               caso: caseData.n_tarea ?? caseData.numero_caso,
               estado: form.estado ?? caseData.estado,
-              detalle: form.notas || caseData.notas || form.descripcion || '',
+              detalle: form.descripcion || caseData.descripcion || '',
               creado_por: caseData.creado_por, asignado_a: u.nombre, enviado_por: caseData.creado_por,
             }),
           });
@@ -380,18 +380,6 @@ export function EditCaseModal({ caseData, open, onClose, onOpenExpenses, onOpenI
               onChange={e => set('descripcion', e.target.value)}
               placeholder="Descripción del caso…"
               rows={3}
-              className={cn('resize-none', inp)}
-            />
-          </div>
-
-          {/* Notas */}
-          <div>
-            <L>Notas / Observaciones</L>
-            <Textarea
-              value={form.notas ?? ''}
-              onChange={e => set('notas', e.target.value)}
-              placeholder="Notas adicionales…"
-              rows={2}
               className={cn('resize-none', inp)}
             />
           </div>
