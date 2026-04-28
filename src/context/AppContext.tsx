@@ -367,30 +367,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [sb]);
 
   /**
-   * Recarga `clients` desde Supabase (AbortController 10s).
+   * Recarga `clients` desde Supabase y sincroniza estado + cache.
+   * El timeout lo maneja supabaseFetch (30s) — no se añade AbortController extra
+   * para evitar conflictos con signals internos de Supabase.
    * Declarado ANTES de saveClient/deleteClient para evitar TDZ en dependency arrays.
    */
   const refreshClients = useCallback(async (): Promise<void> => {
     if (!sb) return;
     console.log('[refreshClients] iniciando...');
-    const controller = new AbortController();
-    const tid = window.setTimeout(() => {
-      controller.abort();
-      console.warn('[refreshClients] Abortado (10s). Posible problema de red/DNS con Supabase.');
-    }, 10_000);
     try {
       const { data, error } = await sb
         .from('clients')
         .select('*')
-        .order('numero', { ascending: true })
-        .abortSignal(controller.signal);
-      window.clearTimeout(tid);
+        .order('numero', { ascending: true });
       if (error) {
         console.error('[refreshClients] ERROR Supabase:', error);
         return;
       }
       const fresh = (data ?? []).map(r => db.rowToClient(r as Record<string, unknown>));
-      console.log(`[refreshClients] ${fresh.length} clientes desde Supabase.`);
+      console.log(`[refreshClients] ${fresh.length} clientes sincronizados.`);
       setClients(fresh);
       try {
         const raw = localStorage.getItem(CACHE_KEY);
@@ -400,13 +395,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       } catch { /* ignore */ }
     } catch (e) {
-      window.clearTimeout(tid);
-      const msg = e instanceof Error ? e.message : String(e);
-      if (/abort/i.test(msg)) {
-        console.error('[refreshClients] Timeout/Abort (10s): Supabase no respondió. Revisa red/DNS/proxy.');
-      } else {
-        console.error('[refreshClients] Exception:', e);
-      }
+      console.error('[refreshClients] Exception:', e);
     }
   }, [sb, CACHE_KEY]);
 
@@ -416,31 +405,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return false;
     }
     if (!sb) {
-      // Sin Supabase: solo actualizar estado local (modo demo/dev).
       setClients(prev => isEdit ? prev.map(c => c.id === client.id ? client : c) : [...prev, client]);
       return true;
     }
 
     console.log('[saveClient] start', { isEdit, id: client.id, nombre: client.nombre });
-
-    // AbortController 10s para detectar si es red o DB.
-    const controller = new AbortController();
-    const abortTid = window.setTimeout(() => {
-      controller.abort();
-      console.error('[saveClient] Abort (10s): Supabase no respondió. Posible problema de red/DNS/proxy.');
-    }, 10_000);
+    console.time('[saveClient] op');
 
     try {
-      console.time('[saveClient] SUPABASE op');
-      let res: Awaited<ReturnType<typeof db.insertClient>> | Awaited<ReturnType<typeof db.updateClientRow>>;
+      // supabaseFetch gestiona timeout (30s) y retry — no añadir AbortController extra.
+      const res = isEdit
+        ? await db.updateClientRow(sb, client)
+        : await db.insertClient(sb, client);
 
-      if (isEdit) {
-        res = await db.updateClientRow(sb, client);
-      } else {
-        // insertClient ya elimina `numero` y hace .select('*').single()
-        res = await db.insertClient(sb, client);
-      }
-      console.timeEnd('[saveClient] SUPABASE op');
+      console.timeEnd('[saveClient] op');
       console.log('[saveClient] result', { data: (res as any).data ?? null, error: res.error ?? null });
 
       if (res.error) {
@@ -449,35 +427,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return false;
       }
     } catch (e) {
-      window.clearTimeout(abortTid);
+      console.timeEnd('[saveClient] op');
       console.error('[saveClient] Exception:', e);
       const msg = e instanceof Error ? e.message : String(e);
-      if (/abort/i.test(msg)) {
-        toast.error('Tiempo de espera agotado (10s). Supabase no respondió. Verifica tu conexión.');
-        // Diagnóstico adicional
-        const cfg = getSupabaseConfig();
-        console.warn('[saveClient] Config Supabase:', { url: cfg.url, anonKeyPresent: Boolean(cfg.anonKey) });
-        try { await db.testClientsSelectLatency(sb); } catch { /* diagnóstico falló */ }
-      } else {
-        toast.error(`Error al guardar el cliente: ${msg}`);
-      }
+      const isTimeout = /abort|timeout/i.test(msg);
+      toast.error(
+        isTimeout
+          ? 'La operación tardó demasiado. Verifica tu conexión e intenta de nuevo.'
+          : `Error al guardar el cliente: ${msg}`,
+      );
       return false;
-    } finally {
-      window.clearTimeout(abortTid);
     }
 
-    // Sincronizar estado desde DB (no confiar en updates optimistas).
+    // Sincronizar estado desde DB — evita datos fantasma o actualizaciones optimistas incorrectas.
     await refreshClients();
     return true;
   }, [sb, refreshClients]);
 
   const deleteClient = useCallback(async (id: string): Promise<boolean> => {
     if (sb) {
-      const controller = new AbortController();
-      const abortTid = window.setTimeout(() => {
-        controller.abort();
-        console.error('[deleteClient] Abort (10s): Supabase no respondió.');
-      }, 10_000);
       try {
         const { error } = await db.deleteClientRow(sb, id);
         if (error) {
@@ -486,16 +454,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        toast.error(/abort/i.test(msg) ? 'Tiempo de espera agotado al eliminar. Verifica tu conexión.' : `Error al eliminar: ${msg}`);
+        toast.error(
+          /abort|timeout/i.test(msg)
+            ? 'La eliminación tardó demasiado. Verifica tu conexión e intenta de nuevo.'
+            : `Error al eliminar: ${msg}`,
+        );
         return false;
-      } finally {
-        window.clearTimeout(abortTid);
       }
       // Recargar desde DB para evitar que el item "reaparezca" por cache.
       await refreshClients();
       return true;
     }
-    // Sin Supabase (modo demo): eliminación optimista.
     setClients(prev => prev.filter(c => c.id !== id));
     return true;
   }, [sb, refreshClients]);
