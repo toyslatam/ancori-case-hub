@@ -44,16 +44,13 @@ const ESTADO_COLORS: Record<CaseInvoice['estado'], string> = {
 };
 
 function newLine(services: Service[]): InvoiceLine {
-  const { honorarios } = resolveHonorariosAndGastosServices(services);
   return {
     id: crypto.randomUUID(),
     descripcion: '',
     cantidad: 1,
     tarifa: 0,
     importe: 0,
-    itbms: 7,
-    categoria: 'honorarios',
-    servicio_id: honorarios?.id,
+    itbms: 0,
   };
 }
 
@@ -163,10 +160,7 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
       setEstado('borrador');
       setNumeroFactura('');
       setNotaCliente('');
-      setLines([{
-        ...newLine(services),
-        descripcion: services.find(s => s.id === caseData.service_id)?.nombre || '',
-      }]);
+      setLines([newLine(services)]);
     }
   }, [open, caseData?.id, caseData?.service_id, effectiveInvoice?.id, invoiceListStep, invoice?.id, services]);
 
@@ -601,11 +595,11 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
                         <div className="lg:col-span-3">
                           <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 block">Producto / Servicio</label>
                           <Select
-                            value={l.categoria === 'gastos' ? 'gastos' : 'honorarios'}
+                            value={l.categoria === 'gastos' || l.categoria === 'honorarios' ? l.categoria : ''}
                             onValueChange={v => updateLine(i, 'categoria', v)}
                           >
                             <SelectTrigger className="h-10 text-sm rounded-xl border-gray-200 bg-white">
-                              <SelectValue />
+                              <SelectValue placeholder="Seleccionar" />
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="honorarios">Honorario</SelectItem>
