@@ -6,6 +6,14 @@ export type QboCustomer = {
   DisplayName?: string;
   CompanyName?: string;
   PrimaryEmailAddr?: { Address?: string };
+  BillAddr?: {
+    Line1?: string;
+    Line2?: string;
+    City?: string;
+    CountrySubDivisionCode?: string;
+    PostalCode?: string;
+    Country?: string;
+  };
   Active?: boolean;
 };
 
@@ -112,14 +120,6 @@ import type { QboCustomField } from './qbo-custom-fields.ts';
 export type QboCustomerFull = QboCustomer & {
   SyncToken?: string;
   PrimaryPhone?: { FreeFormNumber?: string };
-  BillAddr?: {
-    Line1?: string;
-    Line2?: string;
-    City?: string;
-    CountrySubDivisionCode?: string;
-    PostalCode?: string;
-    Country?: string;
-  };
   CustomField?: QboCustomField[];
 };
 

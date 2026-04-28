@@ -6,6 +6,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -14,6 +23,8 @@ export default function InvoiceTermsPage() {
   const [editItem, setEditItem] = useState<InvoiceTerm | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<Partial<InvoiceTerm>>({});
+  const [deleteTarget, setDeleteTarget] = useState<InvoiceTerm | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const openNew = () => { setForm({ activo: true }); setEditItem(null); setShowForm(true); };
   const openEdit = (t: InvoiceTerm) => { setForm({ ...t }); setEditItem(t); setShowForm(true); };
@@ -29,10 +40,18 @@ export default function InvoiceTermsPage() {
     setShowForm(false);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('¿Eliminar?')) return;
-    const ok = await deleteInvoiceTerm(id);
-    if (ok) toast.success('Eliminado');
+  const confirmDelete = async () => {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    try {
+      const ok = await deleteInvoiceTerm(deleteTarget.id);
+      if (ok) {
+        toast.success('Término eliminado');
+        setDeleteTarget(null);
+      }
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -59,7 +78,7 @@ export default function InvoiceTermsPage() {
                 <td className="px-4 py-3 text-center">{t.activo ? '✓' : '✗'}</td>
                 <td className="px-4 py-3 text-center">
                   <Button variant="ghost" size="icon" onClick={() => openEdit(t)}><Pencil className="h-4 w-4" /></Button>
-                  <Button variant="ghost" size="icon" onClick={() => handleDelete(t.id)} className="text-destructive"><Trash2 className="h-4 w-4" /></Button>
+                  <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(t)} className="text-destructive"><Trash2 className="h-4 w-4" /></Button>
                 </td>
               </tr>
             ))}
@@ -81,6 +100,28 @@ export default function InvoiceTermsPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar término de factura?</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <span className="block">
+                Esta acción eliminará el término <strong>{deleteTarget?.nombre}</strong> del mantenimiento.
+              </span>
+              <span className="block text-amber-700">
+                Si está siendo usado por facturas existentes, la base de datos puede impedir el borrado.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <Button variant="destructive" disabled={deleting} onClick={() => void confirmDelete()}>
+              {deleting ? 'Eliminando…' : 'Eliminar'}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

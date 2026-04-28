@@ -42,6 +42,7 @@ function json(status: number, body: Record<string, unknown>) {
 
 type SocietyRow = {
   id: string;
+  client_id: string | null;
   nombre: string;
   razon_social: string;
   correo: string | null;
@@ -49,6 +50,74 @@ type SocietyRow = {
   quickbooks_customer_id: string | null;
   activo: boolean;
 };
+
+type ClientLookupRow = {
+  id: string;
+  nombre: string | null;
+  razon_social: string | null;
+  activo: boolean | null;
+};
+
+function normalizeClientLookup(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function compactLookupKey(s: string): string {
+  return normalizeClientLookup(s).replace(/\s+/g, '');
+}
+
+function qboBillingLine1(c: QboCustomer): string {
+  return (c.BillAddr?.Line1 ?? '').trim();
+}
+
+function buildClientLookup(clients: ClientLookupRow[]) {
+  const byNormalized = new Map<string, string>();
+  const byCompact = new Map<string, string>();
+
+  for (const c of clients) {
+    if (c.activo === false) continue;
+    const id = c.id ? String(c.id) : '';
+    if (!id) continue;
+    for (const name of [c.nombre ?? '', c.razon_social ?? '']) {
+      const normalized = normalizeClientLookup(name);
+      if (!normalized) continue;
+      if (!byNormalized.has(normalized)) byNormalized.set(normalized, id);
+      const compact = normalized.replace(/\s+/g, '');
+      if (compact && !byCompact.has(compact)) byCompact.set(compact, id);
+    }
+  }
+
+  return { byNormalized, byCompact };
+}
+
+function resolveClientIdForQboCustomer(
+  c: QboCustomer,
+  lookup: ReturnType<typeof buildClientLookup>,
+): { clientId: string; source: string } | null {
+  const line1 = qboBillingLine1(c);
+  const normalized = normalizeClientLookup(line1);
+  if (!normalized) return null;
+
+  const byName = lookup.byNormalized.get(normalized);
+  if (byName) return { clientId: byName, source: `billaddr_line1:${line1}` };
+
+  const byCompact = lookup.byCompact.get(compactLookupKey(line1));
+  if (byCompact) return { clientId: byCompact, source: `billaddr_line1:${line1}` };
+
+  console.warn('[qbo-sync-societies] no local client matched BillAddr.Line1:', {
+    billaddr_line1: line1,
+    normalized,
+    qb_customer_id: c.Id,
+    qb_display_name: c.DisplayName,
+  });
+  return null;
+}
 
 function buildCustomerIndexes(customers: QboCustomer[]) {
   const byId = new Map<string, QboCustomer>();
@@ -150,15 +219,26 @@ Deno.serve(async (req) => {
     const { byId, byDisplay } = buildCustomerIndexes(customers);
     const { data: societies, error: socErr } = await supabase
       .from('societies')
-      .select('id, nombre, razon_social, correo, id_qb, quickbooks_customer_id, activo');
+      .select('id, client_id, nombre, razon_social, correo, id_qb, quickbooks_customer_id, activo');
 
     if (socErr) {
       return json(500, { error: 'db_societies', detail: socErr.message });
     }
 
+    const { data: clients, error: clientErr } = await supabase
+      .from('clients')
+      .select('id, nombre, razon_social, activo');
+
+    if (clientErr) {
+      return json(500, { error: 'db_clients', detail: clientErr.message });
+    }
+
+    const clientLookup = buildClientLookup((clients ?? []) as ClientLookupRow[]);
+
     const rows = (societies ?? []) as SocietyRow[];
     let matched = 0;
     let updated = 0;
+    let clientRepaired = 0;
     const updates: { id: string; qbId: string }[] = [];
     let idQbRepaired = 0;
 
@@ -167,14 +247,33 @@ Deno.serve(async (req) => {
       const qbId = matchCustomerId(s, byId, byDisplay);
       if (!qbId) continue;
       matched++;
+      const qboCustomer = byId.get(qbId);
+      const resolvedClient = qboCustomer ? resolveClientIdForQboCustomer(qboCustomer, clientLookup) : null;
       const idQb = qboCustomerIdToIdQb(qbId);
       if (s.quickbooks_customer_id === qbId) {
+        const repairPatch: Record<string, unknown> = {};
         if (idQb != null && s.id_qb !== idQb) {
+          repairPatch.id_qb = idQb;
+        }
+        if (resolvedClient && s.client_id !== resolvedClient.clientId) {
+          repairPatch.client_id = resolvedClient.clientId;
+          console.info('[qbo-sync-societies] repairing society client from QBO BillAddr.Line1:', {
+            society_id: s.id,
+            qb_customer_id: qbId,
+            previous_client_id: s.client_id,
+            new_client_id: resolvedClient.clientId,
+            source: resolvedClient.source,
+          });
+        }
+        if (Object.keys(repairPatch).length > 0) {
           const { error: repErr } = await supabase
             .from('societies')
-            .update({ id_qb: idQb })
+            .update(repairPatch)
             .eq('id', s.id);
-          if (!repErr) idQbRepaired++;
+          if (!repErr) {
+            if (repairPatch.id_qb != null) idQbRepaired++;
+            if (repairPatch.client_id != null) clientRepaired++;
+          }
         }
         continue;
       }
@@ -185,8 +284,24 @@ Deno.serve(async (req) => {
       const idQb = qboCustomerIdToIdQb(u.qbId);
       const patch: Record<string, unknown> = { quickbooks_customer_id: u.qbId };
       if (idQb != null) patch.id_qb = idQb;
+      const qboCustomer = byId.get(u.qbId);
+      const currentSociety = rows.find((r) => r.id === u.id);
+      const resolvedClient = qboCustomer ? resolveClientIdForQboCustomer(qboCustomer, clientLookup) : null;
+      if (resolvedClient && currentSociety?.client_id !== resolvedClient.clientId) {
+        patch.client_id = resolvedClient.clientId;
+        console.info('[qbo-sync-societies] assigning society client from QBO BillAddr.Line1:', {
+          society_id: u.id,
+          qb_customer_id: u.qbId,
+          previous_client_id: currentSociety?.client_id ?? null,
+          new_client_id: resolvedClient.clientId,
+          source: resolvedClient.source,
+        });
+      }
       const { error: upErr } = await supabase.from('societies').update(patch).eq('id', u.id);
-      if (!upErr) updated++;
+      if (!upErr) {
+        updated++;
+        if (patch.client_id != null) clientRepaired++;
+      }
     }
 
     // ── Detección de conflictos por Custom Fields ──────────────────
@@ -239,6 +354,7 @@ Deno.serve(async (req) => {
       matched,
       updated,
       id_qb_repaired: idQbRepaired,
+      client_id_repaired: clientRepaired,
       conflicts_detected: conflictsDetected,
     };
   }
