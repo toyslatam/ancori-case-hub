@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Case, formatNTarea } from '@/data/mockData';
 import { useApp } from '@/context/AppContext';
 import { MessageSquare, DollarSign, FileText, Trash2, ArrowUpDown } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 
 interface CasesTableProps {
@@ -21,6 +22,21 @@ const estadoBadge: Record<string, string> = {
   'Cancelado':            'bg-gray-100  text-gray-400   ring-1 ring-gray-200',
 };
 
+function observacionesToArray(texto: unknown): string[] {
+  if (Array.isArray(texto)) {
+    return texto.map(String).map(v => v.trim()).filter(Boolean);
+  }
+  if (typeof texto !== 'string') return [];
+  return texto
+    .split(/\r?\n+/)
+    .map(v => v.trim())
+    .filter(Boolean);
+}
+
+function countObservaciones(texto: unknown): number {
+  return observacionesToArray(texto).length;
+}
+
 export function CasesTable({
   cases, onOpenComments, onOpenExpenses, onOpenInvoice, onEditCase, onDeleteCase,
 }: CasesTableProps) {
@@ -28,6 +44,7 @@ export function CasesTable({
   const [sortField, setSortField] = useState<string>('n_tarea');
   const [sortDir, setSortDir]     = useState<'asc' | 'desc'>('desc');
   const [page, setPage]           = useState(0);
+  const [observacionesModal, setObservacionesModal] = useState<{ caseLabel: string; items: string[] } | null>(null);
   const perPage = 20;
 
   const toggleSort = (field: string) => {
@@ -47,6 +64,7 @@ export function CasesTable({
 
   // ── Helpers de cabecera ────────────────────────────────────────────────
   const thBase = 'px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-400 whitespace-nowrap select-none bg-gray-50';
+  const tdBase = 'px-4 py-4 align-top';
 
   const SortTh = ({
     field, children, className,
@@ -75,26 +93,27 @@ export function CasesTable({
         <span className="text-xs text-gray-400">{cases.length} caso{cases.length !== 1 ? 's' : ''}</span>
       </div>
 
-      <div className="w-full overflow-hidden">
-        <table className="w-full table-fixed border-collapse">
-          <colgroup>
-            <col className="w-[10%]" />
-            <col className="w-[28%]" />
-            <col className="w-[21%]" />
-            <col className="w-[12%]" />
-            <col className="w-[11%]" />
-            <col className="w-[18%]" />
-          </colgroup>
-
+      <div
+        className={cn(
+          'w-full overflow-x-auto',
+          '[&::-webkit-scrollbar]:h-1.5',
+          '[&::-webkit-scrollbar-track]:bg-transparent',
+          '[&::-webkit-scrollbar-thumb]:bg-gray-200',
+          '[&::-webkit-scrollbar-thumb:hover]:bg-gray-300',
+        )}
+      >
+        <table className="w-full min-w-[1040px] border-collapse">
           {/* ── THEAD sticky ──────────────────────────────────────────── */}
           <thead>
             <tr className="border-b border-gray-100">
-              <SortTh field="n_tarea">Caso</SortTh>
-              <Th>Cliente</Th>
-              <Th>Servicio</Th>
-              <SortTh field="estado">Estado</SortTh>
-              <Th>Responsable</Th>
-              <Th className="text-right">Acciones</Th>
+              <SortTh field="n_tarea" className="min-w-[110px]">Caso</SortTh>
+              <Th className="min-w-[190px]">Cliente</Th>
+              <Th className="min-w-[180px]">Sociedad</Th>
+              <Th className="min-w-[140px]">Creado Por</Th>
+              <Th className="min-w-[260px]">Servicio</Th>
+              <SortTh field="estado" className="min-w-[150px]">Estado</SortTh>
+              <Th className="min-w-[150px]">Responsable</Th>
+              <Th className="w-[170px] min-w-[170px] text-right">Acciones</Th>
             </tr>
           </thead>
 
@@ -102,7 +121,7 @@ export function CasesTable({
           <tbody className="divide-y divide-gray-50">
             {paginated.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-5 py-16 text-center text-sm text-gray-400">
+                <td colSpan={8} className="px-5 py-16 text-center text-sm text-gray-400">
                   No hay casos que mostrar
                 </td>
               </tr>
@@ -111,13 +130,11 @@ export function CasesTable({
               const sociedadNombre = getSocietyName(c.society_id);
               const servicioNombre = getServiceItemName(c.service_item_id);
               const responsable    = getUsuarioName(c.usuario_asignado_id) || c.responsable;
+              const observacionesText = c.notas || c.observaciones || '';
+              const observacionesCount = countObservaciones(observacionesText);
               const commentCount   = c.comments?.length ?? 0;
               const invoiceCount   = allInvoices.filter(i => i.case_id === c.id).length;
               const rowBg          = idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40';
-              const clienteMeta = [
-                sociedadNombre ? `Sociedad: ${sociedadNombre}` : null,
-                c.creado_por ? `Creado por: ${c.creado_por}` : null,
-              ].filter(Boolean).join(' · ');
 
               return (
                 <tr
@@ -127,24 +144,38 @@ export function CasesTable({
                 >
 
                   {/* ── Caso ─────────────────────────────────────── */}
-                  <td className="px-4 py-3 whitespace-nowrap font-mono text-xs font-bold text-sky-600">
+                  <td className={cn(tdBase, 'whitespace-nowrap font-mono text-xs font-bold text-sky-600')}>
                     <span className="block truncate">{formatNTarea(c.n_tarea) || c.numero_caso}</span>
                   </td>
 
-                  {/* ── Cliente compuesto ────────────────────────── */}
-                  <td className="px-4 py-3">
+                  {/* ── Cliente ──────────────────────────────────── */}
+                  <td className={tdBase}>
                     <span className="block truncate text-sm font-semibold text-gray-800" title={clienteNombre}>
                       {clienteNombre || '—'}
                     </span>
-                    <span className="mt-0.5 block truncate text-[11px] text-gray-400" title={clienteMeta || undefined}>
-                      {clienteMeta || (c.cliente_temporal ? 'Cliente temporal' : '—')}
+                    {c.cliente_temporal && (
+                      <span className="mt-1 block text-[10px] font-semibold uppercase tracking-wide text-amber-500">Temporal</span>
+                    )}
+                  </td>
+
+                  {/* ── Sociedad ─────────────────────────────────── */}
+                  <td className={tdBase}>
+                    <span className="block truncate text-xs text-gray-500" title={sociedadNombre}>
+                      {sociedadNombre || '—'}
+                    </span>
+                  </td>
+
+                  {/* ── Creado Por ───────────────────────────────── */}
+                  <td className={tdBase}>
+                    <span className="block truncate text-xs text-gray-500" title={c.creado_por}>
+                      {c.creado_por || '—'}
                     </span>
                   </td>
 
                   {/* ── Servicio ─────────────────────────────────── */}
-                  <td className="px-4 py-3">
+                  <td className={tdBase}>
                     <span
-                      className="block truncate text-sm text-gray-700 leading-snug"
+                      className="line-clamp-2 max-w-[260px] text-sm leading-snug text-gray-700"
                       title={servicioNombre || c.descripcion}
                     >
                       {servicioNombre || c.descripcion || '—'}
@@ -152,7 +183,7 @@ export function CasesTable({
                   </td>
 
                   {/* ── Estado ───────────────────────────────────── */}
-                  <td className="px-4 py-3 whitespace-nowrap">
+                  <td className={cn(tdBase, 'whitespace-nowrap')}>
                     <span className={cn(
                       'inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-[10px] font-semibold',
                       estadoBadge[c.estado] ?? 'bg-gray-100 text-gray-400',
@@ -162,42 +193,59 @@ export function CasesTable({
                   </td>
 
                   {/* ── Responsable ──────────────────────────────── */}
-                  <td className="px-4 py-3">
-                    <span className="block truncate text-sm text-gray-600" title={responsable}>
+                  <td className={tdBase}>
+                    <span className="block truncate text-xs text-gray-500" title={responsable}>
                       {responsable || '—'}
                     </span>
                   </td>
 
                   {/* ── Acciones ─────────────────────────────────── */}
-                  <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                    <div className="flex flex-wrap items-center justify-end gap-1.5">
+                  <td className={cn(tdBase, 'w-[170px]')} onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-0.5">
+                      <button
+                        onClick={() => setObservacionesModal({
+                          caseLabel: formatNTarea(c.n_tarea) || c.numero_caso,
+                          items: observacionesToArray(observacionesText),
+                        })}
+                        title="Ver observaciones"
+                        className={cn(
+                          'relative inline-flex h-7 w-7 items-center justify-center rounded-lg text-xs transition-all duration-100',
+                          observacionesCount > 0
+                            ? 'bg-orange-50 text-orange-600 ring-1 ring-orange-200 hover:bg-orange-100'
+                            : 'bg-gray-50 text-gray-400 ring-1 ring-gray-200 hover:bg-gray-100 hover:text-gray-600',
+                        )}
+                      >
+                        <span aria-hidden="true">📝</span>
+                        {observacionesCount > 0 && (
+                          <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-orange-500 px-0.5 text-[8px] font-bold leading-none text-white">
+                            {observacionesCount > 9 ? '9+' : observacionesCount}
+                          </span>
+                        )}
+                      </button>
                       <button
                         onClick={() => onOpenComments(c)}
                         title="Ver comentarios"
                         className={cn(
-                          'inline-flex h-8 items-center gap-1 rounded-lg px-2 text-[10px] font-semibold transition-all duration-100',
+                          'inline-flex h-7 items-center gap-0.5 rounded-lg px-1.5 text-[10px] font-semibold transition-all duration-100',
                           commentCount > 0
                             ? 'bg-violet-50 text-violet-600 ring-1 ring-violet-200 hover:bg-violet-100'
                             : 'bg-gray-50 text-gray-400 ring-1 ring-gray-200 hover:bg-gray-100 hover:text-gray-600',
                         )}
                       >
                         <MessageSquare className="h-3 w-3" />
-                        Ver
-                        <span className="rounded-full bg-white px-1.5 py-0.5 text-[9px] leading-none text-violet-600 ring-1 ring-violet-100">
-                          💬 {commentCount}
-                        </span>
+                        <span className="rounded-full bg-white px-1.5 py-0.5 text-[9px] leading-none text-violet-600 ring-1 ring-violet-100">{commentCount}</span>
                       </button>
                       <button
                         onClick={() => onOpenExpenses(c)}
                         title="Gastos"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-300 transition-all duration-100 hover:bg-emerald-50 hover:text-emerald-500"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-300 transition-all duration-100 hover:bg-emerald-50 hover:text-emerald-500"
                       >
                         <DollarSign className="h-3.5 w-3.5" />
                       </button>
                       <button
                         onClick={() => onOpenInvoice(c)}
                         title="Facturas"
-                        className="relative inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-300 transition-all duration-100 hover:bg-sky-50 hover:text-sky-500"
+                        className="relative inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-300 transition-all duration-100 hover:bg-sky-50 hover:text-sky-500"
                       >
                         <FileText className="h-3.5 w-3.5" />
                         {invoiceCount > 0 && (
@@ -209,7 +257,7 @@ export function CasesTable({
                       <button
                         onClick={() => onDeleteCase(c.id)}
                         title="Eliminar"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-200 transition-all duration-100 hover:bg-red-50 hover:text-red-400"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-200 transition-all duration-100 hover:bg-red-50 hover:text-red-400"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -248,6 +296,36 @@ export function CasesTable({
           </div>
         </div>
       )}
+
+      <Dialog open={!!observacionesModal} onOpenChange={(open) => { if (!open) setObservacionesModal(null); }}>
+        <DialogContent className="sm:max-w-[520px] rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold text-gray-800">
+              Observaciones del caso {observacionesModal?.caseLabel ?? ''}
+            </DialogTitle>
+            <DialogDescription>
+              Detalles registrados para este caso.
+            </DialogDescription>
+          </DialogHeader>
+
+          {observacionesModal && observacionesModal.items.length > 0 ? (
+            <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
+              {observacionesModal.items.map((item, index) => (
+                <div key={`${index}-${item.slice(0, 20)}`} className="rounded-xl border border-orange-100 bg-orange-50/50 px-4 py-3">
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-orange-400">
+                    Observación {index + 1}
+                  </p>
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{item}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm text-gray-400">
+              No hay observaciones registradas para este caso.
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
