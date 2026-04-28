@@ -86,6 +86,44 @@ function isTimeoutError(e: unknown): boolean {
   return /Timeout\s*\(\d+\s*ms\)/i.test(msg);
 }
 
+const CLIENT_MUTATION_TIMEOUT_MS = 30_000;
+const CLIENT_VERIFY_TIMEOUT_MS = 10_000;
+
+function isAbortLikeError(e: unknown): boolean {
+  if (e instanceof DOMException && e.name === 'AbortError') return true;
+  const msg = e instanceof Error ? e.message : String(e);
+  return /abort|aborted|timeout/i.test(msg);
+}
+
+async function withAbortableClientRequest<T>(
+  label: string,
+  timeoutMs: number,
+  run: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  const tid = window.setTimeout(() => {
+    controller.abort();
+    console.warn(`[clients] ${label} abortado después de ${timeoutMs}ms`);
+  }, timeoutMs);
+  try {
+    return await run(controller.signal);
+  } finally {
+    window.clearTimeout(tid);
+  }
+}
+
+function clientFieldsMatch(expected: Client, actual: Client): boolean {
+  return (
+    expected.nombre === actual.nombre &&
+    expected.razon_social === actual.razon_social &&
+    (expected.email ?? '') === (actual.email ?? '') &&
+    (expected.telefono ?? '') === (actual.telefono ?? '') &&
+    (expected.identificacion ?? '') === (actual.identificacion ?? '') &&
+    (expected.direccion ?? '') === (actual.direccion ?? '') &&
+    (expected.activo ?? true) === (actual.activo ?? true)
+  );
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const sb = useMemo(() => getSupabase(), []);
   const useRemote = isSupabaseConfigured();
@@ -368,8 +406,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /**
    * Recarga `clients` desde Supabase y sincroniza estado + cache.
-   * El timeout lo maneja supabaseFetch (30s) — no se añade AbortController extra
-   * para evitar conflictos con signals internos de Supabase.
+   * Esta lectura usa el cliente Supabase nativo. Las mutaciones de clientes
+   * sí usan AbortSignal conectado + verificación posterior por `id`.
    * Declarado ANTES de saveClient/deleteClient para evitar TDZ en dependency arrays.
    */
   const refreshClients = useCallback(async (): Promise<void> => {
@@ -413,11 +451,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     console.time('[saveClient] op');
 
     try {
-      // supabaseFetch gestiona timeout (30s) y retry — no añadir AbortController extra.
+      // Timeout conectado al request real. Si aborta, verificamos por `id` para
+      // resolver el estado ambiguo antes de decir si falló o guardó.
       if (isEdit) {
-        // updateClientRow lanza si hay error. Usamos el objeto local porque Supabase
-        // ya confirmó el PATCH y evitamos una lectura posterior lenta.
-        await db.updateClientRow(sb, client);
+        try {
+          await withAbortableClientRequest(
+            'Actualizar cliente',
+            CLIENT_MUTATION_TIMEOUT_MS,
+            signal => db.updateClientRow(sb, client, signal),
+          );
+        } catch (e) {
+          if (!isAbortLikeError(e)) throw e;
+          console.warn('[saveClient] Update abortado; verificando estado real en DB...', e);
+          const verify = await withAbortableClientRequest(
+            'Verificar cliente actualizado',
+            CLIENT_VERIFY_TIMEOUT_MS,
+            signal => db.getClientById(sb, client.id, signal),
+          );
+          if (verify.error || !verify.data) throw e;
+          const persisted = db.rowToClient(verify.data as Record<string, unknown>);
+          if (!clientFieldsMatch(client, persisted)) throw e;
+        }
         console.timeEnd('[saveClient] op');
         console.log('[saveClient] updated', { id: client.id });
         const saved = client;
@@ -435,7 +489,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } else {
         // insertClient confirma el INSERT con retorno mínimo. No esperamos una lectura
         // adicional para no bloquear la UI en conexiones lentas.
-        await db.insertClient(sb, client);
+        try {
+          await withAbortableClientRequest(
+            'Crear cliente',
+            CLIENT_MUTATION_TIMEOUT_MS,
+            signal => db.insertClient(sb, client, signal),
+          );
+        } catch (e) {
+          if (!isAbortLikeError(e)) throw e;
+          console.warn('[saveClient] Insert abortado; verificando si el cliente fue creado...', e);
+          const verify = await withAbortableClientRequest(
+            'Verificar cliente creado',
+            CLIENT_VERIFY_TIMEOUT_MS,
+            signal => db.getClientById(sb, client.id, signal),
+          );
+          if (verify.error || !verify.data) throw e;
+        }
         console.timeEnd('[saveClient] op');
         const saved = client;
         setClients(prev => [saved, ...prev]);
@@ -469,12 +538,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [sb, CACHE_KEY, refreshClients]);
 
   const deleteClient = useCallback(async (id: string): Promise<boolean> => {
+    const linkedSocieties = societies.filter(s => s.client_id === id);
+    if (linkedSocieties.length > 0) {
+      toast.error(
+        `No se puede eliminar el cliente porque tiene ${linkedSocieties.length} sociedad(es) asociada(s). Reasígnalas o elimínalas primero.`,
+      );
+      return false;
+    }
+
     if (sb) {
       try {
         console.log('[deleteClient] eliminando id:', id);
-        const { error } = await db.deleteClientRow(sb, id);
+        let count: number | null = null;
+        let error: unknown = null;
+        try {
+          const res = await withAbortableClientRequest(
+            'Eliminar cliente',
+            CLIENT_MUTATION_TIMEOUT_MS,
+            signal => db.deleteClientRow(sb, id, signal),
+          );
+          count = res.count;
+          error = res.error;
+        } catch (e) {
+          if (!isAbortLikeError(e)) throw e;
+          console.warn('[deleteClient] Delete abortado; verificando si el cliente sigue existiendo...', e);
+          const verify = await withAbortableClientRequest(
+            'Verificar cliente eliminado',
+            CLIENT_VERIFY_TIMEOUT_MS,
+            signal => db.getClientById(sb, id, signal),
+          );
+          if (!verify.error && !verify.data) {
+            count = 1;
+            error = null;
+          } else {
+            throw e;
+          }
+        }
         if (error) {
-          toast.error(error.message);
+          toast.error(error instanceof Error ? error.message : String(error));
+          return false;
+        }
+        if (count === 0) {
+          toast.error('Supabase no eliminó el cliente. Puede estar bloqueado por permisos/RLS o registros relacionados.');
           return false;
         }
       } catch (e) {
@@ -505,7 +610,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Sin Supabase (modo demo): eliminación local directa.
     setClients(prev => prev.filter(c => c.id !== id));
     return true;
-  }, [sb, CACHE_KEY]);
+  }, [sb, CACHE_KEY, societies]);
 
   const saveSociety = useCallback(async (society: Society, isEdit: boolean): Promise<boolean> => {
     try {

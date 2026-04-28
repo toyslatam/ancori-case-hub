@@ -1,4 +1,4 @@
-import { useMemo, useState, MouseEvent } from 'react';
+import { useEffect, useMemo, useState, MouseEvent } from 'react';
 import { useApp } from '@/context/AppContext';
 import { Client } from '@/data/mockData';
 import { Button } from '@/components/ui/button';
@@ -29,6 +29,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 const FILTER_ALL = '__all__';
+const DELETE_CONFIRM_TEXT = 'ELIMINAR';
 
 function toDMY(iso: string): string {
   const d = iso.slice(0, 10).split('-');
@@ -75,6 +76,17 @@ const defaultPanelFilters = (): PanelFilters => ({
   fechaHasta: '',
 });
 
+function withSlowOperationNotice<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let tid: ReturnType<typeof window.setTimeout> | undefined;
+  tid = window.setTimeout(() => {
+    toast.warning(message, { duration: 8_000 });
+    console.warn(`[clients] Operación lenta después de ${ms}ms: ${message}`);
+  }, ms);
+  return promise.finally(() => {
+    if (tid !== undefined) window.clearTimeout(tid);
+  });
+}
+
 export default function ClientsPage() {
   const { clients, societies, saveClient, deleteClient, refreshClients } = useApp();
   const [search, setSearch] = useState('');
@@ -89,6 +101,7 @@ export default function ClientsPage() {
   const [advOpen, setAdvOpen] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const activoOptions: ComboOption[] = useMemo(
     () => [
       { value: FILTER_ALL, label: 'Todos' },
@@ -169,13 +182,18 @@ export default function ClientsPage() {
           numero: undefined,
         } as Client;
     try {
-      const ok = await saveClient(client, !!editItem);
+      const ok = await withSlowOperationNotice(
+        saveClient(client, !!editItem),
+        12_000,
+        'Supabase está tardando más de lo normal guardando el cliente. Esperando respuesta...',
+      );
       if (!ok) return;
       toast.success(editItem ? 'Cliente actualizado' : 'Cliente creado');
       setShowForm(false);
     } catch (e) {
       console.error(e);
-      toast.error(`No se pudo guardar el cliente: ${String(e)}`);
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(`No se pudo guardar el cliente: ${msg}`);
     } finally {
       setSaving(false);
     }
@@ -183,12 +201,29 @@ export default function ClientsPage() {
 
   const confirmDelete = async () => {
     if (!deleteTarget || deleting) return;
+    if (societiesForClient > 0) {
+      toast.error(`No se puede eliminar: tiene ${societiesForClient} sociedad(es) asociada(s).`);
+      return;
+    }
+    if (deleteConfirmText.trim().toUpperCase() !== DELETE_CONFIRM_TEXT) {
+      toast.error(`Para eliminar, escribe ${DELETE_CONFIRM_TEXT}.`);
+      return;
+    }
     const id = deleteTarget.id;
     setDeleteTarget(null);
+    setDeleteConfirmText('');
     setDeleting(true);
     try {
-      const ok = await deleteClient(id);
+      const ok = await withSlowOperationNotice(
+        deleteClient(id),
+        12_000,
+        'Supabase está tardando más de lo normal eliminando el cliente. Esperando respuesta...',
+      );
       if (ok) toast.success('Cliente eliminado');
+    } catch (e) {
+      console.error(e);
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(`No se pudo eliminar el cliente: ${msg}`);
     } finally {
       setDeleting(false);
     }
@@ -197,6 +232,14 @@ export default function ClientsPage() {
   const societiesForClient = deleteTarget
     ? societies.filter(s => s.client_id === deleteTarget.id).length
     : 0;
+  const canConfirmDelete =
+    !!deleteTarget &&
+    societiesForClient === 0 &&
+    deleteConfirmText.trim().toUpperCase() === DELETE_CONFIRM_TEXT;
+
+  useEffect(() => {
+    if (!deleteTarget) setDeleteConfirmText('');
+  }, [deleteTarget]);
 
   const clearPanel = () => setPanelFilters(defaultPanelFilters());
 
@@ -556,9 +599,31 @@ export default function ClientsPage() {
             <AlertDialogDescription className="space-y-2">
               <span className="block">
                 Si eliminas este registro, puede afectar a <strong>sociedades</strong> y otros datos vinculados a este cliente.
+                {deleteTarget && (
+                  <span className="block mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-gray-700">
+                    <span className="block font-medium text-gray-900">{deleteTarget.nombre}</span>
+                    <span className="block text-xs mt-1">
+                      ID: {deleteTarget.numero ?? '—'} · Creado: {toDMY(deleteTarget.created_at)}
+                    </span>
+                  </span>
+                )}
                 {societiesForClient > 0 && (
                   <span className="block mt-2 text-amber-700 dark:text-amber-500 font-medium">
                     Este cliente tiene {societiesForClient} sociedad(es) asociada(s). La base de datos puede impedir el borrado hasta que las quites o reasignes.
+                  </span>
+                )}
+                {societiesForClient === 0 && (
+                  <span className="block mt-3">
+                    <span className="block mb-1 text-sm font-medium text-gray-700">
+                      Escribe <strong>{DELETE_CONFIRM_TEXT}</strong> para confirmar.
+                    </span>
+                    <Input
+                      value={deleteConfirmText}
+                      disabled={deleting}
+                      onChange={e => setDeleteConfirmText(e.target.value)}
+                      placeholder={DELETE_CONFIRM_TEXT}
+                      className="mt-1"
+                    />
                   </span>
                 )}
               </span>
@@ -568,10 +633,10 @@ export default function ClientsPage() {
             <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
             <Button
               variant="destructive"
-              disabled={deleting}
+              disabled={deleting || !canConfirmDelete}
               onClick={() => void confirmDelete()}
             >
-              {deleting ? 'Eliminando…' : 'Eliminar'}
+              {deleting ? 'Eliminando…' : societiesForClient > 0 ? 'Bloqueado por sociedades' : 'Eliminar'}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

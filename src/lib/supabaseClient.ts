@@ -4,7 +4,7 @@ const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
 // Ajustar según necesidad. false = usar el fetch nativo de Supabase sin wrapper.
-const CUSTOM_FETCH_ENABLED = true;
+const CUSTOM_FETCH_ENABLED = false;
 
 const REQUEST_TIMEOUT_MS = 30_000;      // 30s por intento
 const HIGH_LATENCY_THRESHOLD_MS = 5_000; // alerta si >5s

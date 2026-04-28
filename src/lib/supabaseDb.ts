@@ -677,7 +677,7 @@ export async function insertExpense(sb: SupabaseClient, caseId: string, expense:
   });
 }
 
-export async function insertClient(sb: SupabaseClient, c: Client) {
+export async function insertClient(sb: SupabaseClient, c: Client, signal?: AbortSignal) {
   /**
    * IMPORTANTE (Supabase/Postgres):
    * - `clients.numero` se asigna por secuencia (`clients_numero_seq`). NO enviar `numero` desde frontend.
@@ -694,7 +694,9 @@ export async function insertClient(sb: SupabaseClient, c: Client) {
 
   // No usar .select('*').single() aquí: añade una lectura posterior al INSERT,
   // depende de policy SELECT/RLS y puede hacer que la UI quede esperando más.
-  const res = await sb.from('clients').insert(safeRow);
+  let query = sb.from('clients').insert(safeRow);
+  if (signal) query = query.abortSignal(signal);
+  const res = await query;
   console.timeEnd('[insertClient] INSERT');
   console.log('[insertClient] INSERT RESULT:', { data: res.data, error: res.error });
   if (res.error) {
@@ -713,9 +715,11 @@ export async function testClientsSelectLatency(sb: SupabaseClient) {
   return res;
 }
 
-export async function updateClientRow(sb: SupabaseClient, c: Client) {
+export async function updateClientRow(sb: SupabaseClient, c: Client, signal?: AbortSignal) {
   // Retorno mínimo: PATCH confirmado sin lectura posterior.
-  const res = await sb.from('clients').update(clientToRow(c)).eq('id', c.id);
+  let query = sb.from('clients').update(clientToRow(c)).eq('id', c.id);
+  if (signal) query = query.abortSignal(signal);
+  const res = await query;
   if (res.error) {
     console.error('[updateClientRow] SUPABASE ERROR:', res.error);
     throw res.error;
@@ -723,11 +727,23 @@ export async function updateClientRow(sb: SupabaseClient, c: Client) {
   return res;
 }
 
-export async function deleteClientRow(sb: SupabaseClient, id: string) {
-  const res = await sb.from('clients').delete().eq('id', id);
-  console.log('[deleteClientRow] RESULT:', { error: res.error, status: res.status });
+export async function deleteClientRow(sb: SupabaseClient, id: string, signal?: AbortSignal) {
+  let query = sb.from('clients').delete({ count: 'exact' }).eq('id', id);
+  if (signal) query = query.abortSignal(signal);
+  const res = await query;
+  console.log('[deleteClientRow] RESULT:', { count: res.count, error: res.error, status: res.status });
   if (res.error) {
     console.error('[deleteClientRow] SUPABASE ERROR:', res.error);
+  }
+  return res;
+}
+
+export async function getClientById(sb: SupabaseClient, id: string, signal?: AbortSignal) {
+  let query = sb.from('clients').select('*').eq('id', id).maybeSingle();
+  if (signal) query = query.abortSignal(signal);
+  const res = await query;
+  if (res.error) {
+    console.error('[getClientById] SUPABASE ERROR:', res.error);
   }
   return res;
 }
