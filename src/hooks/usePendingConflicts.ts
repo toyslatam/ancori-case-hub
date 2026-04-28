@@ -12,13 +12,15 @@ export function usePendingConflicts(): number {
     const sb = getSupabase();
     if (!sb) return;
 
-    // Carga inicial (tolerante a tabla inexistente)
+    // Carga inicial (tolerante a tabla inexistente — 404 se ignora silenciosamente).
     sb.from('sync_conflicts')
       .select('id', { count: 'exact', head: true })
       .eq('status', 'pending')
       .then(({ count: c, error }) => {
+        // Ignorar 404 (tabla aún no creada) y cualquier error de permisos.
         if (!error) setCount(c ?? 0);
-      });
+      })
+      .catch(() => { /* tabla inexistente: no loguear */ });
 
     // Suscripción Realtime (silenciosa si falla)
     let channel: ReturnType<typeof sb.channel> | null = null;

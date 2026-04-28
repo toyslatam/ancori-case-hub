@@ -712,7 +712,12 @@ export async function testClientsSelectLatency(sb: SupabaseClient) {
 }
 
 export async function updateClientRow(sb: SupabaseClient, c: Client) {
-  return sb.from('clients').update(clientToRow(c)).eq('id', c.id);
+  const res = await sb.from('clients').update(clientToRow(c)).eq('id', c.id).select('*').single();
+  if (res.error) {
+    console.error('[updateClientRow] SUPABASE ERROR:', res.error);
+    throw res.error;
+  }
+  return res;
 }
 
 export async function deleteClientRow(sb: SupabaseClient, id: string) {

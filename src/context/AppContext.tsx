@@ -414,17 +414,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     try {
       // supabaseFetch gestiona timeout (30s) y retry — no añadir AbortController extra.
-      const res = isEdit
-        ? await db.updateClientRow(sb, client)
-        : await db.insertClient(sb, client);
-
-      console.timeEnd('[saveClient] op');
-      console.log('[saveClient] result', { data: (res as any).data ?? null, error: res.error ?? null });
-
-      if (res.error) {
-        console.error('[saveClient] SUPABASE ERROR:', res.error);
-        toast.error(res.error.message);
-        return false;
+      if (isEdit) {
+        // updateClientRow lanza si hay error — retorna la fila guardada.
+        const res = await db.updateClientRow(sb, client);
+        console.timeEnd('[saveClient] op');
+        console.log('[saveClient] updated', { data: (res as any).data ?? null });
+        // Para edición: actualizar estado local de inmediato con la fila confirmada por Supabase.
+        const saved = db.rowToClient((res as any).data as Record<string, unknown>);
+        setClients(prev => prev.map(c => c.id === saved.id ? saved : c));
+        try {
+          const raw = localStorage.getItem(CACHE_KEY);
+          if (raw) {
+            const cached = JSON.parse(raw) as Awaited<ReturnType<typeof db.loadAllFromSupabase>>;
+            localStorage.setItem(CACHE_KEY, JSON.stringify({
+              ...cached,
+              clients: cached.clients.map((c: Client) => c.id === saved.id ? saved : c),
+            }));
+          }
+        } catch { /* ignore */ }
+      } else {
+        // insertClient lanza si hay error — después recargar desde DB para obtener numero asignado.
+        await db.insertClient(sb, client);
+        console.timeEnd('[saveClient] op');
+        await refreshClients();
       }
     } catch (e) {
       console.timeEnd('[saveClient] op');
@@ -439,8 +451,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return false;
     }
 
-    // Sincronizar estado desde DB — evita datos fantasma o actualizaciones optimistas incorrectas.
-    await refreshClients();
     return true;
   }, [sb, refreshClients]);
 
