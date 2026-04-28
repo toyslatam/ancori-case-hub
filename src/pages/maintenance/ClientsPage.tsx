@@ -76,7 +76,7 @@ const defaultPanelFilters = (): PanelFilters => ({
 });
 
 export default function ClientsPage() {
-  const { clients, societies, saveClient, deleteClient } = useApp();
+  const { clients, societies, saveClient, deleteClient, refreshClients } = useApp();
   const [search, setSearch] = useState('');
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelFilters, setPanelFilters] = useState<PanelFilters>(defaultPanelFilters);
@@ -85,6 +85,7 @@ export default function ClientsPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<Partial<Client>>({});
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [advOpen, setAdvOpen] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
@@ -181,11 +182,16 @@ export default function ClientsPage() {
   };
 
   const confirmDelete = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || deleting) return;
     const id = deleteTarget.id;
     setDeleteTarget(null);
-    const ok = await deleteClient(id);
-    if (ok) toast.success('Cliente eliminado');
+    setDeleting(true);
+    try {
+      const ok = await deleteClient(id);
+      if (ok) toast.success('Cliente eliminado');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const societiesForClient = deleteTarget
@@ -559,12 +565,13 @@ export default function ClientsPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
             <Button
               variant="destructive"
+              disabled={deleting}
               onClick={() => void confirmDelete()}
             >
-              Eliminar
+              {deleting ? 'Eliminando…' : 'Eliminar'}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
