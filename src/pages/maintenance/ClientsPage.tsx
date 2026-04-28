@@ -185,7 +185,7 @@ export default function ClientsPage() {
       const ok = await withSlowOperationNotice(
         saveClient(client, !!editItem),
         12_000,
-        'Supabase está tardando más de lo normal guardando el cliente. Esperando respuesta...',
+        'La base de datos está tardando más de lo normal guardando el cliente. Esperando respuesta...',
       );
       if (!ok) return;
       toast.success(editItem ? 'Cliente actualizado' : 'Cliente creado');
@@ -217,7 +217,7 @@ export default function ClientsPage() {
       const ok = await withSlowOperationNotice(
         deleteClient(id),
         12_000,
-        'Supabase está tardando más de lo normal eliminando el cliente. Esperando respuesta...',
+        'La base de datos está tardando más de lo normal eliminando el cliente. Esperando respuesta...',
       );
       if (ok) toast.success('Cliente eliminado');
     } catch (e) {

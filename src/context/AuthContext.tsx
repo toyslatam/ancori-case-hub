@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { getSupabase, getSupabaseConfig } from '@/lib/supabaseClient';
 
@@ -30,20 +30,25 @@ function getInitials(nombre: string): string {
     .join('');
 }
 
+function fallbackUser(authUser: User): AuthUser {
+  const nombre = authUser.email?.split('@')[0] || 'Usuario';
+  return {
+    id: authUser.id,
+    email: authUser.email ?? '',
+    nombre,
+    initials: getInitials(nombre) || (authUser.email?.[0]?.toUpperCase() ?? 'U'),
+  };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Convierte auth user → AuthUser (enriquecido con datos de la tabla usuarios)
-  async function enrichUser(authUser: User | null): Promise<AuthUser | null> {
+  const enrichUser = useCallback(async (authUser: User | null): Promise<AuthUser | null> => {
     if (!authUser?.email) return null;
-    const fallback: AuthUser = {
-      id: authUser.id,
-      email: authUser.email,
-      nombre: authUser.email.split('@')[0],
-      initials: authUser.email[0].toUpperCase(),
-    };
+    const fallback = fallbackUser(authUser);
     const sb = getSupabase();
     if (!sb) return fallback;
     try {
@@ -64,7 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       return fallback;
     }
-  }
+  }, []);
 
   useEffect(() => {
     const sb = getSupabase();
@@ -73,11 +78,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Timeout de seguridad: si en 6 s no resuelve, liberar el spinner
     const safetyTimer = setTimeout(() => setLoading(false), 6000);
 
-    // Sesión inicial
+    // Sesión inicial. Importante: no ejecutar queries a Supabase en esta cadena;
+    // la carga de perfil se hace en otro effect para evitar deadlocks de auth.
     sb.auth.getSession()
-      .then(async ({ data: { session: s } }) => {
+      .then(({ data: { session: s } }) => {
         setSession(s);
-        setUser(await enrichUser(s?.user ?? null));
       })
       .catch(() => { /* sesión no disponible */ })
       .finally(() => {
@@ -85,10 +90,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       });
 
-    // Escuchar cambios de sesión (login / logout / refresh)
-    const { data: { subscription } } = sb.auth.onAuthStateChange(async (_event, s) => {
+    // Escuchar cambios de sesión (login / logout / refresh).
+    // NO usar async/await ni llamar sb.from()/auth.* aquí. Supabase puede
+    // dejar el cliente bloqueado después de refresh si el callback hace queries.
+    const { data: { subscription } } = sb.auth.onAuthStateChange((_event, s) => {
       setSession(s);
-      setUser(await enrichUser(s?.user ?? null));
     });
 
     return () => {
@@ -96,6 +102,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const authUser = session?.user ?? null;
+
+    if (!authUser) {
+      setUser(null);
+      return;
+    }
+
+    // Mostrar un usuario básico de inmediato y enriquecerlo fuera del callback
+    // de onAuthStateChange para no bloquear el cliente de Supabase.
+    setUser(fallbackUser(authUser));
+    void (async () => {
+      const enriched = await enrichUser(authUser);
+      if (!cancelled) setUser(enriched);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.id, session?.user?.email, enrichUser]);
 
   const signIn = async (email: string, password: string): Promise<{ error: string | null }> => {
     const sb = getSupabase();
