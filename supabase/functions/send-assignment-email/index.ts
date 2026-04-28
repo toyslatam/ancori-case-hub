@@ -1,5 +1,5 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
-import { SMTPClient } from 'https://deno.land/x/denomailer@1.6.0/mod.ts';
+import { SMTPClient } from 'https://deno.land/x/denomailer@1.4.0/mod.ts';
 
 // Secrets configurados en Supabase Dashboard → Edge Functions → Secrets
 const SMTP_HOST       = Deno.env.get('SMTP_HOST')       ?? 'smtp.solucionesdetecnologia.com';
@@ -7,9 +7,10 @@ const SMTP_PORT_ENV   = Deno.env.get('SMTP_PORT')       ?? '587';
 const SMTP_PORT       = 587;
 const SMTP_USER       = Deno.env.get('SMTP_USER')       ?? 'ancori@solucionesdetecnologia.com';
 const SMTP_PASSWORD   = Deno.env.get('SMTP_PASSWORD')   ?? '';
-// En Supabase Edge (Deno), denomailer es más estable con STARTTLS (587 + tls:false)
-// que con SSL implícito (465 + tls:true), que puede fallar con BadResource.
+// Usamos 587 + tls:false para STARTTLS. denomailer@1.4.0 evita el bug de
+// STARTTLS observado en 1.6.0 (BadResource/invalid cmd en Supabase Edge).
 const SMTP_TLS        = false;
+const SMTP_DISABLE_STARTTLS = Deno.env.get('SMTP_DISABLE_STARTTLS') === 'true';
 const MAIL_FROM       = Deno.env.get('MAIL_FROM')       ?? 'ancori@solucionesdetecnologia.com';
 const MAIL_CC         = Deno.env.get('MAIL_CC')         ?? 'soporte@ancoriyasociados.com';
 // Secreto propio (no JWT) para proteger la función sin --verify-jwt
@@ -143,19 +144,30 @@ Enviado Por: ${enviado_por ?? creado_por ?? '—'}.`;
       });
     }
 
-    console.log('SMTP CONFIG:', SMTP_HOST, SMTP_PORT);
+    console.log('SMTP CONFIG:', SMTP_HOST, SMTP_PORT, {
+      tls: SMTP_TLS,
+      noStartTLS: SMTP_DISABLE_STARTTLS,
+    });
     if (configuredPort === 465 || SMTP_TLS) {
       console.warn('SMTP CONFIG WARNING: SMTP_PORT env no debe usar SSL implicito; se fuerza conexion efectiva 587 + tls=false.');
+    }
+    if (SMTP_DISABLE_STARTTLS) {
+      console.warn('SMTP CONFIG WARNING: STARTTLS desactivado explicitamente; solo usar para pruebas controladas.');
     }
 
     // ── Conexión SMTP ─────────────────────────────────────────────────────
     let client: SMTPClient | null = null;
     try {
       client = new SMTPClient({
+        debug: {
+          // Mantener false en produccion: permite STARTTLS en 587.
+          noStartTLS: SMTP_DISABLE_STARTTLS,
+          allowUnsecure: SMTP_DISABLE_STARTTLS,
+        },
         connection: {
           hostname: SMTP_HOST,
-          port:     587,
-          tls:      false,
+          port:     SMTP_PORT,
+          tls:      SMTP_TLS,
           auth: {
             username: SMTP_USER,
             password: SMTP_PASSWORD,
