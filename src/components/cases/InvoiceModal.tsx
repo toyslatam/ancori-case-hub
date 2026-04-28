@@ -442,234 +442,282 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[1100px] max-h-[92vh] overflow-y-auto bg-white rounded-xl border border-gray-200 shadow-lg p-0">
-        <DialogHeader className="px-6 pt-5 pb-4 border-b border-gray-100">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 min-w-0">
+      <DialogContent className="sm:max-w-[1280px] h-[92vh] max-h-[92vh] overflow-hidden bg-slate-50 rounded-2xl border border-gray-200 shadow-2xl p-0 flex flex-col">
+        <DialogHeader className="sticky top-0 z-20 shrink-0 px-6 sm:px-8 py-5 border-b border-gray-200 bg-white/95 backdrop-blur">
+          <div className="flex items-start justify-between gap-4 pr-8">
+            <div className="flex items-start gap-3 min-w-0">
               {showBackToList && (
-                <Button type="button" variant="ghost" size="sm" className="h-8 px-2 shrink-0" onClick={backToPick} title="Volver al listado">
+                <Button type="button" variant="ghost" size="sm" className="mt-0.5 h-8 px-2 shrink-0" onClick={backToPick} title="Volver al listado">
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
               )}
-              <DialogTitle className="text-base font-semibold text-gray-800 truncate">
-                {isEdit ? `Factura ${effectiveInvoice?.numero_factura ?? ''} — Caso #${caseNumLabel}` : `Nueva Factura — Caso #${caseNumLabel}`}
-              </DialogTitle>
+              <div className="min-w-0">
+                <DialogTitle className="text-lg font-semibold text-gray-900 truncate">
+                  {isEdit ? `Factura ${effectiveInvoice?.numero_factura ?? ''} — Caso #${caseNumLabel}` : `Nueva Factura — Caso #${caseNumLabel}`}
+                </DialogTitle>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-gray-500">
+                  <span className="truncate max-w-[320px]">{clientName}</span>
+                  {billToSociety && caseData.society_id && (
+                    <>
+                      <span className="text-gray-300">/</span>
+                      <span className="truncate max-w-[320px]">{societyName}</span>
+                    </>
+                  )}
+                </div>
+              </div>
             </div>
-            <Badge className={`text-xs px-2 py-0.5 rounded-full font-medium border-0 shrink-0 ${ESTADO_COLORS[estado]}`}>
+            <Badge className={`text-xs px-3 py-1 rounded-full font-semibold border-0 shrink-0 ${ESTADO_COLORS[estado]}`}>
               {ESTADO_LABELS[estado]}
             </Badge>
           </div>
         </DialogHeader>
 
-        <div className="px-6 py-4 space-y-5">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1 block">N° Factura</label>
-              <Input
-                value={numeroFactura}
-                onChange={e => setNumeroFactura(e.target.value)}
-                placeholder="000001"
-                className="h-9 rounded-lg border-gray-200 text-sm"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1 block">Cliente</label>
-              <Input value={clientName} readOnly className="h-9 rounded-lg border-gray-200 bg-gray-50 text-sm" />
-            </div>
-            <div>
-              <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1 block">Estado</label>
-              <Select value={estado} onValueChange={v => setEstado(v as CaseInvoice['estado'])}>
-                <SelectTrigger className="h-9 rounded-lg border-gray-200 text-sm"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(ESTADO_LABELS) as CaseInvoice['estado'][]).map(k => (
-                    <SelectItem key={k} value={k}>{ESTADO_LABELS[k]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_300px] px-6 sm:px-8 py-6 sm:py-8">
+            <div className="space-y-6">
+              {effectiveInvoice?.error_detalle && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-900 whitespace-pre-wrap break-words">
+                  {effectiveInvoice.error_detalle}
+                </div>
+              )}
 
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 items-end">
-            <div className="flex items-center gap-2 pt-5">
-              <Switch checked={billToSociety} onCheckedChange={setBillToSociety} disabled={!caseData.society_id} />
-              <label className="text-sm text-gray-600">Facturar a Sociedad</label>
-            </div>
-            {billToSociety && caseData.society_id && (
-              <div className="md:col-span-2">
-                <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1 block">Facturar A</label>
-                <Input value={societyName} readOnly className="h-9 rounded-lg border-gray-200 bg-gray-50 text-sm" />
-              </div>
-            )}
-          </div>
+              <section className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+                <div className="px-5 py-4 border-b border-gray-100">
+                  <h3 className="text-sm font-semibold text-gray-900">Información</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">Datos principales de la factura y del caso.</p>
+                </div>
+                <div className="p-5 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                  <div>
+                    <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 block">N° Factura</label>
+                    <Input
+                      value={numeroFactura}
+                      onChange={e => setNumeroFactura(e.target.value)}
+                      placeholder="000001"
+                      className="h-10 rounded-xl border-gray-200 text-sm bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 block">Cliente</label>
+                    <Input value={clientName} readOnly className="h-10 rounded-xl border-gray-200 bg-gray-50 text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 block">Estado</label>
+                    <Select value={estado} onValueChange={v => setEstado(v as CaseInvoice['estado'])}>
+                      <SelectTrigger className="h-10 rounded-xl border-gray-200 text-sm bg-white"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {(Object.keys(ESTADO_LABELS) as CaseInvoice['estado'][]).map(k => (
+                          <SelectItem key={k} value={k}>{ESTADO_LABELS[k]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="md:col-span-2 xl:col-span-3">
+                    <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 block">Nota para el cliente</label>
+                    <Input
+                      value={notaCliente}
+                      onChange={e => setNotaCliente(e.target.value)}
+                      placeholder="Opcional"
+                      className="h-10 rounded-xl border-gray-200 text-sm bg-white"
+                    />
+                  </div>
+                </div>
+              </section>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1 block">Términos</label>
-              <Select value={termId} onValueChange={setTermId}>
-                <SelectTrigger className="h-9 rounded-lg border-gray-200 text-sm"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
-                <SelectContent>
-                  {invoiceTerms.filter(t => t.activo).map(t => (
-                    <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1 block">Fecha Factura</label>
-              <Input type="date" value={fechaFactura} onChange={e => setFechaFactura(e.target.value)} className="h-9 rounded-lg border-gray-200 text-sm" />
-            </div>
-            <div>
-              <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1 block">Fecha Vencimiento</label>
-              <Input type="date" value={fechaVencimiento} onChange={e => setFechaVencimiento(e.target.value)} className="h-9 rounded-lg border-gray-200 text-sm" />
-            </div>
-          </div>
+              <section className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+                <div className="px-5 py-4 border-b border-gray-100">
+                  <h3 className="text-sm font-semibold text-gray-900">Configuración</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">Define a quién se factura, términos y fechas.</p>
+                </div>
+                <div className="p-5 space-y-5">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    <div className="rounded-xl border border-gray-200 bg-gray-50/80 px-4 py-3 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">Facturar a sociedad</p>
+                        <p className="text-xs text-gray-500">Usa el cliente QBO de la sociedad.</p>
+                      </div>
+                      <Switch checked={billToSociety} onCheckedChange={setBillToSociety} disabled={!caseData.society_id} />
+                    </div>
+                    {billToSociety && caseData.society_id && (
+                      <div className="md:col-span-2">
+                        <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 block">Facturar a</label>
+                        <Input value={societyName} readOnly className="h-10 rounded-xl border-gray-200 bg-gray-50 text-sm" />
+                      </div>
+                    )}
+                  </div>
 
-          <div>
-            <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1 block">Nota para el cliente</label>
-            <Input
-              value={notaCliente}
-              onChange={e => setNotaCliente(e.target.value)}
-              placeholder="Opcional"
-              className="h-9 rounded-lg border-gray-200 text-sm"
-            />
-          </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 block">Términos</label>
+                      <Select value={termId} onValueChange={setTermId}>
+                        <SelectTrigger className="h-10 rounded-xl border-gray-200 text-sm bg-white"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                        <SelectContent>
+                          {invoiceTerms.filter(t => t.activo).map(t => (
+                            <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 block">Fecha Factura</label>
+                      <Input type="date" value={fechaFactura} onChange={e => setFechaFactura(e.target.value)} className="h-10 rounded-xl border-gray-200 text-sm bg-white" />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 block">Fecha Vencimiento</label>
+                      <Input type="date" value={fechaVencimiento} onChange={e => setFechaVencimiento(e.target.value)} className="h-10 rounded-xl border-gray-200 text-sm bg-white" />
+                    </div>
+                  </div>
+                </div>
+              </section>
 
-          {effectiveInvoice?.error_detalle && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 whitespace-pre-wrap break-words">
-              {effectiveInvoice.error_detalle}
-            </div>
-          )}
-
-          <div className="rounded-xl border border-gray-200/80 bg-gradient-to-b from-gray-50/80 to-white shadow-sm p-4 sm:p-5 space-y-3">
-            <h3 className="text-sm font-semibold text-gray-800">Líneas de factura</h3>
-            <div className="rounded-lg border border-gray-100 bg-white overflow-x-auto shadow-inner">
-              <table className="w-full min-w-[920px] text-sm border-separate border-spacing-0">
-                <thead>
-                  <tr className="bg-gray-50/90 border-b border-gray-200">
-                    <th className="text-left py-3 px-3 font-semibold text-gray-600 text-[11px] uppercase tracking-wide min-w-[200px]">Producto/Servicio</th>
-                    <th className="text-left py-3 px-3 font-semibold text-gray-600 text-[11px] uppercase tracking-wide min-w-[200px]">Prod/Serv QB</th>
-                    <th className="text-left py-3 px-3 font-semibold text-gray-600 text-[11px] uppercase tracking-wide min-w-[220px]">Descripción</th>
-                    <th className="text-right py-3 px-3 font-semibold text-gray-600 text-[11px] uppercase tracking-wide w-[88px]">Cant.</th>
-                    <th className="text-right py-3 px-3 font-semibold text-gray-600 text-[11px] uppercase tracking-wide w-[104px]">Tarifa</th>
-                    <th className="text-right py-3 px-3 font-semibold text-gray-600 text-[11px] uppercase tracking-wide w-[100px]">Importe</th>
-                    <th className="text-right py-3 px-3 font-semibold text-gray-600 text-[11px] uppercase tracking-wide w-[88px]">ITBMS %</th>
-                    <th className="w-11" />
-                  </tr>
-                </thead>
-                <tbody>
+              <section className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+                <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900">Líneas de factura</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">Agrega honorarios o gastos con su producto/servicio de QuickBooks.</p>
+                  </div>
+                  <Badge className="bg-orange-50 text-orange-700 border-0 rounded-full px-2.5 py-1 text-xs">
+                    {lines.length} {lines.length === 1 ? 'línea' : 'líneas'}
+                  </Badge>
+                </div>
+                <div className="p-5 space-y-4">
                   {lines.map((l, i) => (
-                    <tr key={l.id} className="border-b border-gray-100 last:border-0 hover:bg-orange-50/20 transition-colors">
-                      <td className="py-3 px-3 align-middle min-w-[160px]">
-                        <Select
-                          value={l.categoria === 'gastos' ? 'gastos' : 'honorarios'}
-                          onValueChange={v => updateLine(i, 'categoria', v)}
-                        >
-                          <SelectTrigger className="h-9 text-xs rounded-lg border-gray-200">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="honorarios">Honorario</SelectItem>
-                            <SelectItem value="gastos">Gastos</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </td>
-                      <td className="py-3 px-3 align-middle">
-                        <SearchableCombo
-                          options={qbComboOptions}
-                          value={l.qb_item_id ?? ''}
-                          onChange={v => updateLine(i, 'qb_item_id', v)}
-                          placeholder="Buscar en QB…"
-                          className="h-9 min-h-9 text-xs rounded-lg border-gray-200"
-                          contentClassName="!min-w-[300px] sm:!min-w-[340px] max-w-[min(440px,calc(100vw-2rem))]"
-                        />
-                      </td>
-                      <td className="py-3 px-3 align-middle">
-                        <Input
-                          value={l.descripcion}
-                          onChange={e => updateLine(i, 'descripcion', e.target.value)}
-                          className="h-9 text-xs rounded-lg border-gray-200 min-w-[12rem]"
-                        />
-                      </td>
-                      <td className="py-3 px-3 align-middle">
-                        <Input
-                          type="number"
-                          min={0}
-                          value={l.cantidad}
-                          onChange={e => updateLine(i, 'cantidad', Number(e.target.value))}
-                          className="h-9 text-xs text-right rounded-lg border-gray-200 w-full min-w-[4.25rem]"
-                        />
-                      </td>
-                      <td className="py-3 px-3 align-middle">
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={l.tarifa}
-                          onChange={e => updateLine(i, 'tarifa', Number(e.target.value))}
-                          className="h-9 text-xs text-right rounded-lg border-gray-200 w-full min-w-[5rem]"
-                        />
-                      </td>
-                      <td className="py-3 px-3 text-right font-medium text-gray-800 text-xs tabular-nums align-middle">${Number(l.importe ?? 0).toFixed(2)}</td>
-                      <td className="py-3 px-3 align-middle">
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={l.itbms}
-                          onChange={e => updateLine(i, 'itbms', Number(e.target.value))}
-                          className="h-9 text-xs text-right rounded-lg border-gray-200 w-full min-w-[4.25rem]"
-                        />
-                      </td>
-                      <td className="py-3 px-2 align-middle">
+                    <div key={l.id} className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 shadow-sm hover:border-orange-200 hover:shadow-md transition-all">
+                      <div className="flex items-center justify-between gap-3 mb-4">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">Línea {i + 1}</p>
+                          <p className="text-xs text-gray-500">Importe: <span className="font-semibold text-gray-700 tabular-nums">${Number(l.importe ?? 0).toFixed(2)}</span></p>
+                        </div>
                         <button
                           type="button"
                           onClick={() => removeLine(i)}
-                          className="h-9 w-9 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          className="h-9 w-9 flex items-center justify-center rounded-xl text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
                           title="Quitar línea"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <button
-              type="button"
-              onClick={addLine}
-              className="mt-1 flex items-center gap-2 text-sm text-orange-600 hover:text-orange-700 font-medium px-3 py-2 rounded-lg hover:bg-orange-50/80 transition-colors"
-            >
-              <Plus className="h-4 w-4 shrink-0" /> Agregar línea
-            </button>
-          </div>
+                      </div>
 
-          <div className="flex justify-end">
-            <div className="space-y-1 text-sm text-right min-w-[200px] bg-gray-50 rounded-lg px-4 py-3 border border-gray-100">
-              <div className="flex justify-between gap-8 text-gray-500">
-                <span>Subtotal</span>
-                <span className="font-medium text-gray-700">${subtotal.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between gap-8 text-gray-500">
-                <span>ITBMS</span>
-                <span className="font-medium text-gray-700">${totalItbms.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between gap-8 font-semibold text-gray-800 border-t border-gray-200 pt-1 mt-1">
-                <span>Total</span>
-                <span>${total.toFixed(2)}</span>
-              </div>
+                      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                        <div className="lg:col-span-3">
+                          <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 block">Producto / Servicio</label>
+                          <Select
+                            value={l.categoria === 'gastos' ? 'gastos' : 'honorarios'}
+                            onValueChange={v => updateLine(i, 'categoria', v)}
+                          >
+                            <SelectTrigger className="h-10 text-sm rounded-xl border-gray-200 bg-white">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="honorarios">Honorario</SelectItem>
+                              <SelectItem value="gastos">Gastos</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="lg:col-span-4">
+                          <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 block">Prod/Serv QB</label>
+                          <SearchableCombo
+                            options={qbComboOptions}
+                            value={l.qb_item_id ?? ''}
+                            onChange={v => updateLine(i, 'qb_item_id', v)}
+                            placeholder="Buscar en QB..."
+                            className="h-10 min-h-10 text-sm rounded-xl border-gray-200 bg-white"
+                            contentClassName="!min-w-[300px] sm:!min-w-[340px] max-w-[min(440px,calc(100vw-2rem))]"
+                          />
+                        </div>
+                        <div className="lg:col-span-5">
+                          <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 block">Descripción</label>
+                          <Input
+                            value={l.descripcion}
+                            onChange={e => updateLine(i, 'descripcion', e.target.value)}
+                            className="h-10 text-sm rounded-xl border-gray-200 bg-white"
+                          />
+                        </div>
+                        <div className="lg:col-span-3">
+                          <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 block">Cantidad</label>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={l.cantidad}
+                            onChange={e => updateLine(i, 'cantidad', Number(e.target.value))}
+                            className="h-10 text-sm text-right rounded-xl border-gray-200 bg-white tabular-nums"
+                          />
+                        </div>
+                        <div className="lg:col-span-3">
+                          <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 block">Tarifa</label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={l.tarifa}
+                            onChange={e => updateLine(i, 'tarifa', Number(e.target.value))}
+                            className="h-10 text-sm text-right rounded-xl border-gray-200 bg-white tabular-nums"
+                          />
+                        </div>
+                        <div className="lg:col-span-3">
+                          <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 block">ITBMS %</label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={l.itbms}
+                            onChange={e => updateLine(i, 'itbms', Number(e.target.value))}
+                            className="h-10 text-sm text-right rounded-xl border-gray-200 bg-white tabular-nums"
+                          />
+                        </div>
+                        <div className="lg:col-span-3">
+                          <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 block">Importe</label>
+                          <div className="h-10 rounded-xl border border-gray-200 bg-gray-50 px-3 flex items-center justify-end text-sm font-semibold text-gray-900 tabular-nums">
+                            ${Number(l.importe ?? 0).toFixed(2)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={addLine}
+                    className="w-full h-12 flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-orange-200 bg-orange-50/40 text-sm font-semibold text-orange-700 hover:border-orange-300 hover:bg-orange-50 transition-colors"
+                  >
+                    <Plus className="h-4 w-4 shrink-0" /> Agregar línea
+                  </button>
+                </div>
+              </section>
             </div>
+
+            <aside className="xl:sticky xl:top-6 self-start">
+              <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                <div className="px-5 py-4 border-b border-gray-100">
+                  <h3 className="text-sm font-semibold text-gray-900">Resumen</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">Totales actualizados en tiempo real.</p>
+                </div>
+                <div className="p-5 space-y-3 text-sm">
+                  <div className="flex justify-between gap-6 text-gray-500">
+                    <span>Subtotal</span>
+                    <span className="font-semibold text-gray-800 tabular-nums">${subtotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between gap-6 text-gray-500">
+                    <span>ITBMS</span>
+                    <span className="font-semibold text-gray-800 tabular-nums">${totalItbms.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between gap-6 font-semibold text-gray-900 border-t border-gray-200 pt-4 mt-4">
+                    <span>Total</span>
+                    <span className="text-lg tabular-nums">${total.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+            </aside>
           </div>
         </div>
 
-        <div className="px-6 py-4 border-t border-gray-100 flex justify-between items-center bg-gray-50/50">
-          <Button variant="ghost" onClick={onClose} className="text-gray-500 hover:text-gray-700 text-sm">
+        <div className="sticky bottom-0 z-20 shrink-0 px-6 sm:px-8 py-4 border-t border-gray-200 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 bg-white/95 backdrop-blur">
+          <Button variant="ghost" onClick={onClose} className="text-gray-500 hover:text-gray-700 text-sm sm:w-auto">
             Salir
           </Button>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
             <Button
               variant="outline"
               onClick={handleSave}
               disabled={saving || sending}
-              className="h-9 text-sm border-gray-200 text-gray-700 hover:bg-gray-100"
+              className="h-10 text-sm border-gray-200 text-gray-700 hover:bg-gray-100"
             >
               {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
               Guardar borrador
@@ -677,12 +725,12 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
             <Button
               onClick={handleSendToQB}
               disabled={saving || sending}
-              className="h-9 text-sm bg-green-600 hover:bg-green-700 text-white gap-1.5"
+              className="h-10 text-sm bg-green-600 hover:bg-green-700 text-white gap-1.5"
             >
               {sending
                 ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 : <CheckCircle2 className="h-3.5 w-3.5" />}
-              {sending ? 'Enviando a QB...' : 'Enviar a QB'}
+              {sending ? 'Enviando a QuickBooks...' : 'Enviar a QuickBooks'}
             </Button>
           </div>
         </div>
