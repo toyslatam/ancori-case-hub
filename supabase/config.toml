@@ -32,6 +32,10 @@ verify_jwt = false
 [functions.qbo-society-push]
 verify_jwt = false
 
+# Worker async (invocado por Cron con QBO_CRON_SECRET)
+[functions.qbo-society-sync-worker]
+verify_jwt = false
+
 # Resolución de conflictos de sync bidireccional.
 [functions.qbo-reconcile]
 verify_jwt = false

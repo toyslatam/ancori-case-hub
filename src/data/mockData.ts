@@ -52,6 +52,12 @@ export interface Society {
   fecha_inscripcion?: string;
   identificacion_fiscal?: string;
   quickbooks_customer_id?: string;
+  /** Async sync App → QBO (no bloquea UI). */
+  qbo_sync_status?: 'pending' | 'success' | 'error';
+  qbo_sync_attempts?: number;
+  qbo_sync_last_error?: string;
+  qbo_sync_last_attempt_at?: string;
+  qbo_sync_last_success_at?: string;
   activo: boolean;
   created_at: string;
 }

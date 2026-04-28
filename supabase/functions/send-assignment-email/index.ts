@@ -2,7 +2,7 @@ import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { SMTPClient } from 'https://deno.land/x/denomailer@1.6.0/mod.ts';
 
 // Secrets configurados en Supabase Dashboard → Edge Functions → Secrets
-const SMTP_HOST       = Deno.env.get('SMTP_HOST')       ?? 'mail.solucionesdetecnologia.com';
+const SMTP_HOST       = Deno.env.get('SMTP_HOST')       ?? 'smtp.solucionesdetecnologia.com';
 const SMTP_PORT       = Number(Deno.env.get('SMTP_PORT') ?? '465');
 const SMTP_USER       = Deno.env.get('SMTP_USER')       ?? 'ancori@solucionesdetecnologia.com';
 const SMTP_PASSWORD   = Deno.env.get('SMTP_PASSWORD')   ?? '';

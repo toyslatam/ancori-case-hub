@@ -169,6 +169,13 @@ export function EditCaseModal({ caseData, open, onClose, onOpenExpenses, onOpenI
   };
 
   const handleSave = async () => {
+    const nuevoId = form.usuario_asignado_id;
+    // Si por algún motivo estamos trabajando con datos mock/cache (ids tipo "u4"),
+    // Supabase rechazará columnas uuid. Mejor avisar y no cerrar el modal.
+    if (nuevoId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(nuevoId)) {
+      toast.error('No se pudo asignar el usuario (IDs no sincronizados). Refresca la app y verifica conexión a Supabase.');
+      return;
+    }
     const updated: Case = {
       ...caseData, ...form,
       gastos_cotizados: form.gastos_str ? parseFloat(form.gastos_str) : (caseData.gastos_cotizados ?? 0),
@@ -176,7 +183,6 @@ export function EditCaseModal({ caseData, open, onClose, onOpenExpenses, onOpenI
     } as Case;
     updateCase(updated);
 
-    const nuevoId = form.usuario_asignado_id;
     if (nuevoId && nuevoId !== prevUsuarioId.current) {
       const u = usuarios.find(x => x.id === nuevoId);
       if (u?.correo) {

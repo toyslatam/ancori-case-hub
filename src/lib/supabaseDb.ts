@@ -85,6 +85,11 @@ export function rowToSociety(row: Record<string, unknown>): Society {
     fecha_inscripcion: fi != null && String(fi) !== '' ? isoDate(String(fi)) : undefined,
     identificacion_fiscal: row.identificacion_fiscal ? String(row.identificacion_fiscal) : undefined,
     quickbooks_customer_id: row.quickbooks_customer_id ? String(row.quickbooks_customer_id) : undefined,
+    qbo_sync_status: row.qbo_sync_status ? (String(row.qbo_sync_status) as Society['qbo_sync_status']) : undefined,
+    qbo_sync_attempts: row.qbo_sync_attempts != null ? Number(row.qbo_sync_attempts) : undefined,
+    qbo_sync_last_error: row.qbo_sync_last_error ? String(row.qbo_sync_last_error) : undefined,
+    qbo_sync_last_attempt_at: row.qbo_sync_last_attempt_at ? String(row.qbo_sync_last_attempt_at) : undefined,
+    qbo_sync_last_success_at: row.qbo_sync_last_success_at ? String(row.qbo_sync_last_success_at) : undefined,
     activo: Boolean(row.activo),
     created_at: isoDate(String(row.created_at ?? '')),
   };
@@ -110,6 +115,11 @@ export function societyToRow(s: Society): Record<string, unknown> {
     fecha_inscripcion: s.fecha_inscripcion?.trim() ? s.fecha_inscripcion : null,
     identificacion_fiscal: s.identificacion_fiscal ?? null,
     quickbooks_customer_id: s.quickbooks_customer_id ?? null,
+    qbo_sync_status: s.qbo_sync_status ?? null,
+    qbo_sync_attempts: s.qbo_sync_attempts ?? null,
+    qbo_sync_last_error: s.qbo_sync_last_error ?? null,
+    qbo_sync_last_attempt_at: s.qbo_sync_last_attempt_at ?? null,
+    qbo_sync_last_success_at: s.qbo_sync_last_success_at ?? null,
     activo: s.activo,
     created_at: s.created_at.includes('T') ? s.created_at : `${s.created_at}T12:00:00Z`,
   };
@@ -426,13 +436,13 @@ export function caseToRow(c: Case): Record<string, unknown> {
     id: c.id,
     n_tarea: c.n_tarea ?? null,
     numero_caso: c.numero_caso,
-    client_id: c.client_id ?? null,
-    society_id: c.society_id ?? null,
-    service_id: c.service_id ?? null,
-    service_item_id: c.service_item_id ?? null,
+    client_id: uuidOrNull(c.client_id),
+    society_id: uuidOrNull(c.society_id),
+    service_id: uuidOrNull(c.service_id),
+    service_item_id: uuidOrNull(c.service_item_id),
     descripcion: c.descripcion,
     estado: c.estado,
-    etapa_id: c.etapa_id ?? null,
+    etapa_id: uuidOrNull(c.etapa_id),
     etapa: c.etapa ?? '',   // NOT NULL en BD legacy — nunca enviar null
     gastos_cotizados: c.gastos_cotizados,
     gastos_cliente: c.gastos_cliente ?? null,
@@ -442,7 +452,7 @@ export function caseToRow(c: Case): Record<string, unknown> {
     prioridad_urgente: c.prioridad === 'Urgente' || c.prioridad_urgente,
     creado_por: c.creado_por,
     responsable: c.responsable,
-    usuario_asignado_id: c.usuario_asignado_id ?? null,
+    usuario_asignado_id: uuidOrNull(c.usuario_asignado_id),
     observaciones: c.observaciones,
     notas: c.notas ?? null,
     fecha_caso: c.fecha_caso,
@@ -668,8 +678,26 @@ export async function insertExpense(sb: SupabaseClient, caseId: string, expense:
 }
 
 export async function insertClient(sb: SupabaseClient, c: Client) {
-  // Devolver la fila insertada para obtener defaults (numero, created_at, etc.)
-  return sb.from('clients').insert(clientToRow(c)).select('*').single();
+  /**
+   * IMPORTANTE (Supabase/Postgres):
+   * - `clients.numero` se asigna por secuencia (`clients_numero_seq`). NO enviar `numero` desde frontend.
+   * - Si RLS se habilita en `public.clients`, se requiere policy de INSERT para `authenticated`.
+   *
+   * FIX típico si falla por duplicado en `numero`:
+   *   SELECT setval('public.clients_numero_seq', (SELECT coalesce(max(numero), 0) FROM public.clients), true);
+   */
+  const row = clientToRow(c);
+  // Asegurar que jamás enviamos `numero` en el insert.
+  const { numero: _numero, ...safeRow } = row as Record<string, unknown>;
+  console.log('[insertClient] INSERT CLIENT PAYLOAD:', safeRow);
+
+  const res = await sb.from('clients').insert(safeRow).select('*').single();
+  console.log('[insertClient] INSERT RESULT:', { data: res.data, error: res.error });
+  if (res.error) {
+    console.error('[insertClient] SUPABASE INSERT ERROR:', res.error);
+    throw res.error;
+  }
+  return res;
 }
 
 export async function updateClientRow(sb: SupabaseClient, c: Client) {
@@ -791,10 +819,13 @@ export async function deleteDirectorRow(sb: SupabaseClient, id: string) {
 
 // ─── Facturas (case_invoices + invoice_lines) ────────────────────────────────
 
-/** Evita enviar `''` a columnas uuid (Postgres rechaza cadena vacía). */
+/** Evita enviar strings no-uuid a columnas uuid (Postgres rechaza). */
 function uuidOrNull(v: string | undefined | null): string | null {
-  if (v == null || String(v).trim() === '') return null;
-  return v;
+  const s = (v ?? '').trim();
+  if (!s) return null;
+  // Acepta UUID v1–v5
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s)) return null;
+  return s;
 }
 
 function invoiceToRow(inv: CaseInvoice): Record<string, unknown> {

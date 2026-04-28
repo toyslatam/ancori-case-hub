@@ -145,9 +145,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     const sb = getSupabase();
-    if (sb) await sb.auth.signOut();
+    // Nunca bloquear UI por red/DNS: cerrar sesión local aunque el signOut remoto falle.
+    try {
+      if (sb) {
+        await Promise.race([
+          sb.auth.signOut(),
+          new Promise<void>((_, reject) =>
+            setTimeout(() => reject(new Error('Timeout al cerrar sesión')), 6000),
+          ),
+        ]);
+      }
+    } catch {
+      // ignore
+    }
     setSession(null);
     setUser(null);
+    try {
+      // Limpiar caches locales para evitar "datos cruzados" entre usuarios
+      for (const k of Object.keys(localStorage)) {
+        if (k.startsWith('ancori_app_cache_v1')) localStorage.removeItem(k);
+      }
+      sessionStorage.removeItem('ancori.qbo.connected');
+    } catch {
+      // ignore
+    }
   };
 
   return (

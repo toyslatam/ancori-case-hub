@@ -164,6 +164,36 @@ alter table public.societies add column if not exists secretario_id uuid referen
 alter table public.societies add column if not exists pago_tasa_unica text not null default '';
 alter table public.societies add column if not exists fecha_inscripcion date;
 
+-- QuickBooks async sync (Sociedades): cola + estado sin bloquear UI
+alter table public.societies add column if not exists qbo_sync_status text
+  check (qbo_sync_status in ('pending', 'success', 'error')) default 'pending';
+alter table public.societies add column if not exists qbo_sync_attempts integer not null default 0;
+alter table public.societies add column if not exists qbo_sync_last_error text;
+alter table public.societies add column if not exists qbo_sync_last_attempt_at timestamptz;
+alter table public.societies add column if not exists qbo_sync_last_success_at timestamptz;
+
+create table if not exists public.qbo_society_sync_jobs (
+  id uuid primary key default gen_random_uuid(),
+  society_id uuid not null references public.societies(id) on delete cascade,
+  operation text not null default 'upsert' check (operation in ('upsert')),
+  status text not null default 'pending' check (status in ('pending', 'success', 'error')),
+  attempts integer not null default 0,
+  next_run_at timestamptz not null default now(),
+  last_error text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_qbo_society_sync_jobs_pending
+  on public.qbo_society_sync_jobs(status, next_run_at);
+create index if not exists idx_qbo_society_sync_jobs_society
+  on public.qbo_society_sync_jobs(society_id);
+
+comment on table public.qbo_society_sync_jobs is 'Cola async: sociedades pendientes de sincronizar a QuickBooks (no bloquear UI).';
+
+grant select, insert, update, delete on table public.qbo_society_sync_jobs to anon, authenticated;
+grant all on table public.qbo_society_sync_jobs to service_role;
+
 create table if not exists public.cases (
   id uuid primary key default gen_random_uuid(),
   n_tarea integer,

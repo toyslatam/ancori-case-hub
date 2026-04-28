@@ -6,6 +6,7 @@ import {
   CaseComment, CaseExpense, CaseInvoice,
 } from '@/data/mockData';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabaseClient';
+import { useAuth } from '@/context/AuthContext';
 import {
   isQboSocietyPushConfigured,
   pushSocietyToQuickbooksDelete,
@@ -80,6 +81,7 @@ function withTimeout<T>(p: Promise<T>, timeoutMs: number, label: string): Promis
 export function AppProvider({ children }: { children: ReactNode }) {
   const sb = useMemo(() => getSupabase(), []);
   const useRemote = isSupabaseConfigured();
+  const { session } = useAuth();
 
   const [cases, setCases] = useState<Case[]>(() => (useRemote ? [] : mockCases));
   const [allInvoices, setAllInvoices] = useState<CaseInvoice[]>([]);
@@ -94,7 +96,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [qbItems, setQbItems] = useState<QBItem[]>(() => (useRemote ? [] : mockQBItems));
   const [directores, setDirectores] = useState<Director[]>(() => (useRemote ? [] : mockDirectores));
 
-  const CACHE_KEY = 'ancori_app_cache_v1';
+  // Cache por usuario para evitar "mezclar" casos entre sesiones.
+  const CACHE_KEY = `ancori_app_cache_v1:${session?.user?.id ?? 'anon'}`;
   const applyLoadedData = useCallback((data: Awaited<ReturnType<typeof db.loadAllFromSupabase>>) => {
     setClients(data.clients);
     setSocieties(data.societies);
@@ -181,7 +184,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [useRemote, sb, applyLoadedData]);
+  }, [useRemote, sb, applyLoadedData, CACHE_KEY]);
 
   const addCase = useCallback((c: Case) => {
     setCases(prev => [c, ...prev]);
@@ -201,9 +204,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     if (sb) {
       void (async () => {
-        const { error } = await withTimeout(db.insertCase(sb, c), 30_000, 'Crear caso (Supabase)');
-        if (error) {
-          toast.error(error.message);
+        try {
+          const { error } = await withTimeout(db.insertCase(sb, c), 30_000, 'Crear caso (Supabase)');
+          if (error) throw error;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          toast.error(msg);
           setCases(prev => prev.filter(x => x.id !== c.id));
           // Revertir también cache
           try {
@@ -219,18 +225,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       })();
     }
-  }, [sb]);
+  }, [sb, CACHE_KEY]);
 
   const updateCase = useCallback((c: Case) => {
     setCases(prev => {
       const previous = prev.find(x => x.id === c.id);
       if (sb) {
-        void db.updateCaseRow(sb, c).then(({ error }) => {
-          if (error && previous) {
-            toast.error(error.message);
+        void (async () => {
+          try {
+            const { error } = await withTimeout(db.updateCaseRow(sb, c), 30_000, 'Actualizar caso (Supabase)');
+            if (error) throw error;
+          } catch (e) {
+            if (!previous) return;
+            const msg = e instanceof Error ? e.message : String(e);
+            toast.error(msg);
             setCases(pp => pp.map(x => x.id === c.id ? previous : x));
           }
-        });
+        })();
       }
       return prev.map(x => x.id === c.id ? c : x);
     });
@@ -349,10 +360,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const saveClient = useCallback(async (client: Client, isEdit: boolean): Promise<boolean> => {
     try {
+      if (!client.nombre?.trim()) {
+        toast.error('Nombre cliente es obligatorio');
+        return false;
+      }
       if (sb) {
+        console.log('[saveClient] start', { isEdit, id: client.id, numero: client.numero ?? null, nombre: client.nombre });
         const op = isEdit ? db.updateClientRow(sb, client) : db.insertClient(sb, client);
         const res = await withTimeout(op, 30_000, 'Guardar cliente (Supabase)');
+        console.log('[saveClient] result', { data: (res as any).data ?? null, error: res.error ?? null });
         if (res.error) {
+          console.error('[saveClient] SUPABASE ERROR:', res.error);
           toast.error(res.error.message);
           return false;
         }
@@ -362,10 +380,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setClients(prev => [...prev, saved]);
           return true;
         }
+        if (!isEdit && !(res as any).data) {
+          console.error('[saveClient] Insert sin data: se esperaba fila retornada por .select().single()');
+          toast.error('No se pudo confirmar el cliente guardado (sin data retornada). Revisa permisos/RLS o red.');
+          return false;
+        }
       }
       setClients(prev => (isEdit ? prev.map(c => c.id === client.id ? client : c) : [...prev, client]));
       return true;
     } catch (e) {
+      console.error('[saveClient] Exception:', e);
       toast.error(`Error al guardar el cliente: ${String(e)}`);
       return false;
     }
@@ -393,9 +417,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return false;
         }
       }
-      let merged: Society = society;
-      // Desactivado temporalmente por solicitud: evitar que QuickBooks bloquee el guardado/edición.
+      // Guardar/actualizar local de inmediato (UI rápida)
+      const merged: Society = {
+        ...society,
+        qbo_sync_status: 'pending',
+        qbo_sync_attempts: society.qbo_sync_attempts ?? 0,
+      };
       setSocieties(prev => (isEdit ? prev.map(s => s.id === merged.id ? merged : s) : [...prev, merged]));
+
+      // Encolar sync a QBO en segundo plano (no await QBO).
+      // La cola vive en Supabase; un worker (Edge Function cron) procesa los pending.
+      if (sb) {
+        void (async () => {
+          try {
+            // 1) Marcar estado pending en la sociedad (best-effort, no bloquear UI)
+            await withTimeout(
+              sb.from('societies').update({
+                qbo_sync_status: 'pending',
+                qbo_sync_last_error: null,
+              }).eq('id', society.id),
+              5_000,
+              'Marcar sync_status pending (Sociedad)',
+            );
+
+            // 2) Crear job pending (best-effort). Evita duplicados exactos por sociedad+status en memoria.
+            await withTimeout(
+              sb.from('qbo_society_sync_jobs').insert({
+                society_id: society.id,
+                operation: 'upsert',
+                status: 'pending',
+              }),
+              5_000,
+              'Encolar sync QBO (Sociedad)',
+            );
+          } catch (e) {
+            console.warn('[saveSociety] enqueue qbo sync failed:', e);
+          }
+        })();
+      }
       return true;
     } catch (e) {
       toast.error(`Error al guardar la sociedad: ${String(e)}`);
