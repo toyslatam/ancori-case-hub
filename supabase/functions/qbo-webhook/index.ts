@@ -11,8 +11,8 @@
  * URL a registrar en Intuit: https://<REF>.supabase.co/functions/v1/qbo-webhook?apikey=<ANON_KEY>
  * (o sin query si el gateway no exige apikey en webhook; en Supabase suele hacer falta apikey en la URL)
  *
- * Customer create/update: GET Customer por Id → upsert en societies. Crear fila nueva requiere
- * QBO_WEBHOOK_DEFAULT_CLIENT_ID (uuid de public.clients).
+ * Customer create/update: GET Customer por Id → upsert en societies. Crear fila nueva intenta
+ * resolver `client_id` desde BillAddr.Line1 (Dirección postal 1) y cae a QBO_WEBHOOK_DEFAULT_CLIENT_ID.
  *
  * Item: GET Item por Id → si Type es Category, upsert en categories (nombre, id_qb, activo).
  *
@@ -196,6 +196,67 @@ function mapCustomerToSocietyFields(c: QboCustomerFull): {
     correo: email,
     telefono,
   };
+}
+
+function normalizeClientLookup(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function compactLookupKey(s: string): string {
+  return normalizeClientLookup(s).replace(/\s+/g, '');
+}
+
+function qboBillingLine1(c: QboCustomerFull): string {
+  return (c.BillAddr?.Line1 ?? '').trim();
+}
+
+async function resolveClientIdFromQboBillingAddress(
+  supabase: SupabaseClient,
+  c: QboCustomerFull,
+): Promise<{ clientId: string; source: string } | null> {
+  const line1 = qboBillingLine1(c);
+  const normalizedLine1 = normalizeClientLookup(line1);
+  if (!normalizedLine1) return null;
+
+  const { data, error } = await supabase
+    .from('clients')
+    .select('id, nombre, razon_social, activo');
+  if (error) {
+    console.warn('[qbo-webhook] client lookup by BillAddr.Line1 failed:', error.message);
+    return null;
+  }
+
+  const targetCompact = compactLookupKey(line1);
+  for (const row of data ?? []) {
+    if (row?.activo === false) continue;
+    const id = row?.id ? String(row.id) : '';
+    if (!id) continue;
+
+    const names = [
+      String(row.nombre ?? ''),
+      String(row.razon_social ?? ''),
+    ];
+    for (const name of names) {
+      if (!name.trim()) continue;
+      if (normalizeClientLookup(name) === normalizedLine1 || compactLookupKey(name) === targetCompact) {
+        return { clientId: id, source: `billaddr_line1:${line1}` };
+      }
+    }
+  }
+
+  console.warn('[qbo-webhook] no local client matched BillAddr.Line1:', {
+    billaddr_line1: line1,
+    normalized: normalizedLine1,
+    qb_customer_id: c.Id,
+    qb_display_name: c.DisplayName,
+  });
+  return null;
 }
 
 async function processInvoiceFromWebhook(
@@ -528,6 +589,7 @@ Deno.serve(async (req) => {
           const { data: rows } = await sel;
 
           const fields = mapCustomerToSocietyFields(c);
+          const resolvedClient = await resolveClientIdFromQboBillingAddress(supabase, c);
           const patch: Record<string, unknown> = {
             nombre: fields.nombre,
             razon_social: fields.razon_social,
@@ -537,6 +599,7 @@ Deno.serve(async (req) => {
             activo: c.Active !== false,
           };
           if (idNum != null) patch.id_qb = idNum;
+          if (resolvedClient?.clientId) patch.client_id = resolvedClient.clientId;
 
           if (rows && rows.length === 1) {
             const societyUuid = rows[0].id;
@@ -544,7 +607,7 @@ Deno.serve(async (req) => {
             if (error) {
               errors.push(`${id}: ${error.message}`);
             } else {
-              processed.push(`update:${id}`);
+              processed.push(`update:${id}${resolvedClient?.source ? `:client=${resolvedClient.source}` : ''}`);
               // ── Detección de conflictos (sync bidireccional) ──
               try {
                 const { data: fullSoc } = await supabase
@@ -581,10 +644,26 @@ Deno.serve(async (req) => {
           } else if (rows && rows.length === 0) {
             // Customer en QBO sin fila local: crear sociedad.
             // Prioridad:
-            // 1) QBO_WEBHOOK_DEFAULT_CLIENT_ID (si existe)
-            // 2) primer cliente activo (fallback automático para no perder webhooks)
-            let defaultClientId = Deno.env.get('QBO_WEBHOOK_DEFAULT_CLIENT_ID')?.trim() ?? '';
-            if (!defaultClientId) {
+            // 1) BillAddr.Line1 (Dirección postal 1) matcheado contra clients.nombre/razon_social
+            // 2) Si BillAddr.Line1 viene vacío: QBO_WEBHOOK_DEFAULT_CLIENT_ID (si existe)
+            // 3) Si BillAddr.Line1 viene vacío: primer cliente activo (fallback automático para no perder webhooks)
+            const billingLine1 = qboBillingLine1(c);
+            let clientId = resolvedClient?.clientId ?? '';
+            let clientSource = resolvedClient?.source ?? '';
+
+            if (billingLine1 && !clientId) {
+              errors.push(
+                `${id}: missing_client_match_for_billaddr_line1 "${billingLine1}" (create matching client first)`
+              );
+              continue;
+            }
+
+            if (!clientId) {
+              clientId = Deno.env.get('QBO_WEBHOOK_DEFAULT_CLIENT_ID')?.trim() ?? '';
+              if (clientId) clientSource = 'env:QBO_WEBHOOK_DEFAULT_CLIENT_ID';
+            }
+
+            if (!clientId) {
               const { data: fallbackClient } = await supabase
                 .from('clients')
                 .select('id')
@@ -592,17 +671,18 @@ Deno.serve(async (req) => {
                 .order('created_at', { ascending: true })
                 .limit(1)
                 .maybeSingle();
-              defaultClientId = fallbackClient?.id ? String(fallbackClient.id) : '';
+              clientId = fallbackClient?.id ? String(fallbackClient.id) : '';
+              if (clientId) clientSource = 'fallback:first_active_client';
             }
-            if (!defaultClientId) {
+            if (!clientId) {
               errors.push(
-                `${id}: missing_default_client_for_create (set_QBO_WEBHOOK_DEFAULT_CLIENT_ID_or_have_active_client)`
+                `${id}: missing_client_for_create (set BillAddr.Line1 to a local client name, QBO_WEBHOOK_DEFAULT_CLIENT_ID, or have active_client)`
               );
               continue;
             }
             const newRow: Record<string, unknown> = {
               id: crypto.randomUUID(),
-              client_id: defaultClientId,
+              client_id: clientId,
               nombre: fields.nombre,
               razon_social: fields.razon_social,
               tipo_sociedad: 'SOCIEDADES',
@@ -614,7 +694,7 @@ Deno.serve(async (req) => {
             if (idNum != null) newRow.id_qb = idNum;
             const { error } = await supabase.from('societies').insert(newRow);
             if (error) errors.push(`${id}: insert_${error.message}`);
-            else processed.push(`create:${id}`);
+            else processed.push(`create:${id}:client=${clientSource || 'unknown'}`);
           } else if (rows && rows.length > 1) {
             errors.push(`${id}: multiple_societies_for_qb_id`);
           }

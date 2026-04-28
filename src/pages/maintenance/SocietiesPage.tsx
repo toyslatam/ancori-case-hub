@@ -1,4 +1,4 @@
-import { useMemo, useState, MouseEvent } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import {
   Society,
@@ -270,11 +270,6 @@ export default function SocietiesPage() {
     setShowForm(true);
   };
 
-  const handleRowClick = (s: Society, e: MouseEvent<HTMLTableRowElement>) => {
-    if ((e.target as HTMLElement).closest('button')) return;
-    openEdit(s);
-  };
-
   const handleSave = async () => {
     if (!form.nombre?.trim()) {
       toast.error('Nombre sociedad es obligatorio');
@@ -394,74 +389,103 @@ export default function SocietiesPage() {
             <Filter className="h-4 w-4" /> Filtro
           </Button>
         </div>
-        <div className="overflow-x-auto max-h-[min(70vh,720px)] overflow-y-auto">
-          <table className="w-full text-sm min-w-[1100px]">
-            <thead className="bg-muted/50 sticky top-0 z-[1]">
-              <tr>
-                <th className="w-1 p-0 bg-border" aria-hidden />
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Nombre Sociedad</th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Cliente</th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Tipo</th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">RUC</th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">DV</th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">NIT</th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Presidente</th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Tesorero</th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Secretario</th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground whitespace-nowrap">Fecha Inscripcion</th>
-                <th className="px-4 py-3 text-center font-semibold text-muted-foreground w-[88px]">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {sorted.map(s => (
-                <tr
-                  key={s.id}
-                  className="hover:bg-muted/30 cursor-pointer"
-                  onClick={e => handleRowClick(s, e)}
-                >
-                  <td className="w-1 p-0 bg-muted-foreground/20" aria-hidden />
-                  <td className="px-4 py-3 font-medium uppercase text-foreground max-w-[220px] truncate" title={s.nombre}>
+        <div className="divide-y divide-border">
+          {sorted.map(s => {
+            const clientName = getClientName(s.client_id) || '—';
+            const presidentName = getDirectorName(s.presidente_id) || '—';
+            const treasurerName = getDirectorName(s.tesorero_id) || '—';
+            const secretaryName = getDirectorName(s.secretario_id) || '—';
+
+            return (
+              <div
+                key={s.id}
+                role="button"
+                tabIndex={0}
+                className="group grid cursor-pointer grid-cols-[1fr_auto] items-center gap-4 px-6 py-4 transition-colors hover:bg-gray-50 md:grid-cols-[minmax(0,1.3fr)_minmax(160px,0.55fr)_minmax(210px,0.75fr)] xl:grid-cols-[minmax(0,1.25fr)_minmax(150px,0.5fr)_minmax(360px,1fr)_minmax(190px,0.55fr)]"
+                onClick={() => openEdit(s)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openEdit(s);
+                  }
+                }}
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold uppercase tracking-tight text-foreground" title={s.nombre}>
                     {s.nombre}
-                  </td>
-                  <td className="px-4 py-3 max-w-[180px] truncate" title={getClientName(s.client_id)}>
-                    {getClientName(s.client_id) || '—'}
-                  </td>
-                  <td className="px-4 py-3">
+                  </p>
+                  <p className="mt-1 hidden truncate text-xs text-muted-foreground sm:block" title={clientName}>
+                    {clientName}
+                  </p>
+                </div>
+
+                <div className="hidden min-w-0 text-sm md:block">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">RUC</span>
+                    <span className="truncate text-foreground">{s.ruc || '—'}</span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">NIT</span>
+                    <span className="truncate text-foreground">{s.nit || '—'}</span>
+                  </div>
+                </div>
+
+                <div className="hidden min-w-0 grid-cols-3 gap-3 text-xs lg:grid">
+                  <div className="min-w-0">
+                    <p className="font-medium text-muted-foreground">Presidente</p>
+                    <p className="mt-1 truncate text-foreground" title={presidentName}>
+                      {presidentName}
+                    </p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-medium text-muted-foreground">Tesorero</p>
+                    <p className="mt-1 truncate text-foreground" title={treasurerName}>
+                      {treasurerName}
+                    </p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-medium text-muted-foreground">Secretario</p>
+                    <p className="mt-1 truncate text-foreground" title={secretaryName}>
+                      {secretaryName}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex min-w-0 items-center justify-end gap-3">
+                  <div className="min-w-0 text-right">
                     <Badge variant="outline" className={cn('font-semibold', tipoSociedadBadgeClass(s.tipo_sociedad))}>
                       {s.tipo_sociedad}
                     </Badge>
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">{s.ruc || '—'}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">{s.dv || '—'}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">{s.nit || '—'}</td>
-                  <td className="px-4 py-3 max-w-[140px] truncate" title={getDirectorName(s.presidente_id)}>
-                    {getDirectorName(s.presidente_id) || '—'}
-                  </td>
-                  <td className="px-4 py-3 max-w-[140px] truncate" title={getDirectorName(s.tesorero_id)}>
-                    {getDirectorName(s.tesorero_id) || '—'}
-                  </td>
-                  <td className="px-4 py-3 max-w-[140px] truncate" title={getDirectorName(s.secretario_id)}>
-                    {getDirectorName(s.secretario_id) || '—'}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
-                    {s.fecha_inscripcion ? toDMY(s.fecha_inscripcion) : '—'}
-                  </td>
-                  <td className="px-4 py-3 text-center" onClick={e => e.stopPropagation()}>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="text-destructive hover:text-destructive"
-                      aria-label="Eliminar sociedad"
-                      onClick={() => setDeleteTarget(s)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    <p className="mt-1 hidden max-w-[180px] truncate text-xs text-muted-foreground sm:block lg:hidden" title={presidentName}>
+                      Presidente: {presidentName}
+                    </p>
+                    <p className="mt-1 hidden text-xs text-muted-foreground xl:block">
+                      {s.fecha_inscripcion ? toDMY(s.fecha_inscripcion) : 'Sin fecha'}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="shrink-0 text-destructive hover:bg-red-50 hover:text-destructive"
+                    aria-label="Eliminar sociedad"
+                    onClick={e => {
+                      e.stopPropagation();
+                      setDeleteTarget(s);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+
+          {sorted.length === 0 && (
+            <div className="px-6 py-12 text-center text-sm text-muted-foreground">
+              No hay sociedades que coincidan con tu búsqueda.
+            </div>
+          )}
         </div>
       </div>
 
