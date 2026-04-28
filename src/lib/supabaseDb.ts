@@ -115,11 +115,6 @@ export function societyToRow(s: Society): Record<string, unknown> {
     fecha_inscripcion: s.fecha_inscripcion?.trim() ? s.fecha_inscripcion : null,
     identificacion_fiscal: s.identificacion_fiscal ?? null,
     quickbooks_customer_id: s.quickbooks_customer_id ?? null,
-    qbo_sync_status: s.qbo_sync_status ?? null,
-    qbo_sync_attempts: s.qbo_sync_attempts ?? null,
-    qbo_sync_last_error: s.qbo_sync_last_error ?? null,
-    qbo_sync_last_attempt_at: s.qbo_sync_last_attempt_at ?? null,
-    qbo_sync_last_success_at: s.qbo_sync_last_success_at ?? null,
     activo: s.activo,
     created_at: s.created_at.includes('T') ? s.created_at : `${s.created_at}T12:00:00Z`,
   };

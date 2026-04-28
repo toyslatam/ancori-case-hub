@@ -622,44 +622,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return false;
         }
       }
-      // Guardar/actualizar local de inmediato (UI rápida)
-      const merged: Society = {
-        ...society,
-        qbo_sync_status: 'pending',
-        qbo_sync_attempts: society.qbo_sync_attempts ?? 0,
-      };
+      // Guardar/actualizar local de inmediato (UI rápida).
+      // QBO está desactivado temporalmente: no enviar ni marcar columnas qbo_sync_*.
+      const merged: Society = { ...society };
       setSocieties(prev => (isEdit ? prev.map(s => s.id === merged.id ? merged : s) : [...prev, merged]));
-
-      // Encolar sync a QBO en segundo plano (no await QBO).
-      // La cola vive en Supabase; un worker (Edge Function cron) procesa los pending.
-      if (sb) {
-        void (async () => {
-          try {
-            // 1) Marcar estado pending en la sociedad (best-effort, no bloquear UI)
-            await withTimeout(
-              sb.from('societies').update({
-                qbo_sync_status: 'pending',
-                qbo_sync_last_error: null,
-              }).eq('id', society.id),
-              5_000,
-              'Marcar sync_status pending (Sociedad)',
-            );
-
-            // 2) Crear job pending (best-effort). Evita duplicados exactos por sociedad+status en memoria.
-            await withTimeout(
-              sb.from('qbo_society_sync_jobs').insert({
-                society_id: society.id,
-                operation: 'upsert',
-                status: 'pending',
-              }),
-              5_000,
-              'Encolar sync QBO (Sociedad)',
-            );
-          } catch (e) {
-            console.warn('[saveSociety] enqueue qbo sync failed:', e);
-          }
-        })();
-      }
       return true;
     } catch (e) {
       toast.error(`Error al guardar la sociedad: ${String(e)}`);
