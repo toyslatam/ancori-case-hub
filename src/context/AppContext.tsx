@@ -433,10 +433,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
         } catch { /* ignore */ }
       } else {
-        // insertClient lanza si hay error — después recargar desde DB para obtener numero asignado.
-        await db.insertClient(sb, client);
+        // insertClient hace .select('*').single() → retorna la fila completa con numero asignado por Postgres.
+        // No necesitamos refreshClients() — usamos directamente lo que Supabase ya devuelve.
+        const res = await db.insertClient(sb, client);
         console.timeEnd('[saveClient] op');
-        await refreshClients();
+        const saved = db.rowToClient((res as any).data as Record<string, unknown>);
+        setClients(prev => [saved, ...prev]);
+        try {
+          const raw = localStorage.getItem(CACHE_KEY);
+          if (raw) {
+            const cached = JSON.parse(raw) as Awaited<ReturnType<typeof db.loadAllFromSupabase>>;
+            localStorage.setItem(CACHE_KEY, JSON.stringify({
+              ...cached,
+              clients: [saved, ...(cached.clients ?? []).filter((c: Client) => c.id !== saved.id)],
+            }));
+          }
+        } catch { /* ignore */ }
       }
     } catch (e) {
       console.timeEnd('[saveClient] op');
@@ -452,11 +464,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     return true;
-  }, [sb, refreshClients]);
+  }, [sb, CACHE_KEY, refreshClients]);
 
   const deleteClient = useCallback(async (id: string): Promise<boolean> => {
     if (sb) {
       try {
+        console.log('[deleteClient] eliminando id:', id);
         const { error } = await db.deleteClientRow(sb, id);
         if (error) {
           toast.error(error.message);
@@ -464,6 +477,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
+        console.error('[deleteClient] Exception:', e);
         toast.error(
           /abort|timeout/i.test(msg)
             ? 'La eliminación tardó demasiado. Verifica tu conexión e intenta de nuevo.'
@@ -471,13 +485,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
         );
         return false;
       }
-      // Recargar desde DB para evitar que el item "reaparezca" por cache.
-      await refreshClients();
+      // Delete confirmado por Supabase → actualizar estado local y cache directamente.
+      // No llamar refreshClients() — evita SELECT innecesario de cientos de filas.
+      setClients(prev => prev.filter(c => c.id !== id));
+      try {
+        const raw = localStorage.getItem(CACHE_KEY);
+        if (raw) {
+          const cached = JSON.parse(raw) as Awaited<ReturnType<typeof db.loadAllFromSupabase>>;
+          localStorage.setItem(CACHE_KEY, JSON.stringify({
+            ...cached,
+            clients: (cached.clients ?? []).filter((c: Client) => c.id !== id),
+          }));
+        }
+      } catch { /* ignore */ }
       return true;
     }
+    // Sin Supabase (modo demo): eliminación local directa.
     setClients(prev => prev.filter(c => c.id !== id));
     return true;
-  }, [sb, refreshClients]);
+  }, [sb, CACHE_KEY]);
 
   const saveSociety = useCallback(async (society: Society, isEdit: boolean): Promise<boolean> => {
     try {

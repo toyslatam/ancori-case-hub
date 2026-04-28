@@ -721,7 +721,12 @@ export async function updateClientRow(sb: SupabaseClient, c: Client) {
 }
 
 export async function deleteClientRow(sb: SupabaseClient, id: string) {
-  return sb.from('clients').delete().eq('id', id);
+  const res = await sb.from('clients').delete().eq('id', id);
+  console.log('[deleteClientRow] RESULT:', { error: res.error, status: res.status });
+  if (res.error) {
+    console.error('[deleteClientRow] SUPABASE ERROR:', res.error);
+  }
+  return res;
 }
 
 export async function insertSociety(sb: SupabaseClient, s: Society) {

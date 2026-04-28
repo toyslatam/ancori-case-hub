@@ -51,7 +51,12 @@ async function supabaseFetch(
   // lo respetamos sin añadir nuestro timeout encima.
   const hasExternalSignal = Boolean(init?.signal);
 
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+  // POST/PATCH/PUT/DELETE no se reintentan: un reintento podría crear duplicados o
+  // aplicar la misma mutación dos veces en Supabase.
+  const isMutating = /^(POST|PATCH|PUT|DELETE)$/i.test(method);
+  const maxAttempts = isMutating ? 1 : MAX_RETRIES;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     // Nuevo controller por intento para evitar reutilizar un signal ya abortado.
     const ownController = new AbortController();
     let tid: ReturnType<typeof window.setTimeout> | undefined;
@@ -61,7 +66,7 @@ async function supabaseFetch(
       tid = window.setTimeout(() => {
         ownController.abort();
         console.warn(
-          `[supabase] TIMEOUT propio (${REQUEST_TIMEOUT_MS}ms) intento ${attempt}/${MAX_RETRIES} → ${method} ${urlStr.split('?')[0]}`,
+          `[supabase] TIMEOUT propio (${REQUEST_TIMEOUT_MS}ms) intento ${attempt}/${maxAttempts} → ${method} ${urlStr.split('?')[0]}`,
         );
       }, REQUEST_TIMEOUT_MS);
     }
@@ -71,7 +76,7 @@ async function supabaseFetch(
       : ownController.signal;
 
     const t0 = performance.now();
-    console.debug(`[supabase] intento ${attempt}/${MAX_RETRIES} → ${method} ${urlStr.split('?')[0]}`);
+    console.debug(`[supabase] intento ${attempt}/${maxAttempts} → ${method} ${urlStr.split('?')[0]}`);
 
     try {
       // SIN keepalive: evita comportamiento indefinido en POSTs/PATCHes largos.
@@ -104,12 +109,12 @@ async function supabaseFetch(
 
       const label = ownAbort ? `TIMEOUT propio (${REQUEST_TIMEOUT_MS}ms)` : 'ERROR de red';
       console.error(
-        `[supabase] ${label} intento ${attempt}/${MAX_RETRIES} (${elapsed}ms) → ${method} ${urlStr.split('?')[0]}`,
+        `[supabase] ${label} intento ${attempt}/${maxAttempts} (${elapsed}ms) → ${method} ${urlStr.split('?')[0]}`,
         e,
       );
 
-      if (attempt >= MAX_RETRIES) {
-        console.error(`[supabase] Todos los reintentos agotados para → ${method} ${urlStr.split('?')[0]}`);
+      if (attempt >= maxAttempts) {
+        console.error(`[supabase] Todos los intentos agotados para → ${method} ${urlStr.split('?')[0]}`);
         throw e;
       }
 
