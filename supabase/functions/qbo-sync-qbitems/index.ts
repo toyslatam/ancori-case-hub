@@ -3,7 +3,7 @@
  * ================
  * Sincroniza todos los Items de QuickBooks Online hacia la tabla public.qb_items.
  *
- * POST /functions/v1/qbo-sync-qbitems
+ * POST /functions/v1/qbo-sync-qbitems ejecutar
  * Headers: x-qbo-cron-secret: <QBO_CRON_SECRET>
  *
  * Devuelve: { inserted, updated, skipped, total_qbo }
