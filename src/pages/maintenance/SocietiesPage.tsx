@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import {
+  SocietyService,
   Society,
   TIPOS_SOCIEDAD,
   TipoSociedad,
@@ -28,6 +29,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { SocietyServicesMultiSelect } from '@/components/maintenance/SocietyServicesMultiSelect';
 import { Plus, Trash2, Search, Filter, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -55,6 +57,7 @@ function societyTextBlob(
   pres: string,
   tes: string,
   sec: string,
+  serviceNames: string[],
 ): string {
   const parts = [
     s.nombre,
@@ -72,6 +75,7 @@ function societyTextBlob(
     s.pago_tasa_unica,
     s.fecha_inscripcion ?? '',
     s.created_at,
+    ...serviceNames,
   ];
   return parts.join(' ').toLowerCase();
 }
@@ -81,6 +85,7 @@ function matchesSearch(
   q: string,
   getClientName: (id?: string) => string,
   getDirectorName: (id?: string) => string,
+  getSocietyServiceNames: (id?: string) => string[],
 ): boolean {
   if (!q.trim()) return true;
   const blob = societyTextBlob(
@@ -89,6 +94,7 @@ function matchesSearch(
     getDirectorName(s.presidente_id),
     getDirectorName(s.tesorero_id),
     getDirectorName(s.secretario_id),
+    getSocietyServiceNames(s.id),
   );
   return blob.includes(q.trim().toLowerCase());
 }
@@ -129,13 +135,18 @@ const defaultPanelFilters = (): PanelFilters => ({
 export default function SocietiesPage() {
   const {
     societies,
+    societyServices,
     clients,
     directores,
     cases,
     saveSociety,
+    saveSocietyService,
+    syncSocietyServices,
     deleteSociety,
     getClientName,
     getDirectorName,
+    getSocietyServiceIds,
+    getSocietyServiceNames,
   } = useApp();
 
   const [search, setSearch] = useState('');
@@ -146,6 +157,7 @@ export default function SocietiesPage() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<Partial<Society>>({});
+  const [selectedSocietyServiceIds, setSelectedSocietyServiceIds] = useState<string[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<Society | null>(null);
   const [syncing, setSyncing] = useState(false);
 
@@ -215,8 +227,8 @@ export default function SocietiesPage() {
 
   const filtered = useMemo(() => {
     return societies.filter(s => {
-      if (!matchesSearch(s, search, getClientName, getDirectorName)) return false;
-      if (!matchesSearch(s, panelFilters.buscar, getClientName, getDirectorName)) return false;
+      if (!matchesSearch(s, search, getClientName, getDirectorName, getSocietyServiceNames)) return false;
+      if (!matchesSearch(s, panelFilters.buscar, getClientName, getDirectorName, getSocietyServiceNames)) return false;
       if (panelFilters.tipoSociedad && s.tipo_sociedad !== panelFilters.tipoSociedad) return false;
       if (panelFilters.clienteId && s.client_id !== panelFilters.clienteId) return false;
       if (panelFilters.societyId && s.id !== panelFilters.societyId) return false;
@@ -235,7 +247,7 @@ export default function SocietiesPage() {
 
       return true;
     });
-  }, [societies, search, panelFilters, getClientName, getDirectorName]);
+  }, [societies, search, panelFilters, getClientName, getDirectorName, getSocietyServiceNames]);
 
   const sorted = useMemo(
     () => [...filtered].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
@@ -257,6 +269,7 @@ export default function SocietiesPage() {
       fecha_inscripcion: '',
       client_id: clients[0]?.id ?? '',
     });
+    setSelectedSocietyServiceIds([]);
     setEditItem(null);
     setShowForm(true);
   };
@@ -266,6 +279,7 @@ export default function SocietiesPage() {
       ...s,
       fecha_inscripcion: s.fecha_inscripcion ?? '',
     });
+    setSelectedSocietyServiceIds(getSocietyServiceIds(s.id));
     setEditItem(s);
     setShowForm(true);
   };
@@ -304,6 +318,9 @@ export default function SocietiesPage() {
       ruc: form.ruc?.trim() ?? '',
       dv: form.dv?.trim() ?? '',
       nit: form.nit?.trim() ?? '',
+      presidente_id: form.presidente_id === null ? undefined : form.presidente_id ?? editItem?.presidente_id ?? undefined,
+      tesorero_id: form.tesorero_id === null ? undefined : form.tesorero_id ?? editItem?.tesorero_id ?? undefined,
+      secretario_id: form.secretario_id === null ? undefined : form.secretario_id ?? editItem?.secretario_id ?? undefined,
       pago_tasa_unica: form.pago_tasa_unica?.trim() ?? '',
       fecha_inscripcion: form.fecha_inscripcion?.trim() || undefined,
       activo: form.activo ?? true,
@@ -328,6 +345,8 @@ export default function SocietiesPage() {
         ),
       ]);
       if (!ok) return;
+      const servicesOk = await syncSocietyServices(society.id, selectedSocietyServiceIds);
+      if (!servicesOk) return;
       toast.success(editItem ? 'Sociedad actualizada' : 'Sociedad creada');
       setShowForm(false);
     } catch (e) {
@@ -352,6 +371,29 @@ export default function SocietiesPage() {
   const semestreForm = semestreFromFechaInscripcion(form.fecha_inscripcion);
 
   const clearPanel = () => setPanelFilters(defaultPanelFilters());
+
+  const handleCreateSocietyService = async (name: string): Promise<SocietyService | null> => {
+    const clean = name.trim();
+    if (!clean) return null;
+    const existing = societyServices.find(s => s.nombre.trim().toLowerCase() === clean.toLowerCase());
+    if (existing) {
+      if (!selectedSocietyServiceIds.includes(existing.id)) {
+        setSelectedSocietyServiceIds(prev => [...prev, existing.id]);
+      }
+      return existing;
+    }
+
+    const service: SocietyService = {
+      id: crypto.randomUUID(),
+      nombre: clean,
+      activo: true,
+      created_at: new Date().toISOString().split('T')[0],
+    };
+    const ok = await saveSocietyService(service, false);
+    if (!ok) return null;
+    toast.success(`Servicio "${clean}" creado`);
+    return service;
+  };
 
   return (
     <div className="p-6 space-y-6">
@@ -395,6 +437,7 @@ export default function SocietiesPage() {
             const presidentName = getDirectorName(s.presidente_id) || '—';
             const treasurerName = getDirectorName(s.tesorero_id) || '—';
             const secretaryName = getDirectorName(s.secretario_id) || '—';
+            const serviceNames = getSocietyServiceNames(s.id);
 
             return (
               <div
@@ -417,6 +460,20 @@ export default function SocietiesPage() {
                   <p className="mt-1 hidden truncate text-xs text-muted-foreground sm:block" title={clientName}>
                     {clientName}
                   </p>
+                  {serviceNames.length > 0 && (
+                    <div className="mt-2 hidden flex-wrap gap-1 sm:flex">
+                      {serviceNames.slice(0, 3).map(name => (
+                        <Badge key={name} variant="secondary" className="max-w-[180px] truncate rounded-full px-2 py-0.5 text-[10px] font-medium">
+                          {name}
+                        </Badge>
+                      ))}
+                      {serviceNames.length > 3 && (
+                        <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-[10px] font-medium">
+                          +{serviceNames.length - 3}
+                        </Badge>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="hidden min-w-0 text-sm md:block">
@@ -674,6 +731,19 @@ export default function SocietiesPage() {
               />
             </div>
             <div>
+              <Label>Servicio</Label>
+              <SocietyServicesMultiSelect
+                services={societyServices}
+                value={selectedSocietyServiceIds}
+                onChange={setSelectedSocietyServiceIds}
+                onCreateService={handleCreateSocietyService}
+                placeholder="Seleccionar servicios"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Opcional. Solo se pueden asignar servicios activos.
+              </p>
+            </div>
+            <div>
               <Label>ID_QB</Label>
               <Input
                 type="number"
@@ -700,7 +770,7 @@ export default function SocietiesPage() {
               <SearchableCombo
                 options={directorOptions}
                 value={form.presidente_id || FILTER_NONE}
-                onChange={v => setForm(f => ({ ...f, presidente_id: !v || v === FILTER_NONE ? undefined : v }))}
+                onChange={v => setForm(f => ({ ...f, presidente_id: !v || v === FILTER_NONE ? null : v }))}
                 placeholder="Seleccionar director"
                 emptyLabel="Sin directores"
               />
@@ -710,7 +780,7 @@ export default function SocietiesPage() {
               <SearchableCombo
                 options={directorOptions}
                 value={form.tesorero_id || FILTER_NONE}
-                onChange={v => setForm(f => ({ ...f, tesorero_id: !v || v === FILTER_NONE ? undefined : v }))}
+                onChange={v => setForm(f => ({ ...f, tesorero_id: !v || v === FILTER_NONE ? null : v }))}
                 placeholder="Seleccionar director"
                 emptyLabel="Sin directores"
               />
@@ -720,7 +790,7 @@ export default function SocietiesPage() {
               <SearchableCombo
                 options={directorOptions}
                 value={form.secretario_id || FILTER_NONE}
-                onChange={v => setForm(f => ({ ...f, secretario_id: !v || v === FILTER_NONE ? undefined : v }))}
+                onChange={v => setForm(f => ({ ...f, secretario_id: !v || v === FILTER_NONE ? null : v }))}
                 placeholder="Seleccionar director"
                 emptyLabel="Sin directores"
               />

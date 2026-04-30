@@ -62,6 +62,20 @@ export interface Society {
   created_at: string;
 }
 
+export interface SocietyService {
+  id: string;
+  nombre: string;
+  activo: boolean;
+  created_at?: string;
+}
+
+export interface SocietyServiceLink {
+  id: string;
+  sociedad_id: string;
+  servicio_id: string;
+  created_at?: string;
+}
+
 export interface Service {
   id: string;
   nombre: string;
@@ -335,6 +349,18 @@ export const mockSocieties: Society[] = [
   { id: '3', client_id: '3', nombre: 'ABASA GROUP CORP.', razon_social: 'ABASA GROUP CORPORATION', tipo_sociedad: 'B.V.I', correo: 'abasa@corp.com', telefono: '+507 300-3333', ruc: '123456', dv: '7', nit: '', presidente_id: 'd1', pago_tasa_unica: '', fecha_inscripcion: '2022-01-10', activo: true, created_at: '2024-02-05' },
   { id: '4', client_id: '4', nombre: 'FBBC CORPORATION', razon_social: 'FBBC CORPORATION', tipo_sociedad: 'SOCIEDADES', correo: 'fbbc@corp.com', telefono: '+507 300-4444', ruc: '', dv: '', nit: '', pago_tasa_unica: 'No', fecha_inscripcion: '2024-11-20', activo: true, created_at: '2024-02-15' },
   { id: '5', client_id: '3', nombre: 'DOVLE CINCUENTENARIO 5B-200, S.A.', razon_social: 'DOVLE CINCUENTENARIO 5B-200, S.A.', tipo_sociedad: 'SOCIEDADES', correo: 'dovle@corp.com', telefono: '+507 300-5555', ruc: '', dv: '', nit: '', fecha_inscripcion: '2024-06-01', activo: true, created_at: '2024-03-01' },
+];
+
+export const mockSocietyServices: SocietyService[] = [
+  { id: 'ssvc1', nombre: 'Mantenimiento Anual', activo: true, created_at: '2024-01-01' },
+  { id: 'ssvc2', nombre: 'Registros Contables', activo: true, created_at: '2024-01-01' },
+  { id: 'ssvc3', nombre: 'Custodia de Acciones', activo: true, created_at: '2024-01-01' },
+  { id: 'ssvc4', nombre: 'Oficina Virtual', activo: true, created_at: '2024-01-01' },
+];
+
+export const mockSocietyServiceLinks: SocietyServiceLink[] = [
+  { id: 'ssl1', sociedad_id: '1', servicio_id: 'ssvc1', created_at: '2024-01-01' },
+  { id: 'ssl2', sociedad_id: '3', servicio_id: 'ssvc2', created_at: '2024-01-01' },
 ];
 
 export const mockServices: Service[] = [

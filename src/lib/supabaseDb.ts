@@ -14,6 +14,8 @@ import type {
   Service,
   ServiceItem,
   Society,
+  SocietyService,
+  SocietyServiceLink,
   TipoSociedad,
   TipoDocumentoDirector,
   Usuario,
@@ -117,6 +119,33 @@ export function societyToRow(s: Society): Record<string, unknown> {
     quickbooks_customer_id: s.quickbooks_customer_id ?? null,
     activo: s.activo,
     created_at: s.created_at.includes('T') ? s.created_at : `${s.created_at}T12:00:00Z`,
+  };
+}
+
+export function rowToSocietyService(row: Record<string, unknown>): SocietyService {
+  return {
+    id: String(row.id),
+    nombre: String(row.nombre),
+    activo: Boolean(row.activo),
+    created_at: row.created_at ? isoDate(String(row.created_at)) : undefined,
+  };
+}
+
+function societyServiceToRow(s: SocietyService): Record<string, unknown> {
+  return {
+    id: s.id,
+    nombre: s.nombre,
+    activo: s.activo,
+    ...(s.created_at ? { created_at: s.created_at.includes('T') ? s.created_at : `${s.created_at}T12:00:00Z` } : {}),
+  };
+}
+
+export function rowToSocietyServiceLink(row: Record<string, unknown>): SocietyServiceLink {
+  return {
+    id: String(row.id),
+    sociedad_id: String(row.sociedad_id),
+    servicio_id: String(row.servicio_id),
+    created_at: row.created_at ? isoDate(String(row.created_at)) : undefined,
   };
 }
 
@@ -463,6 +492,8 @@ export type LoadAllFromSupabaseResult = {
   societies: Society[];
   services: Service[];
   serviceItems: ServiceItem[];
+  societyServices: SocietyService[];
+  societyServiceLinks: SocietyServiceLink[];
   etapas: Etapa[];
   usuarios: Usuario[];
   invoiceTerms: InvoiceTerm[];
@@ -470,16 +501,44 @@ export type LoadAllFromSupabaseResult = {
   qbItems: QBItem[];
   directores: Director[];
   cases: Case[];
+  allInvoices: CaseInvoice[];
   /** Tablas que fallaron (p. ej. tabla aún no creada en SQL); el resto viene de Supabase. */
   loadWarnings: string[];
 };
 
+const DEFAULT_SOCIETY_SERVICE_NAMES = [
+  'Mantenimiento Anual',
+  'Registros Contables',
+  'Custodia de Acciones',
+  'Oficina Virtual',
+];
+
+async function ensureDefaultSocietyServices(sb: SupabaseClient): Promise<void> {
+  const { data, error } = await sb.from('servicios').select('nombre');
+  if (error) return;
+
+  const existing = new Set((data ?? []).map(r => String((r as Record<string, unknown>).nombre ?? '').trim().toLowerCase()));
+  const missing = DEFAULT_SOCIETY_SERVICE_NAMES.filter(name => !existing.has(name.toLowerCase()));
+  if (missing.length === 0) return;
+
+  const { error: insertError } = await sb.from('servicios').insert(
+    missing.map(nombre => ({ nombre, activo: true })),
+  );
+  if (insertError) {
+    console.warn('[servicios] No se pudieron crear servicios iniciales:', insertError.message);
+  }
+}
+
 export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFromSupabaseResult> {
+  await ensureDefaultSocietyServices(sb);
+
   const [
     clientsRes,
     societiesRes,
     servicesRes,
     serviceItemsRes,
+    societyServicesRes,
+    societyServiceLinksRes,
     etapasRes,
     usuariosRes,
     termsRes,
@@ -496,6 +555,8 @@ export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFr
     sb.from('societies').select('*').order('nombre'),
     sb.from('services').select('*').order('nombre'),
     sb.from('service_items').select('*').order('nombre'),
+    sb.from('servicios').select('*').order('nombre'),
+    sb.from('sociedad_servicios').select('*'),
     sb.from('etapas').select('*').order('n_etapa', { ascending: true }),
     sb.from('usuarios').select('*').order('nombre'),
     sb.from('invoice_terms').select('*').order('nombre'),
@@ -518,6 +579,8 @@ export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFr
   warn('societies', societiesRes.error);
   warn('services', servicesRes.error);
   warn('service_items', serviceItemsRes.error);
+  warn('servicios', societyServicesRes.error);
+  warn('sociedad_servicios', societyServiceLinksRes.error);
   warn('etapas', etapasRes.error);
   warn('usuarios', usuariosRes.error);
   warn('invoice_terms', termsRes.error);
@@ -535,6 +598,8 @@ export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFr
     societiesRes,
     servicesRes,
     serviceItemsRes,
+    societyServicesRes,
+    societyServiceLinksRes,
     etapasRes,
     usuariosRes,
     termsRes,
@@ -557,6 +622,8 @@ export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFr
   const societies = societiesRes.error ? [] : (societiesRes.data ?? []).map(r => rowToSociety(r as Record<string, unknown>));
   const services = servicesRes.error ? [] : (servicesRes.data ?? []).map(r => rowToService(r as Record<string, unknown>));
   const serviceItems = serviceItemsRes.error ? [] : (serviceItemsRes.data ?? []).map(r => rowToServiceItem(r as Record<string, unknown>));
+  const societyServices = societyServicesRes.error ? [] : (societyServicesRes.data ?? []).map(r => rowToSocietyService(r as Record<string, unknown>));
+  const societyServiceLinks = societyServiceLinksRes.error ? [] : (societyServiceLinksRes.data ?? []).map(r => rowToSocietyServiceLink(r as Record<string, unknown>));
   const etapas = etapasRes.error ? [] : (etapasRes.data ?? []).map(r => rowToEtapa(r as Record<string, unknown>));
   const usuarios = usuariosRes.error ? [] : (usuariosRes.data ?? []).map(r => rowToUsuario(r as Record<string, unknown>));
   const invoiceTerms = termsRes.error ? [] : (termsRes.data ?? []).map(r => rowToInvoiceTerm(r as Record<string, unknown>));
@@ -614,7 +681,23 @@ export async function loadAllFromSupabase(sb: SupabaseClient): Promise<LoadAllFr
     });
   });
 
-  return { clients, societies, services, serviceItems, etapas, usuarios, invoiceTerms, categories, qbItems, directores, cases, allInvoices, loadWarnings };
+  return {
+    clients,
+    societies,
+    services,
+    serviceItems,
+    societyServices,
+    societyServiceLinks,
+    etapas,
+    usuarios,
+    invoiceTerms,
+    categories,
+    qbItems,
+    directores,
+    cases,
+    allInvoices,
+    loadWarnings,
+  };
 }
 
 export async function insertCase(sb: SupabaseClient, c: Case) {
@@ -753,6 +836,47 @@ export async function updateSocietyRow(sb: SupabaseClient, s: Society) {
 
 export async function deleteSocietyRow(sb: SupabaseClient, id: string) {
   return sb.from('societies').delete().eq('id', id);
+}
+
+export async function insertSocietyService(sb: SupabaseClient, s: SocietyService) {
+  return sb.from('servicios').insert(societyServiceToRow(s));
+}
+
+export async function getSocietyServiceLinks(sb: SupabaseClient, societyId: string) {
+  return sb
+    .from('sociedad_servicios')
+    .select('*')
+    .eq('sociedad_id', societyId);
+}
+
+export async function syncSocietyServices(sb: SupabaseClient, societyId: string, serviceIds: string[]) {
+  const ids = [...new Set(serviceIds.filter(Boolean))];
+  if (ids.length > 0) {
+    const { data, error } = await sb
+      .from('servicios')
+      .select('id')
+      .eq('activo', true)
+      .in('id', ids);
+    if (error) return { error };
+    const valid = new Set((data ?? []).map(r => String((r as Record<string, unknown>).id)));
+    const invalid = ids.filter(id => !valid.has(id));
+    if (invalid.length > 0) {
+      return {
+        error: {
+          message: 'Uno o más servicios no existen o están inactivos.',
+        },
+      };
+    }
+  }
+
+  const del = await sb.from('sociedad_servicios').delete().eq('sociedad_id', societyId);
+  if (del.error) return { error: del.error };
+  if (ids.length === 0) return { error: null };
+
+  const ins = await sb.from('sociedad_servicios').insert(
+    ids.map(servicio_id => ({ sociedad_id: societyId, servicio_id })),
+  );
+  return { error: ins.error };
 }
 
 export async function insertService(sb: SupabaseClient, s: Service) {

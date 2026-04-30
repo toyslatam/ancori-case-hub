@@ -164,6 +164,70 @@ alter table public.societies add column if not exists secretario_id uuid referen
 alter table public.societies add column if not exists pago_tasa_unica text not null default '';
 alter table public.societies add column if not exists fecha_inscripcion date;
 
+-- Servicios de sociedades (catálogo independiente de public.services usado por casos/facturas).
+-- Extensión no destructiva: no modifica public.societies.
+create table if not exists public.servicios (
+  id uuid primary key default gen_random_uuid(),
+  nombre text not null unique,
+  activo boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.sociedad_servicios (
+  id uuid primary key default gen_random_uuid(),
+  sociedad_id uuid not null references public.societies(id) on delete cascade,
+  servicio_id uuid not null references public.servicios(id) on delete restrict,
+  created_at timestamptz not null default now(),
+  constraint sociedad_servicios_unique unique (sociedad_id, servicio_id)
+);
+
+create index if not exists idx_sociedad_servicios_sociedad
+  on public.sociedad_servicios(sociedad_id);
+create index if not exists idx_sociedad_servicios_servicio
+  on public.sociedad_servicios(servicio_id);
+
+create or replace function public.sociedad_servicios_require_active_servicio()
+returns trigger
+language plpgsql
+as $$
+begin
+  if not exists (
+    select 1
+    from public.servicios s
+    where s.id = new.servicio_id
+      and s.activo = true
+  ) then
+    raise exception 'No se puede asignar un servicio inexistente o inactivo a la sociedad.';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_sociedad_servicios_require_active_servicio on public.sociedad_servicios;
+create trigger trg_sociedad_servicios_require_active_servicio
+  before insert or update on public.sociedad_servicios
+  for each row
+  execute function public.sociedad_servicios_require_active_servicio();
+
+insert into public.servicios (nombre, activo)
+select v.nombre, true
+from (values
+  ('Mantenimiento Anual'),
+  ('Registros Contables'),
+  ('Custodia de Acciones'),
+  ('Oficina Virtual')
+) as v(nombre)
+where not exists (
+  select 1
+  from public.servicios s
+  where lower(s.nombre) = lower(v.nombre)
+);
+
+grant select, insert, update, delete on table public.servicios to anon, authenticated;
+grant select, insert, update, delete on table public.sociedad_servicios to anon, authenticated;
+grant all on table public.servicios to service_role;
+grant all on table public.sociedad_servicios to service_role;
+
 -- QuickBooks async sync (Sociedades): cola + estado sin bloquear UI
 alter table public.societies add column if not exists qbo_sync_status text
   check (qbo_sync_status in ('pending', 'success', 'error')) default 'pending';
@@ -383,6 +447,185 @@ alter table public.qbo_oauth_tokens enable row level security;
 grant usage on schema public to anon, authenticated, service_role;
 grant select, insert, update, delete on all tables in schema public to anon, authenticated;
 grant all on all tables in schema public to service_role;
+
+-- RLS: permitir que la app autenticada lea catálogos y relaciones usadas por Sociedades.
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'clients' and policyname = 'clients_select_authenticated'
+  ) then
+    create policy clients_select_authenticated on public.clients
+      for select to authenticated
+      using (true);
+  end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'clients' and policyname = 'clients_insert_authenticated'
+  ) then
+    create policy clients_insert_authenticated on public.clients
+      for insert to authenticated
+      with check (true);
+  end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'clients' and policyname = 'clients_update_authenticated'
+  ) then
+    create policy clients_update_authenticated on public.clients
+      for update to authenticated
+      using (true)
+      with check (true);
+  end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'clients' and policyname = 'clients_delete_authenticated'
+  ) then
+    create policy clients_delete_authenticated on public.clients
+      for delete to authenticated
+      using (true);
+  end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'directores' and policyname = 'directores_select_authenticated'
+  ) then
+    create policy directores_select_authenticated on public.directores
+      for select to authenticated
+      using (true);
+  end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'servicios' and policyname = 'servicios_select_authenticated'
+  ) then
+    create policy servicios_select_authenticated on public.servicios
+      for select to authenticated
+      using (true);
+  end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'servicios' and policyname = 'servicios_insert_authenticated'
+  ) then
+    create policy servicios_insert_authenticated on public.servicios
+      for insert to authenticated
+      with check (true);
+  end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'servicios' and policyname = 'servicios_update_authenticated'
+  ) then
+    create policy servicios_update_authenticated on public.servicios
+      for update to authenticated
+      using (true)
+      with check (true);
+  end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'sociedad_servicios' and policyname = 'sociedad_servicios_select_authenticated'
+  ) then
+    create policy sociedad_servicios_select_authenticated on public.sociedad_servicios
+      for select to authenticated
+      using (true);
+  end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'sociedad_servicios' and policyname = 'sociedad_servicios_insert_authenticated'
+  ) then
+    create policy sociedad_servicios_insert_authenticated on public.sociedad_servicios
+      for insert to authenticated
+      with check (true);
+  end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'sociedad_servicios' and policyname = 'sociedad_servicios_update_authenticated'
+  ) then
+    create policy sociedad_servicios_update_authenticated on public.sociedad_servicios
+      for update to authenticated
+      using (true)
+      with check (true);
+  end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'sociedad_servicios' and policyname = 'sociedad_servicios_delete_authenticated'
+  ) then
+    create policy sociedad_servicios_delete_authenticated on public.sociedad_servicios
+      for delete to authenticated
+      using (true);
+  end if;
+end $$;
+
+-- RLS: policies CRUD para todas las tablas operativas que consume el frontend.
+-- Se excluyen tablas sensibles/solo backend como qbo_oauth_tokens.
+do $$
+declare
+  table_name text;
+  app_tables text[] := array[
+    'case_comments',
+    'case_expenses',
+    'case_invoices',
+    'categories',
+    'compliance_checks',
+    'directores',
+    'etapas',
+    'invoice_lines',
+    'invoice_terms',
+    'qb_items',
+    'service_items',
+    'services',
+    'sync_conflicts',
+    'sync_notifications',
+    'usuarios'
+  ];
+begin
+  foreach table_name in array app_tables loop
+    if to_regclass(format('public.%I', table_name)) is not null then
+      if not exists (
+        select 1 from pg_policies
+        where schemaname = 'public'
+          and tablename = table_name
+          and policyname = table_name || '_select_authenticated'
+      ) then
+        execute format('create policy %I on public.%I for select to authenticated using (true)', table_name || '_select_authenticated', table_name);
+      end if;
+
+      if not exists (
+        select 1 from pg_policies
+        where schemaname = 'public'
+          and tablename = table_name
+          and policyname = table_name || '_insert_authenticated'
+      ) then
+        execute format('create policy %I on public.%I for insert to authenticated with check (true)', table_name || '_insert_authenticated', table_name);
+      end if;
+
+      if not exists (
+        select 1 from pg_policies
+        where schemaname = 'public'
+          and tablename = table_name
+          and policyname = table_name || '_update_authenticated'
+      ) then
+        execute format('create policy %I on public.%I for update to authenticated using (true) with check (true)', table_name || '_update_authenticated', table_name);
+      end if;
+
+      if not exists (
+        select 1 from pg_policies
+        where schemaname = 'public'
+          and tablename = table_name
+          and policyname = table_name || '_delete_authenticated'
+      ) then
+        execute format('create policy %I on public.%I for delete to authenticated using (true)', table_name || '_delete_authenticated', table_name);
+      end if;
+    end if;
+  end loop;
+end $$;
 
 -- Tras los grants globales: esta tabla solo service_role (Edge Functions).
 revoke all on table public.qbo_oauth_tokens from anon;

@@ -1,8 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
 import { toast } from 'sonner';
 import {
-  Case, Category, Client, Director, Etapa, Society, Service, ServiceItem, Usuario, InvoiceTerm, QBItem,
-  mockCases, mockCategories, mockClients, mockDirectores, mockEtapas, mockSocieties, mockServices, mockServiceItems, mockUsuarios, mockInvoiceTerms, mockQBItems,
+  Case, Category, Client, Director, Etapa, Society, SocietyService, SocietyServiceLink, Service, ServiceItem, Usuario, InvoiceTerm, QBItem,
+  mockCases, mockCategories, mockClients, mockDirectores, mockEtapas, mockSocieties, mockSocietyServiceLinks, mockSocietyServices, mockServices, mockServiceItems, mockUsuarios, mockInvoiceTerms, mockQBItems,
   CaseComment, CaseExpense, CaseInvoice,
 } from '@/data/mockData';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabaseClient';
@@ -20,6 +20,8 @@ interface AppContextType {
   allInvoices: CaseInvoice[];
   clients: Client[];
   societies: Society[];
+  societyServices: SocietyService[];
+  societyServiceLinks: SocietyServiceLink[];
   services: Service[];
   serviceItems: ServiceItem[];
   etapas: Etapa[];
@@ -42,6 +44,8 @@ interface AppContextType {
   deleteClient: (id: string) => Promise<boolean>;
   saveSociety: (society: Society, isEdit: boolean) => Promise<boolean>;
   deleteSociety: (id: string) => Promise<boolean>;
+  saveSocietyService: (service: SocietyService, isEdit: boolean) => Promise<boolean>;
+  syncSocietyServices: (societyId: string, serviceIds: string[]) => Promise<boolean>;
   saveService: (service: Service, isEdit: boolean) => Promise<boolean>;
   deleteService: (id: string) => Promise<boolean>;
   saveServiceItem: (item: ServiceItem, isEdit: boolean) => Promise<boolean>;
@@ -60,6 +64,8 @@ interface AppContextType {
   deleteDirector: (id: string) => Promise<boolean>;
   getClientName: (id?: string) => string;
   getSocietyName: (id?: string) => string;
+  getSocietyServiceIds: (societyId?: string) => string[];
+  getSocietyServiceNames: (societyId?: string) => string[];
   getServiceName: (id?: string) => string;
   getServiceItemName: (id?: string) => string;
   getEtapaName: (id?: string) => string;
@@ -133,6 +139,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [allInvoices, setAllInvoices] = useState<CaseInvoice[]>([]);
   const [clients, setClients] = useState<Client[]>(() => (useRemote ? [] : mockClients));
   const [societies, setSocieties] = useState<Society[]>(() => (useRemote ? [] : mockSocieties));
+  const [societyServices, setSocietyServices] = useState<SocietyService[]>(() => (useRemote ? [] : mockSocietyServices));
+  const [societyServiceLinks, setSocietyServiceLinks] = useState<SocietyServiceLink[]>(() => (useRemote ? [] : mockSocietyServiceLinks));
   const [services, setServices] = useState<Service[]>(() => (useRemote ? [] : mockServices));
   const [serviceItems, setServiceItems] = useState<ServiceItem[]>(() => (useRemote ? [] : mockServiceItems));
   const [etapas, setEtapas] = useState<Etapa[]>(() => (useRemote ? [] : mockEtapas));
@@ -147,6 +155,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const applyLoadedData = useCallback((data: Awaited<ReturnType<typeof db.loadAllFromSupabase>>) => {
     setClients(data.clients);
     setSocieties(data.societies);
+    setSocietyServices(data.societyServices ?? []);
+    setSocietyServiceLinks(data.societyServiceLinks ?? []);
     setServices(data.services);
     setServiceItems(data.serviceItems);
     setEtapas(data.etapas);
@@ -214,6 +224,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (!hasVisibleData) {
           setClients(mockClients);
           setSocieties(mockSocieties);
+          setSocietyServices(mockSocietyServices);
+          setSocietyServiceLinks(mockSocietyServiceLinks);
           setServices(mockServices);
           setServiceItems(mockServiceItems);
           setEtapas(mockEtapas);
@@ -643,8 +655,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }
     setSocieties(prev => prev.filter(s => s.id !== id));
+    setSocietyServiceLinks(prev => prev.filter(l => l.sociedad_id !== id));
     return true;
   }, [sb, societies]);
+
+  const saveSocietyService = useCallback(async (service: SocietyService, isEdit: boolean): Promise<boolean> => {
+    if (sb) {
+      const res = isEdit
+        ? await sb.from('servicios').update({ nombre: service.nombre, activo: service.activo }).eq('id', service.id)
+        : await db.insertSocietyService(sb, service);
+      if (res.error) {
+        toast.error(res.error.message);
+        return false;
+      }
+    }
+    setSocietyServices(prev => (isEdit ? prev.map(s => s.id === service.id ? service : s) : [...prev, service]));
+    return true;
+  }, [sb]);
+
+  const syncSocietyServices = useCallback(async (societyId: string, serviceIds: string[]): Promise<boolean> => {
+    if (serviceIds.length === 0 && societyServices.length === 0) return true;
+    const activeIds = new Set(societyServices.filter(s => s.activo).map(s => s.id));
+    const ids = [...new Set(serviceIds.filter(id => activeIds.has(id)))];
+    if (ids.length !== new Set(serviceIds.filter(Boolean)).size) {
+      toast.error('Uno o más servicios no existen o están inactivos.');
+      return false;
+    }
+    if (sb) {
+      const res = await db.syncSocietyServices(sb, societyId, ids);
+      if (res.error) {
+        toast.error(res.error.message);
+        return false;
+      }
+    }
+    setSocietyServiceLinks(prev => [
+      ...prev.filter(l => l.sociedad_id !== societyId),
+      ...ids.map(servicio_id => ({
+        id: crypto.randomUUID(),
+        sociedad_id: societyId,
+        servicio_id,
+        created_at: new Date().toISOString().split('T')[0],
+      })),
+    ]);
+    return true;
+  }, [sb, societyServices]);
 
   const saveService = useCallback(async (service: Service, isEdit: boolean): Promise<boolean> => {
     if (sb) {
@@ -845,6 +899,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const getClientName = useCallback((id?: string) => clients.find(c => c.id === id)?.nombre || '', [clients]);
   const getSocietyName = useCallback((id?: string) => societies.find(s => s.id === id)?.nombre || '', [societies]);
+  const getSocietyServiceIds = useCallback((societyId?: string) => {
+    if (!societyId) return [];
+    return societyServiceLinks
+      .filter(l => l.sociedad_id === societyId)
+      .map(l => l.servicio_id);
+  }, [societyServiceLinks]);
+  const getSocietyServiceNames = useCallback((societyId?: string) => {
+    const ids = new Set(getSocietyServiceIds(societyId));
+    return societyServices
+      .filter(s => ids.has(s.id))
+      .map(s => s.nombre);
+  }, [getSocietyServiceIds, societyServices]);
   const getServiceName = useCallback((id?: string) => services.find(s => s.id === id)?.nombre || '', [services]);
   const getServiceItemName = useCallback((id?: string) => serviceItems.find(si => si.id === id)?.nombre || '', [serviceItems]);
   const getEtapaName = useCallback((id?: string) => {
@@ -856,13 +922,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      cases, allInvoices, clients, societies, services, serviceItems, etapas, usuarios, invoiceTerms, categories, qbItems, directores,
+      cases, allInvoices, clients, societies, societyServices, societyServiceLinks, services, serviceItems, etapas, usuarios, invoiceTerms, categories, qbItems, directores,
       addCase, updateCase, addComment, addExpense, updateExpenses, saveInvoice, patchInvoice, deleteInvoice, removeCase,
-      saveClient, deleteClient, saveSociety, deleteSociety, saveService, deleteService,
+      saveClient, deleteClient, saveSociety, deleteSociety, saveSocietyService, syncSocietyServices, saveService, deleteService,
       saveServiceItem, deleteServiceItem, saveEtapa, deleteEtapa, saveUsuario, deleteUsuario,
       saveInvoiceTerm, deleteInvoiceTerm, saveCategory, deleteCategory, saveQBItem, deleteQBItem,
       saveDirector, deleteDirector,
-      getClientName, getSocietyName, getServiceName, getServiceItemName, getEtapaName, getUsuarioName, getDirectorName,
+      getClientName, getSocietyName, getSocietyServiceIds, getSocietyServiceNames, getServiceName, getServiceItemName, getEtapaName, getUsuarioName, getDirectorName,
       refreshClients,
     }}>
       {children}
