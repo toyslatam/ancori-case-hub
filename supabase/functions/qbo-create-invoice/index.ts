@@ -177,19 +177,10 @@ function resolveTaxRateIdForPercent(
   });
   if (byValue?.Id) return { ok: true, id: String(byValue.Id) };
 
-  const name = (r: QboTaxRateRow) => String(r.Name ?? '').toLowerCase();
-  const byName = withId.find((r) => /\bitbms\b|iva|sales\s*tax/.test(name(r)));
-  if (byName?.Id) {
-    const v = parseTaxRateValue(byName);
-    if (!Number.isFinite(v) || Math.abs(v - p) < 0.51) {
-      return { ok: true, id: String(byName.Id) };
-    }
-  }
-
   return {
     ok: false,
     message:
-      `No hay un TaxRate activo en QBO para el ${p}% usado en una línea. En muchas compañías (modelo global) hace falta un TaxRate además del TaxCode en línea. Consulta en QBO o por API: SELECT * FROM TaxRate WHERE Active = true, o define el secreto QBO_TAX_RATE_ITBMS con el Id del TaxRate de ITBMS.`,
+      `No hay un TaxRate activo en QBO con RateValue ${p}% para una línea. Para usar TaxLine explícito, define el secreto QBO_TAX_RATE_ITBMS con el Id exacto del TaxRate de ITBMS. No se selecciona por nombre para evitar el error "Tasa impositiva no válida".`,
   };
 }
 
@@ -415,8 +406,8 @@ Deno.serve(async (req) => {
     });
   }
   const { taxableId, exemptId } = taxResolved;
-  /** Envía el impuesto explícito para que QBO calcule ITBMS 7% en compañías con modelo global. */
-  const useTxnTaxDetail = envBool('QBO_INVOICE_TXN_TAX_DETAIL', true);
+  /** Por defecto usa TaxCodeRef por línea. TaxLine explícito solo si se activa con un TaxRate real en QBO. */
+  const useTxnTaxDetail = envBool('QBO_INVOICE_TXN_TAX_DETAIL', false);
   /** Si true, NO enviamos DocNumber y QBO asigna el siguiente correlativo. */
   const useQboAutoDocNumber = envBool('QBO_INVOICE_USE_QBO_AUTONUMBER', true);
   logStructured({
