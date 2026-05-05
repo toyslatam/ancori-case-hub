@@ -415,8 +415,8 @@ Deno.serve(async (req) => {
     });
   }
   const { taxableId, exemptId } = taxResolved;
-  /** Por defecto solo líneas + GlobalTaxCalculation (como la columna IVA en la UI). TxnTaxDetail/TaxLine solo si lo exige tu archivo QBO. */
-  const useTxnTaxDetail = envBool('QBO_INVOICE_TXN_TAX_DETAIL', false);
+  /** Envía el impuesto explícito para que QBO calcule ITBMS 7% en compañías con modelo global. */
+  const useTxnTaxDetail = envBool('QBO_INVOICE_TXN_TAX_DETAIL', true);
   /** Si true, NO enviamos DocNumber y QBO asigna el siguiente correlativo. */
   const useQboAutoDocNumber = envBool('QBO_INVOICE_USE_QBO_AUTONUMBER', true);
   logStructured({

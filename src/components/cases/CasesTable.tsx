@@ -22,6 +22,10 @@ const estadoBadge: Record<string, string> = {
   'Cancelado':            'bg-gray-100  text-gray-400   ring-1 ring-gray-200',
 };
 
+// Muestra reversible: cambiar a `false` para volver a la tabla anterior.
+// Deja filas más altas, textos en 2 líneas y scroll horizontal cuando haga falta.
+const READABLE_CASES_TABLE_SAMPLE = true;
+
 function observacionesToArray(texto: unknown): string[] {
   if (Array.isArray(texto)) {
     return texto.map(String).map(v => v.trim()).filter(Boolean);
@@ -63,8 +67,14 @@ export function CasesTable({
   const totalPages = Math.ceil(cases.length / perPage);
 
   // ── Helpers de cabecera ────────────────────────────────────────────────
-  const thBase = 'px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-400 whitespace-nowrap select-none bg-gray-50';
-  const tdBase = 'px-4 py-4 align-top';
+  const thBase = cn(
+    'text-left font-bold uppercase tracking-widest text-gray-400 whitespace-nowrap select-none bg-gray-50',
+    READABLE_CASES_TABLE_SAMPLE ? 'px-4 py-3 text-[9px]' : 'px-4 py-3 text-[10px]',
+  );
+  const tdBase = cn(
+    'align-top',
+    READABLE_CASES_TABLE_SAMPLE ? 'px-4 py-[18px]' : 'px-4 py-4',
+  );
 
   const SortTh = ({
     field, children, className,
@@ -85,35 +95,48 @@ export function CasesTable({
   );
 
   return (
-    <div className="w-full min-w-0 rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+    <div className={cn(
+      'w-full min-w-0 border border-gray-200 bg-white overflow-hidden',
+      READABLE_CASES_TABLE_SAMPLE ? 'rounded-2xl shadow-md' : 'rounded-xl shadow-sm',
+    )}>
 
       {/* ── Título de la tabla ────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-white">
-        <h2 className="text-sm font-semibold text-gray-700">Seguimiento de casos</h2>
+      <div className={cn(
+        'flex items-center justify-between border-b border-gray-100 bg-white',
+        READABLE_CASES_TABLE_SAMPLE ? 'px-6 py-4' : 'px-5 py-3',
+      )}>
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-gray-700">Seguimiento de casos</h2>
+        </div>
         <span className="text-xs text-gray-400">{cases.length} caso{cases.length !== 1 ? 's' : ''}</span>
       </div>
 
       <div
         className={cn(
-          'w-full overflow-x-auto',
+          'w-full overflow-x-auto overscroll-x-contain',
           '[&::-webkit-scrollbar]:h-1.5',
           '[&::-webkit-scrollbar-track]:bg-transparent',
-          '[&::-webkit-scrollbar-thumb]:bg-gray-200',
-          '[&::-webkit-scrollbar-thumb:hover]:bg-gray-300',
+          '[&::-webkit-scrollbar-thumb]:rounded-full',
+          READABLE_CASES_TABLE_SAMPLE
+            ? '[&::-webkit-scrollbar-thumb]:bg-orange-200 [&::-webkit-scrollbar-thumb:hover]:bg-orange-300'
+            : '[&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb:hover]:bg-gray-300',
         )}
       >
-        <table className="w-full min-w-[1040px] border-collapse">
+        <table className={cn('w-full border-collapse', READABLE_CASES_TABLE_SAMPLE ? 'min-w-[1450px]' : 'min-w-[1040px]')}>
           {/* ── THEAD sticky ──────────────────────────────────────────── */}
           <thead>
             <tr className="border-b border-gray-100">
-              <SortTh field="n_tarea" className="min-w-[110px]">Caso</SortTh>
-              <Th className="min-w-[190px]">Cliente</Th>
-              <Th className="min-w-[180px]">Sociedad</Th>
-              <Th className="min-w-[140px]">Creado Por</Th>
-              <Th className="min-w-[260px]">Servicio</Th>
-              <SortTh field="estado" className="min-w-[150px]">Estado</SortTh>
-              <Th className="min-w-[150px]">Responsable</Th>
-              <Th className="w-[170px] min-w-[170px] text-right">Acciones</Th>
+              <SortTh field="n_tarea" className={READABLE_CASES_TABLE_SAMPLE ? 'min-w-[95px]' : 'min-w-[110px]'}>Caso</SortTh>
+              <Th className={READABLE_CASES_TABLE_SAMPLE ? 'min-w-[180px]' : 'min-w-[190px]'}>Cliente</Th>
+              <Th className={READABLE_CASES_TABLE_SAMPLE ? 'min-w-[210px]' : 'min-w-[180px]'}>Sociedad</Th>
+              <Th className={READABLE_CASES_TABLE_SAMPLE ? 'min-w-[130px]' : 'min-w-[140px]'}>Creado Por</Th>
+              <Th className={READABLE_CASES_TABLE_SAMPLE ? 'min-w-[210px]' : 'min-w-[260px]'}>Servicio</Th>
+              {READABLE_CASES_TABLE_SAMPLE && (
+                <Th className="min-w-[240px]">Descripción</Th>
+              )}
+              <SortTh field="estado" className={READABLE_CASES_TABLE_SAMPLE ? 'min-w-[140px]' : 'min-w-[150px]'}>Estado</SortTh>
+              <Th className={READABLE_CASES_TABLE_SAMPLE ? 'min-w-[150px]' : 'min-w-[150px]'}>Responsable</Th>
+              <Th className={READABLE_CASES_TABLE_SAMPLE ? 'w-[145px] min-w-[145px] text-right' : 'w-[170px] min-w-[170px] text-right'}>Acciones</Th>
             </tr>
           </thead>
 
@@ -121,7 +144,7 @@ export function CasesTable({
           <tbody className="divide-y divide-gray-50">
             {paginated.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-5 py-16 text-center text-sm text-gray-400">
+                <td colSpan={READABLE_CASES_TABLE_SAMPLE ? 9 : 8} className="px-5 py-16 text-center text-sm text-gray-400">
                   No hay casos que mostrar
                 </td>
               </tr>
@@ -144,13 +167,13 @@ export function CasesTable({
                 >
 
                   {/* ── Caso ─────────────────────────────────────── */}
-                  <td className={cn(tdBase, 'whitespace-nowrap font-mono text-xs font-bold text-sky-600')}>
+                  <td className={cn(tdBase, 'whitespace-nowrap font-mono font-bold text-sky-600', READABLE_CASES_TABLE_SAMPLE ? 'text-[11px]' : 'text-xs')}>
                     <span className="block truncate">{formatNTarea(c.n_tarea) || c.numero_caso}</span>
                   </td>
 
                   {/* ── Cliente ──────────────────────────────────── */}
                   <td className={tdBase}>
-                    <span className="block truncate text-sm font-semibold text-gray-800" title={clienteNombre}>
+                    <span className={cn('block font-semibold leading-snug text-gray-800', READABLE_CASES_TABLE_SAMPLE ? 'line-clamp-2 text-xs' : 'truncate text-sm')} title={clienteNombre}>
                       {clienteNombre || '—'}
                     </span>
                     {c.cliente_temporal && (
@@ -160,14 +183,14 @@ export function CasesTable({
 
                   {/* ── Sociedad ─────────────────────────────────── */}
                   <td className={tdBase}>
-                    <span className="block truncate text-xs text-gray-500" title={sociedadNombre}>
+                    <span className={cn('block text-xs leading-snug text-gray-500', READABLE_CASES_TABLE_SAMPLE ? 'line-clamp-2' : 'truncate')} title={sociedadNombre}>
                       {sociedadNombre || '—'}
                     </span>
                   </td>
 
                   {/* ── Creado Por ───────────────────────────────── */}
                   <td className={tdBase}>
-                    <span className="block truncate text-xs text-gray-500" title={c.creado_por}>
+                    <span className={cn('block text-xs leading-snug text-gray-500', READABLE_CASES_TABLE_SAMPLE ? 'line-clamp-2' : 'truncate')} title={c.creado_por}>
                       {c.creado_por || '—'}
                     </span>
                   </td>
@@ -175,17 +198,32 @@ export function CasesTable({
                   {/* ── Servicio ─────────────────────────────────── */}
                   <td className={tdBase}>
                     <span
-                      className="line-clamp-2 max-w-[260px] text-sm leading-snug text-gray-700"
+                      className={cn(
+                        'line-clamp-2 leading-snug text-gray-700',
+                        READABLE_CASES_TABLE_SAMPLE ? 'max-w-[210px] text-xs' : 'max-w-[260px] text-sm',
+                      )}
                       title={servicioNombre || c.descripcion}
                     >
-                      {servicioNombre || c.descripcion || '—'}
+                      {READABLE_CASES_TABLE_SAMPLE ? (servicioNombre || '—') : (servicioNombre || c.descripcion || '—')}
                     </span>
                   </td>
+
+                  {READABLE_CASES_TABLE_SAMPLE && (
+                    <td className={tdBase}>
+                      <span
+                        className="line-clamp-2 max-w-[240px] text-xs leading-snug text-gray-500"
+                        title={c.descripcion}
+                      >
+                        {c.descripcion || '—'}
+                      </span>
+                    </td>
+                  )}
 
                   {/* ── Estado ───────────────────────────────────── */}
                   <td className={cn(tdBase, 'whitespace-nowrap')}>
                     <span className={cn(
-                      'inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-[10px] font-semibold',
+                      'inline-flex max-w-full items-center rounded-full font-semibold',
+                      READABLE_CASES_TABLE_SAMPLE ? 'px-3 py-1 text-[11px]' : 'px-2.5 py-1 text-[10px]',
                       estadoBadge[c.estado] ?? 'bg-gray-100 text-gray-400',
                     )}>
                       <span className="truncate">{c.estado}</span>
@@ -194,14 +232,14 @@ export function CasesTable({
 
                   {/* ── Responsable ──────────────────────────────── */}
                   <td className={tdBase}>
-                    <span className="block truncate text-xs text-gray-500" title={responsable}>
+                    <span className={cn('block text-xs leading-snug text-gray-500', READABLE_CASES_TABLE_SAMPLE ? 'line-clamp-2' : 'truncate')} title={responsable}>
                       {responsable || '—'}
                     </span>
                   </td>
 
                   {/* ── Acciones ─────────────────────────────────── */}
-                  <td className={cn(tdBase, 'w-[170px]')} onClick={e => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-0.5">
+                  <td className={cn(tdBase, READABLE_CASES_TABLE_SAMPLE ? 'w-[145px]' : 'w-[170px]')} onClick={e => e.stopPropagation()}>
+                    <div className={cn('flex items-center justify-end', READABLE_CASES_TABLE_SAMPLE ? 'gap-0.5' : 'gap-0.5')}>
                       <button
                         onClick={() => setObservacionesModal({
                           caseLabel: formatNTarea(c.n_tarea) || c.numero_caso,
@@ -209,7 +247,8 @@ export function CasesTable({
                         })}
                         title="Ver observaciones"
                         className={cn(
-                          'relative inline-flex h-7 w-7 items-center justify-center rounded-lg text-xs transition-all duration-100',
+                          'relative inline-flex items-center justify-center rounded-lg text-xs transition-all duration-100',
+                          READABLE_CASES_TABLE_SAMPLE ? 'h-[26px] w-[26px]' : 'h-7 w-7',
                           observacionesCount > 0
                             ? 'bg-orange-50 text-orange-600 ring-1 ring-orange-200 hover:bg-orange-100'
                             : 'bg-gray-50 text-gray-400 ring-1 ring-gray-200 hover:bg-gray-100 hover:text-gray-600',
@@ -226,28 +265,35 @@ export function CasesTable({
                         onClick={() => onOpenComments(c)}
                         title="Ver comentarios"
                         className={cn(
-                          'inline-flex h-7 items-center gap-0.5 rounded-lg px-1.5 text-[10px] font-semibold transition-all duration-100',
+                          'inline-flex items-center gap-0.5 rounded-lg font-semibold transition-all duration-100',
+                          READABLE_CASES_TABLE_SAMPLE ? 'h-[26px] px-1 text-[9px]' : 'h-7 px-1.5 text-[10px]',
                           commentCount > 0
                             ? 'bg-violet-50 text-violet-600 ring-1 ring-violet-200 hover:bg-violet-100'
                             : 'bg-gray-50 text-gray-400 ring-1 ring-gray-200 hover:bg-gray-100 hover:text-gray-600',
                         )}
                       >
-                        <MessageSquare className="h-3 w-3" />
+                        <MessageSquare className={READABLE_CASES_TABLE_SAMPLE ? 'h-2.5 w-2.5' : 'h-3 w-3'} />
                         <span className="rounded-full bg-white px-1.5 py-0.5 text-[9px] leading-none text-violet-600 ring-1 ring-violet-100">{commentCount}</span>
                       </button>
                       <button
                         onClick={() => onOpenExpenses(c)}
                         title="Gastos"
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-300 transition-all duration-100 hover:bg-emerald-50 hover:text-emerald-500"
+                        className={cn(
+                          'inline-flex items-center justify-center rounded-lg text-gray-300 transition-all duration-100 hover:bg-emerald-50 hover:text-emerald-500',
+                          READABLE_CASES_TABLE_SAMPLE ? 'h-[26px] w-[26px]' : 'h-7 w-7',
+                        )}
                       >
-                        <DollarSign className="h-3.5 w-3.5" />
+                        <DollarSign className={READABLE_CASES_TABLE_SAMPLE ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
                       </button>
                       <button
                         onClick={() => onOpenInvoice(c)}
                         title="Facturas"
-                        className="relative inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-300 transition-all duration-100 hover:bg-sky-50 hover:text-sky-500"
+                        className={cn(
+                          'relative inline-flex items-center justify-center rounded-lg text-gray-300 transition-all duration-100 hover:bg-sky-50 hover:text-sky-500',
+                          READABLE_CASES_TABLE_SAMPLE ? 'h-[26px] w-[26px]' : 'h-7 w-7',
+                        )}
                       >
-                        <FileText className="h-3.5 w-3.5" />
+                        <FileText className={READABLE_CASES_TABLE_SAMPLE ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
                         {invoiceCount > 0 && (
                           <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-sky-500 px-0.5 text-[8px] font-bold leading-none text-white">
                             {invoiceCount > 9 ? '9+' : invoiceCount}
@@ -257,9 +303,12 @@ export function CasesTable({
                       <button
                         onClick={() => onDeleteCase(c.id)}
                         title="Eliminar"
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-200 transition-all duration-100 hover:bg-red-50 hover:text-red-400"
+                        className={cn(
+                          'inline-flex items-center justify-center rounded-lg text-gray-200 transition-all duration-100 hover:bg-red-50 hover:text-red-400',
+                          READABLE_CASES_TABLE_SAMPLE ? 'h-[26px] w-[26px]' : 'h-7 w-7',
+                        )}
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Trash2 className={READABLE_CASES_TABLE_SAMPLE ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
                       </button>
                     </div>
                   </td>

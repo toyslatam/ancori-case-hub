@@ -5,14 +5,27 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { SearchableCombo, type ComboOption } from '@/components/ui/searchable-combo';
 
 interface FiltersModalProps {
   open: boolean;
   onClose: () => void;
   onApply: (filters: Record<string, any>) => void;
+  responsableOptions?: ComboOption[];
+  clientOptions?: ComboOption[];
+  societyOptions?: ComboOption[];
 }
 
-export function FiltersModal({ open, onClose, onApply }: FiltersModalProps) {
+const FILTER_ALL = '__all__';
+
+export function FiltersModal({
+  open,
+  onClose,
+  onApply,
+  responsableOptions = [],
+  clientOptions = [],
+  societyOptions = [],
+}: FiltersModalProps) {
   const [filters, setFilters] = useState<Record<string, any>>({});
 
   const handleApply = () => {
@@ -53,6 +66,38 @@ export function FiltersModal({ open, onClose, onApply }: FiltersModalProps) {
                   <SelectItem value="Cancelado">Cancelado</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-4">
+            <div>
+              <Label>Responsable</Label>
+              <SearchableCombo
+                options={[{ value: FILTER_ALL, label: 'Todos' }, ...responsableOptions]}
+                value={filters.responsable_id || FILTER_ALL}
+                onChange={v => setFilters(f => ({ ...f, responsable_id: !v || v === FILTER_ALL ? undefined : v }))}
+                placeholder="Seleccionar Responsable"
+                emptyLabel="Sin responsables"
+              />
+            </div>
+            <div>
+              <Label>Cliente</Label>
+              <SearchableCombo
+                options={[{ value: FILTER_ALL, label: 'Todos' }, ...clientOptions]}
+                value={filters.client_id || FILTER_ALL}
+                onChange={v => setFilters(f => ({ ...f, client_id: !v || v === FILTER_ALL ? undefined : v }))}
+                placeholder="Seleccionar Cliente"
+                emptyLabel="Sin clientes"
+              />
+            </div>
+            <div>
+              <Label>Sociedad</Label>
+              <SearchableCombo
+                options={[{ value: FILTER_ALL, label: 'Todas' }, ...societyOptions]}
+                value={filters.society_id || FILTER_ALL}
+                onChange={v => setFilters(f => ({ ...f, society_id: !v || v === FILTER_ALL ? undefined : v }))}
+                placeholder="Seleccionar Sociedad"
+                emptyLabel="Sin sociedades"
+              />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
