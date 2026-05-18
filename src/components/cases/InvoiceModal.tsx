@@ -15,6 +15,7 @@ import {
   resolveHonorariosAndGastosServices,
 } from '@/lib/invoiceLineProduct';
 import { postQboCreateInvoice } from '@/lib/qboCreateInvoiceFetch';
+import { getSupabase } from '@/lib/supabaseClient';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const FUNCTION_SECRET = import.meta.env.VITE_FUNCTION_SECRET as string;
@@ -124,6 +125,8 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
   const [lines, setLines] = useState<InvoiceLine[]>([newLine([])]);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
+  const [estimatedInvoiceNumber, setEstimatedInvoiceNumber] = useState('');
+  const [loadingEstimatedNumber, setLoadingEstimatedNumber] = useState(false);
 
   // Al abrir: desde Facturas → formulario directo; desde Casos → lista si ya hay facturas vinculadas.
   useEffect(() => {
@@ -174,6 +177,29 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
       }
     }
   }, [termId, fechaFactura, invoiceTerms]);
+
+  useEffect(() => {
+    if (!open || !caseData || invoiceListStep === 'pick') return;
+    if (isEdit && effectiveInvoice?.numero_factura) {
+      setEstimatedInvoiceNumber(effectiveInvoice.numero_factura);
+      return;
+    }
+
+    let cancelled = false;
+    async function loadEstimatedInvoiceNumber() {
+      const sb = getSupabase();
+      if (!sb) return;
+      setLoadingEstimatedNumber(true);
+      const { data, error } = await sb.rpc('peek_qbo_invoice_number', { p_provider: 'quickbooks' });
+      if (!cancelled) {
+        setEstimatedInvoiceNumber(error ? '' : String(data ?? ''));
+        setLoadingEstimatedNumber(false);
+      }
+    }
+
+    loadEstimatedInvoiceNumber();
+    return () => { cancelled = true; };
+  }, [open, caseData?.id, invoiceListStep, isEdit, effectiveInvoice?.numero_factura]);
 
   /** Siempre antes de cualquier return: evita violar el orden de Hooks (p. ej. vista "pick" vs formulario). */
   const qbComboOptions: ComboOption[] = useMemo(() => {
@@ -283,7 +309,11 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
       } else if (field === 'qb_item_id') {
         const qid = typeof value === 'string' && value ? value : undefined;
         updated.qb_item_id = qid;
-        if (qid) {
+        // Solo sugerir itbms desde el qbItem si la línea aún no tiene categoría Honorarios/Gastos.
+        // Evita que un qbItem con impuesto_default=0 (común tras qbo-sync-qbitems en Panamá)
+        // pise el 7% que asigna la categoría "Honorario".
+        const hasCategoria = updated.categoria === 'honorarios' || updated.categoria === 'gastos';
+        if (qid && !hasCategoria) {
           const qbItem = qbItems.find(q => q.id === qid);
           if (qbItem?.impuesto_default != null) updated.itbms = qbItem.impuesto_default;
         }
@@ -431,6 +461,7 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
 
   const clientName = getClientName(caseData.client_id);
   const societyName = getSocietyName(caseData.society_id);
+  const invoiceNumberDisplay = numeroFactura || estimatedInvoiceNumber;
 
   const showBackToList = !invoice && invoicesForCase.length > 0;
 
@@ -484,11 +515,16 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
                   <div>
                     <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 block">N° Factura</label>
                     <Input
-                      value={numeroFactura}
-                      onChange={e => setNumeroFactura(e.target.value)}
-                      placeholder="000001"
-                      className="h-10 rounded-xl border-gray-200 text-sm bg-white"
+                      value={invoiceNumberDisplay}
+                      readOnly
+                      placeholder={loadingEstimatedNumber ? 'Calculando...' : 'Se asignará al enviar'}
+                      className="h-10 rounded-xl border-gray-200 text-sm bg-gray-50"
                     />
+                    <p className="mt-1.5 text-[11px] leading-snug text-gray-500">
+                      {invoiceNumberDisplay
+                        ? `Número previsto: ${invoiceNumberDisplay}. Se confirmará al enviar; si ya fue usado, QuickBooks recibirá el siguiente disponible.`
+                        : 'El número se reservará al enviar a QuickBooks.'}
+                    </p>
                   </div>
                   <div>
                     <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 block">Cliente</label>

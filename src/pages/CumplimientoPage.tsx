@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
+import { AgileCheckProfilePanel } from '@/components/compliance/AgileCheckProfilePanel';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -15,7 +19,7 @@ import {
 import {
   Shield, Search, Download, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   X, AlertTriangle, CheckCircle, Clock, Loader2, ShieldCheck, ShieldAlert,
-  ShieldX, RefreshCw, Users, Building2, UserCog,
+  ShieldX, RefreshCw, Users, Building2, UserCog, CloudUpload,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -24,9 +28,9 @@ import {
   Tooltip, ResponsiveContainer,
 } from 'recharts';
 import {
-  fetchComplianceChecks, verifyEntity, computeStats,
+  fetchComplianceChecks, verifyEntity, computeStats, syncClientToAgileCheck,
   getStatusLabel, getRiskLabel, getEntityLabel,
-  type ComplianceCheck, type ComplianceStats,
+  type ComplianceCheck, type ComplianceStats, type VerifyEntityHubOptions,
 } from '@/lib/agileCheckApi';
 
 const ALL = '__all__';
@@ -116,7 +120,7 @@ function MiniStat({ label, value, icon, color }: { label: string; value: number;
 }
 
 export default function CumplimientoPage() {
-  const { clients, directores, societies } = useApp();
+  const { clients, directores, societies, refreshClients } = useApp();
   const { user } = useAuth();
 
   const [checks, setChecks] = useState<ComplianceCheck[]>([]);
@@ -131,6 +135,16 @@ export default function CumplimientoPage() {
   const [sortAsc, setSortAsc] = useState(false);
   const [confirmVerify, setConfirmVerify] = useState<{
     entityType: 'client' | 'director' | 'society';
+    entityId: string;
+    entityName: string;
+  } | null>(null);
+  const [syncClienteAlVerificar, setSyncClienteAlVerificar] = useState(false);
+  const [syncingClientId, setSyncingClientId] = useState<string | null>(null);
+  const [searchClientes, setSearchClientes] = useState('');
+  const [searchDirectores, setSearchDirectores] = useState('');
+  const [searchSociedades, setSearchSociedades] = useState('');
+  const [agDetail, setAgDetail] = useState<{
+    entityType: 'client' | 'society';
     entityId: string;
     entityName: string;
   } | null>(null);
@@ -194,16 +208,42 @@ export default function CumplimientoPage() {
     if (!confirmVerify || !user) return;
     setVerifying(confirmVerify.entityId);
 
+    const hub: VerifyEntityHubOptions = { checked_by_correo: user.email };
+    if (confirmVerify.entityType === 'client') {
+      const c = clients.find(x => x.id === confirmVerify.entityId);
+      if (c?.identificacion?.trim()) hub.numero_id = c.identificacion.trim();
+    } else if (confirmVerify.entityType === 'society') {
+      const s = societies.find(x => x.id === confirmVerify.entityId);
+      const doc = [s?.ruc, s?.nit, s?.identificacion_fiscal].find(x => x != null && String(x).trim() !== '');
+      if (doc != null) hub.numero_id = String(doc).trim();
+    }
+
+    if (confirmVerify.entityType === 'client' && syncClienteAlVerificar) {
+      hub.sync_agilecheck_client = true;
+    }
+
     const result = await verifyEntity(
       confirmVerify.entityType,
       confirmVerify.entityId,
       confirmVerify.entityName,
       'PEP',
       user.id,
+      hub,
     );
 
     if (result.ok) {
       toast.success(`Verificacion completada: ${result.summary}`);
+      if (result.sync_agilecheck_client && result.sync_agilecheck_client.ok === false) {
+        const d = result.sync_agilecheck_client.detail;
+        toast.warning(
+          d
+            ? `La verificación se guardó, pero AgileCheck no actualizó el cliente: ${result.sync_agilecheck_client.error} (${d.slice(0, 120)})`
+            : `La verificación se guardó, pero AgileCheck no actualizó el cliente: ${result.sync_agilecheck_client.error ?? 'error'}`,
+        );
+      } else if (result.sync_agilecheck_client?.ok) {
+        toast.message(`AgileCheck: cliente ${result.sync_agilecheck_client.action ?? 'ok'} (id ${result.sync_agilecheck_client.agilecheck_cliente_id})`);
+        void refreshClients();
+      }
       await loadChecks();
     } else {
       toast.error(result.error ?? 'Error al verificar');
@@ -211,6 +251,19 @@ export default function CumplimientoPage() {
 
     setVerifying(null);
     setConfirmVerify(null);
+    setSyncClienteAlVerificar(false);
+  }
+
+  async function handleSyncClientOnly(clientId: string) {
+    setSyncingClientId(clientId);
+    const r = await syncClientToAgileCheck(clientId);
+    if (r.ok) {
+      toast.success(`AgileCheck: cliente ${r.action ?? 'ok'} (id ${r.agilecheck_cliente_id})`);
+      await refreshClients();
+    } else {
+      toast.error(r.detail ? `${r.error}: ${r.detail.slice(0, 200)}` : (r.error ?? 'Error AgileCheck'));
+    }
+    setSyncingClientId(null);
   }
 
   // Unverified entities
@@ -224,6 +277,14 @@ export default function CumplimientoPage() {
     return directores.filter(d => d.activo && !checkedIds.has(d.id));
   }, [directores, checks]);
 
+  const unverifiedSocieties = useMemo(() => {
+    const checkedIds = new Set(checks.filter(c => c.entity_type === 'society').map(c => c.entity_id));
+    return societies.filter(s => s.activo && !checkedIds.has(s.id));
+  }, [societies, checks]);
+
+  const pendingVerifyCount =
+    unverifiedClients.length + unverifiedDirectors.length + unverifiedSocieties.length;
+
   // Chart data
   const donutData = useMemo(() => {
     const m: Record<string, number> = {};
@@ -234,8 +295,8 @@ export default function CumplimientoPage() {
   const entityBarData = useMemo(() => [
     { name: 'Clientes', verificados: checks.filter(c => c.entity_type === 'client').length, pendientes: unverifiedClients.length },
     { name: 'Directores', verificados: checks.filter(c => c.entity_type === 'director').length, pendientes: unverifiedDirectors.length },
-    { name: 'Sociedades', verificados: checks.filter(c => c.entity_type === 'society').length, pendientes: societies.filter(s => s.activo).length - checks.filter(c => c.entity_type === 'society').length },
-  ], [checks, unverifiedClients, unverifiedDirectors, societies]);
+    { name: 'Sociedades', verificados: checks.filter(c => c.entity_type === 'society').length, pendientes: unverifiedSocieties.length },
+  ], [checks, unverifiedClients, unverifiedDirectors, unverifiedSocieties.length]);
 
   // Export
   function handleExport() {
@@ -302,14 +363,146 @@ export default function CumplimientoPage() {
       )}
 
       {/* No verificados */}
-      {(unverifiedClients.length > 0 || unverifiedDirectors.length > 0) && (
+      {(unverifiedClients.length > 0 || unverifiedDirectors.length > 0 || unverifiedSocieties.length > 0) && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex items-center gap-2">
           <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0" />
           <span>
             {unverifiedClients.length > 0 && <><strong>{unverifiedClients.length}</strong> clientes sin verificar. </>}
-            {unverifiedDirectors.length > 0 && <><strong>{unverifiedDirectors.length}</strong> directores sin verificar.</>}
+            {unverifiedDirectors.length > 0 && <><strong>{unverifiedDirectors.length}</strong> directores sin verificar. </>}
+            {unverifiedSocieties.length > 0 && <><strong>{unverifiedSocieties.length}</strong> sociedades sin verificar.</>}
           </span>
         </div>
+      )}
+
+      {userCanVerify && pendingVerifyCount > 0 && (
+        <Card className="shadow-sm border-orange-200/80">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Shield className="h-5 w-5 text-orange-500" />
+              Ejecutar verificación
+            </CardTitle>
+            <p className="text-sm text-muted-foreground font-normal">
+              Elija una entidad para consultar AgileCheck y registrar el resultado en la tabla inferior.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-0">
+            {unverifiedClients.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                  Clientes <span className="font-normal">({unverifiedClients.length})</span>
+                </p>
+                <div className="relative mb-2">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar cliente..."
+                    value={searchClientes}
+                    onChange={e => setSearchClientes(e.target.value)}
+                    className="pl-8 h-8 text-xs"
+                  />
+                </div>
+                <ul className="max-h-48 overflow-y-auto rounded-md border divide-y">
+                  {unverifiedClients
+                    .filter(c => !searchClientes.trim() || `${c.nombre} ${c.razon_social ?? ''}`.toLowerCase().includes(searchClientes.trim().toLowerCase()))
+                    .map(c => {
+                    const label = (c.razon_social?.trim() || c.nombre).trim();
+                    return (
+                      <li key={c.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm bg-background">
+                        <span className="truncate font-medium min-w-0" title={label}>{label}</span>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <Button size="sm" variant="outline" className="h-8 px-2 gap-1 text-blue-700 border-blue-200 hover:bg-blue-50"
+                            onClick={() => setAgDetail({ entityType: 'client', entityId: c.id, entityName: label })}
+                            title="Ver ficha AgileCheck">
+                            <ShieldCheck className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="sm" variant="outline" className="h-8 px-2 gap-1"
+                            disabled={syncingClientId === c.id}
+                            onClick={() => void handleSyncClientOnly(c.id)}
+                            title="Sincronizar solo ficha en AgileCheck">
+                            {syncingClientId === c.id
+                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              : <CloudUpload className="h-3.5 w-3.5" />}
+                          </Button>
+                          <Button size="sm" variant="secondary" className="h-8 gap-1"
+                            onClick={() => setConfirmVerify({ entityType: 'client', entityId: c.id, entityName: label })}>
+                            <Shield className="h-3.5 w-3.5" /> Verificar
+                          </Button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+            {unverifiedDirectors.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                  Directores <span className="font-normal">({unverifiedDirectors.length})</span>
+                </p>
+                <div className="relative mb-2">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar director..."
+                    value={searchDirectores}
+                    onChange={e => setSearchDirectores(e.target.value)}
+                    className="pl-8 h-8 text-xs"
+                  />
+                </div>
+                <ul className="max-h-48 overflow-y-auto rounded-md border divide-y">
+                  {unverifiedDirectors
+                    .filter(d => !searchDirectores.trim() || d.nombre.toLowerCase().includes(searchDirectores.trim().toLowerCase()))
+                    .map(d => (
+                    <li key={d.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm bg-background">
+                      <span className="truncate font-medium" title={d.nombre}>{d.nombre}</span>
+                      <Button size="sm" variant="secondary" className="shrink-0 h-8 gap-1"
+                        onClick={() => setConfirmVerify({ entityType: 'director', entityId: d.id, entityName: d.nombre })}>
+                        <Shield className="h-3.5 w-3.5" /> Verificar
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {unverifiedSocieties.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                  Sociedades <span className="font-normal">({unverifiedSocieties.length})</span>
+                </p>
+                <div className="relative mb-2">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar sociedad..."
+                    value={searchSociedades}
+                    onChange={e => setSearchSociedades(e.target.value)}
+                    className="pl-8 h-8 text-xs"
+                  />
+                </div>
+                <ul className="max-h-48 overflow-y-auto rounded-md border divide-y">
+                  {unverifiedSocieties
+                    .filter(s => !searchSociedades.trim() || `${s.nombre} ${s.razon_social ?? ''}`.toLowerCase().includes(searchSociedades.trim().toLowerCase()))
+                    .map(s => {
+                    const label = (s.razon_social?.trim() || s.nombre).trim();
+                    return (
+                      <li key={s.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm bg-background">
+                        <span className="truncate font-medium min-w-0" title={label}>{label}</span>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <Button size="sm" variant="outline" className="h-8 px-2 gap-1 text-blue-700 border-blue-200 hover:bg-blue-50"
+                            onClick={() => setAgDetail({ entityType: 'society', entityId: s.id, entityName: label })}
+                            title="Ver ficha AgileCheck">
+                            <ShieldCheck className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="sm" variant="secondary" className="shrink-0 h-8 gap-1"
+                            onClick={() => setConfirmVerify({ entityType: 'society', entityId: s.id, entityName: label })}>
+                            <Shield className="h-3.5 w-3.5" /> Verificar
+                          </Button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* Graficos */}
@@ -495,11 +688,20 @@ export default function CumplimientoPage() {
                       </td>
                       {userCanVerify && (
                         <td className="px-3 py-2 text-center">
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" disabled={verifying === c.entity_id}
-                            onClick={() => setConfirmVerify({ entityType: c.entity_type, entityId: c.entity_id, entityName: c.entity_name })}
-                            title="Re-verificar">
-                            <RefreshCw className={cn('h-3.5 w-3.5', verifying === c.entity_id && 'animate-spin')} />
-                          </Button>
+                          <div className="flex items-center justify-center gap-1">
+                            {(c.entity_type === 'client' || c.entity_type === 'society') && (
+                              <Button size="sm" variant="ghost" className="h-7 px-2 text-[10px] text-blue-700 hover:bg-blue-50"
+                                onClick={() => setAgDetail({ entityType: c.entity_type as 'client' | 'society', entityId: c.entity_id, entityName: c.entity_name })}
+                                title="Ver ficha AgileCheck">
+                                <ShieldCheck className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" disabled={verifying === c.entity_id}
+                              onClick={() => setConfirmVerify({ entityType: c.entity_type, entityId: c.entity_id, entityName: c.entity_name })}
+                              title="Re-verificar">
+                              <RefreshCw className={cn('h-3.5 w-3.5', verifying === c.entity_id && 'animate-spin')} />
+                            </Button>
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -524,8 +726,40 @@ export default function CumplimientoPage() {
         </CardContent>
       </Card>
 
+      {/* Sheet Ficha AgileCheck */}
+      <Sheet open={agDetail != null} onOpenChange={open => { if (!open) setAgDetail(null); }}>
+        <SheetContent side="right" className="w-full sm:max-w-[560px] overflow-y-auto">
+          <SheetHeader className="mb-4">
+            <SheetTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-blue-600" />
+              Ficha AgileCheck — {agDetail?.entityName}
+            </SheetTitle>
+          </SheetHeader>
+          {agDetail && (() => {
+            const entity = agDetail.entityType === 'client'
+              ? clients.find(c => c.id === agDetail.entityId)
+              : societies.find(s => s.id === agDetail.entityId);
+            if (!entity) return (
+              <p className="text-sm text-muted-foreground">Entidad no encontrada en el contexto local.</p>
+            );
+            return (
+              <AgileCheckProfilePanel
+                entityType={agDetail.entityType}
+                entity={entity}
+                onProfileUpdated={() => {}}
+              />
+            );
+          })()}
+        </SheetContent>
+      </Sheet>
+
       {/* Confirm dialog */}
-      <AlertDialog open={!!confirmVerify} onOpenChange={open => !open && setConfirmVerify(null)}>
+      <AlertDialog open={!!confirmVerify} onOpenChange={open => {
+        if (!open) {
+          setConfirmVerify(null);
+          setSyncClienteAlVerificar(false);
+        }
+      }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Verificar en AgileCheck</AlertDialogTitle>
@@ -534,6 +768,20 @@ export default function CumplimientoPage() {
               aparece en listas PEP o sanciones internacionales.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {confirmVerify?.entityType === 'client' && (
+            <div className="flex items-start gap-3 px-1 py-1">
+              <Checkbox
+                id="sync-agilecheck-cliente"
+                checked={syncClienteAlVerificar}
+                onCheckedChange={v => setSyncClienteAlVerificar(v === true)}
+                className="mt-0.5"
+              />
+              <Label htmlFor="sync-agilecheck-cliente" className="text-sm font-normal leading-snug cursor-pointer text-muted-foreground">
+                También crear o actualizar la ficha de este cliente en AgileCheck (mismo token). Requiere el secret{' '}
+                <code className="text-xs bg-muted px-1 rounded">AGILECHECK_PRODUCTO_TOMADO_ID</code> en Supabase.
+              </Label>
+            </div>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <Button onClick={handleVerify} disabled={verifying !== null}>

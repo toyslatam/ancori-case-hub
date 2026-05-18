@@ -36,6 +36,71 @@ interface QboItem {
   UnitPrice?: number;
 }
 
+interface QboTaxCodeRow {
+  Id?: string;
+  Name?: string;
+  Description?: string;
+  Active?: boolean;
+  /** Si false, suele ser exento / sin impuesto a las ventas. */
+  Taxable?: boolean;
+}
+
+/**
+ * Consulta TaxCode activos en QBO y devuelve el conjunto de Ids que se consideran
+ * "gravados" (ITBMS 7% en Panamá). Permite override vía QBO_TAX_CODE_LINE_TAXABLE
+ * (uno o varios Ids separados por coma).
+ *
+ * Mantiene el literal "TAX" como gravado para cuentas QBO de Estados Unidos.
+ */
+async function fetchTaxableTaxCodeIds(realmId: string, accessToken: string): Promise<Set<string>> {
+  const ids = new Set<string>();
+  ids.add('TAX'); // compatibilidad con cuentas QBO US
+
+  const envTaxable = (Deno.env.get('QBO_TAX_CODE_LINE_TAXABLE') ?? '').trim();
+  if (envTaxable) {
+    for (const part of envTaxable.split(',')) {
+      const v = part.trim();
+      if (v) ids.add(v);
+    }
+  }
+
+  const base = (Deno.env.get('QBO_API_BASE') ?? 'https://quickbooks.api.intuit.com').replace(/\/+$/, '');
+  const sql = 'SELECT * FROM TaxCode WHERE Active = true MAXRESULTS 200';
+  const url = `${base}/v3/company/${realmId}/query?query=${encodeURIComponent(sql)}&minorversion=73`;
+  let codes: QboTaxCodeRow[] = [];
+  try {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+    });
+    const text = await res.text();
+    let data: Record<string, unknown> = {};
+    try { data = JSON.parse(text) as Record<string, unknown>; } catch { /* empty */ }
+    if (res.ok) {
+      const qr = data.QueryResponse as Record<string, unknown> | undefined;
+      codes = (qr?.TaxCode as QboTaxCodeRow[] | undefined) ?? [];
+    }
+  } catch {
+    // Si la query de TaxCode falla, seguimos con el fallback (env + 'TAX').
+  }
+
+  for (const c of codes) {
+    const id = c.Id ? String(c.Id).trim() : '';
+    if (!id) continue;
+    const raw = `${c.Name ?? ''} ${c.Description ?? ''}`.toLowerCase();
+    const compact = raw.replace(/[^a-z0-9%]+/g, '');
+    const looksTaxable =
+      /\bitbms\b/.test(raw) ||
+      compact.includes('itbms') ||
+      /i\.?\s*t\.?\s*b\.?\s*m\.?\s*s/.test(raw) ||
+      /7\s*%|\(7/.test(raw) ||
+      (/\biva\b/.test(raw) && !/exclu/.test(raw)) ||
+      (c.Taxable === true && !/(\bexempt\b|exento|exenta|no\s*sujet|0\s*%|sin\s*imp|fuera\s*de\s*alcance|out\s*of\s*scope)/.test(raw));
+    if (looksTaxable) ids.add(id);
+  }
+
+  return ids;
+}
+
 // ── Consulta paginada de items ────────────────────────────────────────────────
 
 async function fetchAllItems(realmId: string, accessToken: string): Promise<QboItem[]> {
@@ -110,6 +175,9 @@ Deno.serve(async (req) => {
     return json(502, { error: 'qbo_fetch', detail: String(e) });
   }
 
+  /* TaxCodes gravados en QBO (ITBMS 7% en Panamá, "TAX" en cuentas US). */
+  const taxableIds = await fetchTaxableTaxCodeIds(realmId, accessToken);
+
   /* Cargar items existentes en BD */
   const { data: existing } = await sb.from('qb_items').select('id, qb_item_id');
   const existingByQbId = new Map<string, string>(); // qb_item_id (texto) -> uuid
@@ -130,9 +198,10 @@ Deno.serve(async (req) => {
     const nombreQb   = (item.FullyQualifiedName ?? item.Name).trim();
     const tipo       = item.Type ?? 'Service';
     const activo     = item.Active !== false;
-    // ITBMS: 7% si el item tiene código de impuesto "TAX", 0% si "NON" o sin código
-    const taxCode    = item.SalesTaxCodeRef?.value ?? '';
-    const impuesto   = taxCode === 'TAX' ? 7 : 0;
+    // ITBMS: 7% si SalesTaxCodeRef coincide con un TaxCode gravado en QBO (incluye 'TAX' en cuentas US
+    // y los TaxCodes panameños identificados como ITBMS). 0% en cualquier otro caso (exento/sin código).
+    const taxCode    = (item.SalesTaxCodeRef?.value ?? '').trim();
+    const impuesto   = taxCode && taxableIds.has(taxCode) ? 7 : 0;
 
     const existing_uuid = existingByQbId.get(qbId);
 

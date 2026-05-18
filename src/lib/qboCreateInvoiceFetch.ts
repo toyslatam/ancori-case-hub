@@ -3,6 +3,8 @@ export type QboCreateInvoiceJson = {
   ok?: boolean;
   qb_invoice_id?: string;
   doc_number?: string;
+  reserved_doc_number?: string;
+  attempted_doc_number?: string;
   total_amt?: number;
   balance?: number;
   error?: string;

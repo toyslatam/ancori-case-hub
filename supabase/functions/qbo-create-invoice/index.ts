@@ -119,6 +119,11 @@ interface QboTaxRateRow {
   Active?: boolean;
 }
 
+interface QboInvoiceRow {
+  Id?: string;
+  DocNumber?: string;
+}
+
 async function queryActiveTaxRates(
   apiBase: string,
   realmId: string,
@@ -191,6 +196,83 @@ function labelOf(c: QboTaxCodeRow): string {
 /** Normaliza para reconocer "I.T.B.M.S." como ITBMS. */
 function compactAlnum(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9%]+/g, '');
+}
+
+function numericDocNumber(v: unknown): number | null {
+  const s = String(v ?? '').trim();
+  if (!/^\d+$/.test(s)) return null;
+  const n = Number(s);
+  return Number.isSafeInteger(n) && n >= 0 ? n : null;
+}
+
+function isDuplicateDocNumberFault(qboResp: Record<string, unknown>): boolean {
+  const raw = JSON.stringify(qboResp).toLowerCase();
+  return raw.includes('duplicate') ||
+    raw.includes('docnumber') ||
+    raw.includes('document number') ||
+    raw.includes('número de documento') ||
+    raw.includes('"code":"6210"') ||
+    raw.includes('"code":6210');
+}
+
+async function queryLatestNumericQboDocNumber(
+  apiBase: string,
+  realmId: string,
+  accessToken: string,
+): Promise<number | null> {
+  const sql = 'SELECT DocNumber FROM Invoice ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS 1000';
+  const url = `${apiBase}/v3/company/${realmId}/query?query=${encodeURIComponent(sql)}&minorversion=73`;
+  const res = await fetchWithTimeout(url, {
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+  });
+  const text = await res.text();
+  let data: Record<string, unknown> = {};
+  try {
+    data = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  if (!res.ok) {
+    logStructured({
+      operation: 'doc_number_query',
+      ok: false,
+      status: res.status,
+      snippet: text.slice(0, 400),
+    });
+    return null;
+  }
+  const qr = data.QueryResponse as Record<string, unknown> | undefined;
+  const rows = (qr?.Invoice as QboInvoiceRow[] | undefined) ?? [];
+  let max: number | null = null;
+  for (const row of rows) {
+    const n = numericDocNumber(row.DocNumber);
+    if (n != null && (max == null || n > max)) max = n;
+  }
+  return max;
+}
+
+async function reserveQboInvoiceNumber(sb: SupabaseClient): Promise<string> {
+  const { data, error } = await sb.rpc('reserve_qbo_invoice_number', { p_provider: 'quickbooks' });
+  if (error) throw new Error(`reserve_qbo_invoice_number: ${error.message}`);
+  const doc = String(data ?? '').trim();
+  if (!doc) throw new Error('reserve_qbo_invoice_number: no devolvió número');
+  return doc;
+}
+
+async function syncQboInvoiceNumberSequence(sb: SupabaseClient, docNumber: string): Promise<void> {
+  if (!docNumber.trim()) return;
+  const { error } = await sb.rpc('sync_qbo_invoice_number_sequence', {
+    p_doc_number: docNumber,
+    p_provider: 'quickbooks',
+  });
+  if (error) {
+    logStructured({
+      operation: 'doc_number_sync',
+      ok: false,
+      message: error.message,
+      doc_number: docNumber,
+    });
+  }
 }
 
 /**
@@ -408,8 +490,8 @@ Deno.serve(async (req) => {
   const { taxableId, exemptId } = taxResolved;
   /** Por defecto usa TaxCodeRef por línea. TaxLine explícito solo si se activa con un TaxRate real en QBO. */
   const useTxnTaxDetail = envBool('QBO_INVOICE_TXN_TAX_DETAIL', false);
-  /** Si true, NO enviamos DocNumber y QBO asigna el siguiente correlativo. */
-  const useQboAutoDocNumber = envBool('QBO_INVOICE_USE_QBO_AUTONUMBER', true);
+  /** Si true, NO enviamos DocNumber. Con custom transaction numbers activo, debe quedar false. */
+  const useQboAutoDocNumber = envBool('QBO_INVOICE_USE_QBO_AUTONUMBER', false);
   logStructured({
     invoice_id,
     operation: 'tax_codes',
@@ -472,9 +554,16 @@ Deno.serve(async (req) => {
     DueDate: inv.fecha_vencimiento,
     ...(inv.nota_cliente ? { CustomerMemo: { value: inv.nota_cliente } } : {}),
   };
+  let reservedDocNumber = '';
   if (!useQboAutoDocNumber) {
-    const doc = String(inv.numero_factura ?? '').trim();
-    if (doc) invoicePayload.DocNumber = doc;
+    try {
+      reservedDocNumber = await reserveQboInvoiceNumber(sb);
+      invoicePayload.DocNumber = reservedDocNumber;
+    } catch (e) {
+      const detail = String(e);
+      await persistInvoiceError(sb, invoice_id, `doc_number_reserve: ${detail}`);
+      return json(500, { ok: false, error: 'doc_number_reserve', detail, persisted: true });
+    }
   }
 
   if (useTxnTaxDetail) {
@@ -533,36 +622,59 @@ Deno.serve(async (req) => {
   const url = `${apiBase}/v3/company/${realmId}/invoice?minorversion=73`;
   let qboResp: Record<string, unknown> = {};
   try {
-    const res = await fetchWithTimeout(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(invoicePayload),
-    });
-    const text = await res.text();
-    try {
-      qboResp = JSON.parse(text) as Record<string, unknown>;
-    } catch {
-      /* empty */
-    }
-    if (!res.ok) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const res = await fetchWithTimeout(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(invoicePayload),
+      });
+      const text = await res.text();
+      try {
+        qboResp = JSON.parse(text) as Record<string, unknown>;
+      } catch {
+        qboResp = {};
+      }
+
+      if (res.ok) break;
+
+      const shouldRetryDocNumber = !useQboAutoDocNumber && attempt === 0 && isDuplicateDocNumberFault(qboResp);
+      if (shouldRetryDocNumber) {
+        const latest = await queryLatestNumericQboDocNumber(apiBase, realmId, accessToken);
+        if (latest != null) await syncQboInvoiceNumberSequence(sb, String(latest));
+        reservedDocNumber = await reserveQboInvoiceNumber(sb);
+        invoicePayload.DocNumber = reservedDocNumber;
+        logStructured({
+          invoice_id,
+          operation: 'doc_number_retry',
+          ok: true,
+          latest_qbo_doc_number: latest,
+          retry_doc_number: reservedDocNumber,
+        });
+        continue;
+      }
+
       const fault = qboResp.Fault as Record<string, unknown> | undefined;
       const detail = JSON.stringify(fault ?? qboResp).slice(0, 600);
-      await persistInvoiceError(sb, invoice_id, `qbo_api_error: ${detail}`);
+      await persistInvoiceError(sb, invoice_id, `qbo_api_error: ${detail}`, {
+        ...(reservedDocNumber ? { numero_factura: reservedDocNumber } : {}),
+      });
       logStructured({
         invoice_id,
         operation: 'qbo_post',
         ok: false,
         status: res.status,
         qb_invoice_id: null,
+        doc_number: reservedDocNumber || null,
       });
       return json(502, {
         ok: false,
         error: 'qbo_api_error',
         detail,
+        attempted_doc_number: reservedDocNumber || undefined,
         persisted: true,
       });
     }
@@ -570,7 +682,9 @@ Deno.serve(async (req) => {
     const detail = String(e);
     const isTimeout = e instanceof Error && e.name === 'AbortError';
     const errCode = isTimeout ? 'qbo_timeout' : 'qbo_fetch_error';
-    await persistInvoiceError(sb, invoice_id, `${errCode}: ${detail}`);
+    await persistInvoiceError(sb, invoice_id, `${errCode}: ${detail}`, {
+      ...(reservedDocNumber ? { numero_factura: reservedDocNumber } : {}),
+    });
     logStructured({ invoice_id, operation: 'qbo_fetch', ok: false, timeout: isTimeout });
     return json(isTimeout ? 504 : 502, { ok: false, error: errCode, detail, persisted: true });
   }
@@ -578,10 +692,13 @@ Deno.serve(async (req) => {
   const qboInvoice = (qboResp as Record<string, unknown>).Invoice as Record<string, unknown> | undefined;
   const qbInvoiceId = String(qboInvoice?.Id ?? '');
   const docNumber = String(qboInvoice?.DocNumber ?? '');
+  const finalDocNumber = docNumber || reservedDocNumber || String(inv.numero_factura ?? '');
   const txnDate = String(qboInvoice?.TxnDate ?? inv.fecha_factura ?? '');
   const dueDate = String(qboInvoice?.DueDate ?? inv.fecha_vencimiento ?? '');
   const totalAmt = qboInvoice?.TotalAmt != null ? Number(qboInvoice.TotalAmt) : null;
   const balance = qboInvoice?.Balance != null ? Number(qboInvoice.Balance) : null;
+
+  if (finalDocNumber) await syncQboInvoiceNumberSequence(sb, finalDocNumber);
 
   const nowIso = new Date().toISOString();
   const { error: upErr } = await sb
@@ -589,7 +706,7 @@ Deno.serve(async (req) => {
     .update({
       qb_invoice_id: qbInvoiceId,
       estado: 'enviada',
-      numero_factura: docNumber || inv.numero_factura,
+      numero_factura: finalDocNumber || inv.numero_factura,
       error_detalle: null,
       qb_total: totalAmt,
       qb_balance: balance,
@@ -601,7 +718,7 @@ Deno.serve(async (req) => {
     const detail = `db_update_after_qbo: ${upErr.message}`;
     await persistInvoiceError(sb, invoice_id, detail, {
       qb_invoice_id: qbInvoiceId,
-      numero_factura: docNumber || inv.numero_factura,
+      numero_factura: finalDocNumber || inv.numero_factura,
     });
     logStructured({ invoice_id, operation: 'db_update', ok: false, qb_invoice_id: qbInvoiceId });
     return json(500, { ok: false, error: 'db_update_failed', detail, persisted: true });
@@ -612,13 +729,15 @@ Deno.serve(async (req) => {
     operation: 'create_invoice',
     ok: true,
     qb_invoice_id: qbInvoiceId,
-    doc_number: docNumber,
+    doc_number: finalDocNumber,
+    reserved_doc_number: reservedDocNumber || undefined,
   });
 
   return json(200, {
     ok: true,
     qb_invoice_id: qbInvoiceId,
-    doc_number: docNumber,
+    doc_number: finalDocNumber,
+    reserved_doc_number: reservedDocNumber || undefined,
     txn_date: txnDate,
     due_date: dueDate,
     total_amt: totalAmt,

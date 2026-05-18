@@ -37,9 +37,19 @@ export function rowToClient(row: Record<string, unknown>): Client {
     identificacion: String(row.identificacion ?? ''),
     direccion: String(row.direccion ?? ''),
     quickbooks_customer_id: row.quickbooks_customer_id ? String(row.quickbooks_customer_id) : undefined,
+    tipo_cliente: row.tipo_cliente ? String(row.tipo_cliente) : undefined,
     activo: Boolean(row.activo),
     observaciones: row.observaciones ? String(row.observaciones) : undefined,
     created_at: isoDate(String(row.created_at ?? '')),
+    agilecheck_cliente_id: row.agilecheck_cliente_id != null && row.agilecheck_cliente_id !== ''
+      ? Number(row.agilecheck_cliente_id)
+      : undefined,
+    ag_riesgo: row.ag_riesgo != null ? Number(row.ag_riesgo) : null,
+    ag_riesgo_nivel: row.ag_riesgo_nivel != null ? Number(row.ag_riesgo_nivel) : null,
+    ag_porcCompletadoDD: row.ag_porcCompletadoDD != null ? Number(row.ag_porcCompletadoDD) : null,
+    ag_verificado_en_listas: row.ag_verificado_en_listas != null ? Boolean(row.ag_verificado_en_listas) : null,
+    ag_last_sync_at: row.ag_last_sync_at ? String(row.ag_last_sync_at) : null,
+    agilecheck_data: row.agilecheck_data != null ? (row.agilecheck_data as Record<string, unknown>) : null,
   };
 }
 
@@ -58,6 +68,10 @@ export function clientToRow(c: Client): Record<string, unknown> {
     created_at: c.created_at.includes('T') ? c.created_at : `${c.created_at}T12:00:00Z`,
   };
   if (c.numero != null) row.numero = c.numero;
+  if (c.tipo_cliente != null) row.tipo_cliente = c.tipo_cliente;
+  row.agilecheck_cliente_id = (c.agilecheck_cliente_id != null && Number.isFinite(c.agilecheck_cliente_id))
+    ? c.agilecheck_cliente_id
+    : null;
   return row;
 }
 
@@ -94,11 +108,18 @@ export function rowToSociety(row: Record<string, unknown>): Society {
     qbo_sync_last_success_at: row.qbo_sync_last_success_at ? String(row.qbo_sync_last_success_at) : undefined,
     activo: Boolean(row.activo),
     created_at: isoDate(String(row.created_at ?? '')),
+    agilecheck_cliente_id: row.agilecheck_cliente_id != null ? Number(row.agilecheck_cliente_id) : null,
+    ag_riesgo: row.ag_riesgo != null ? Number(row.ag_riesgo) : null,
+    ag_riesgo_nivel: row.ag_riesgo_nivel != null ? Number(row.ag_riesgo_nivel) : null,
+    ag_porcCompletadoDD: row.ag_porcCompletadoDD != null ? Number(row.ag_porcCompletadoDD) : null,
+    ag_verificado_en_listas: row.ag_verificado_en_listas != null ? Boolean(row.ag_verificado_en_listas) : null,
+    ag_last_sync_at: row.ag_last_sync_at ? String(row.ag_last_sync_at) : null,
+    agilecheck_data: row.agilecheck_data != null ? (row.agilecheck_data as Record<string, unknown>) : null,
   };
 }
 
 export function societyToRow(s: Society): Record<string, unknown> {
-  return {
+  const row: Record<string, unknown> = {
     id: s.id,
     client_id: s.client_id,
     nombre: s.nombre,
@@ -120,6 +141,10 @@ export function societyToRow(s: Society): Record<string, unknown> {
     activo: s.activo,
     created_at: s.created_at.includes('T') ? s.created_at : `${s.created_at}T12:00:00Z`,
   };
+  row.agilecheck_cliente_id = (s.agilecheck_cliente_id != null && Number.isFinite(s.agilecheck_cliente_id))
+    ? s.agilecheck_cliente_id
+    : null;
+  return row;
 }
 
 export function rowToSocietyService(row: Record<string, unknown>): SocietyService {

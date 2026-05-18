@@ -7,9 +7,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { SearchableCombo } from '@/components/ui/searchable-combo';
 import { useApp } from '@/context/AppContext';
 import { Case, CaseComment, Society, TIPOS_SOCIEDAD, CASE_ESTADOS, CASE_PRIORIDADES, formatNTarea } from '@/data/mockData';
-import { DollarSign, FileText, Send, Building2, X } from 'lucide-react';
+import { DollarSign, FileText, Send, Building2, X, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useNavigate } from 'react-router-dom';
 
 interface EditCaseModalProps {
   caseData: Case | null;
@@ -55,6 +56,7 @@ const FUNCTION_SECRET   = import.meta.env.VITE_FUNCTION_SECRET     as string ?? 
 
 // ─────────────────────────────────────────────────────────────────────────────
 export function EditCaseModal({ caseData, open, onClose, onOpenExpenses, onOpenInvoice }: EditCaseModalProps) {
+  const navigate = useNavigate();
   const {
     clients, societies, services, serviceItems, etapas, usuarios,
     updateCase, addComment, saveSociety, getClientName, getSocietyName,
@@ -206,6 +208,28 @@ export function EditCaseModal({ caseData, open, onClose, onOpenExpenses, onOpenI
       }
     }
     toast.success('Caso actualizado');
+
+    // Detectar cambio a etapa "Envio a Cumplimiento" (n_etapa = 8)
+    const newEtapa = etapas.find(e => e.id === form.etapa_id);
+    const prevEtapa = etapas.find(e => e.id === caseData?.etapa_id);
+    const ENVIO_CUMPLIMIENTO_N = 8;
+    const isEnvio = newEtapa?.n_etapa === ENVIO_CUMPLIMIENTO_N;
+    const wasEnvio = prevEtapa?.n_etapa === ENVIO_CUMPLIMIENTO_N;
+
+    if (isEnvio && !wasEnvio) {
+      toast.info(
+        `Caso enviado a Cumplimiento. Verifique el estado PEP/AML del cliente y sociedad vinculados.`,
+        {
+          duration: 8000,
+          icon: <ShieldAlert className="h-4 w-4 text-amber-500" />,
+          action: {
+            label: 'Ir a Cumplimiento',
+            onClick: () => navigate('/cumplimiento'),
+          },
+        },
+      );
+    }
+
     onClose();
   };
 

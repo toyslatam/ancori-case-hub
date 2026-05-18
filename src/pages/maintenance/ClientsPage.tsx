@@ -24,9 +24,10 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Plus, Trash2, Search, Filter, ChevronDown, Info } from 'lucide-react';
+import { Plus, Trash2, Search, Filter, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { AgileCheckProfilePanel } from '@/components/compliance/AgileCheckProfilePanel';
 
 const FILTER_ALL = '__all__';
 const DELETE_CONFIRM_TEXT = 'ELIMINAR';
@@ -77,7 +78,7 @@ const defaultPanelFilters = (): PanelFilters => ({
 });
 
 function withSlowOperationNotice<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
-  let tid: ReturnType<typeof window.setTimeout> | undefined;
+  let tid: number | undefined;
   tid = window.setTimeout(() => {
     toast.warning(message, { duration: 8_000 });
     console.warn(`[clients] Operación lenta después de ${ms}ms: ${message}`);
@@ -88,7 +89,7 @@ function withSlowOperationNotice<T>(promise: Promise<T>, ms: number, message: st
 }
 
 export default function ClientsPage() {
-  const { clients, societies, saveClient, deleteClient, refreshClients } = useApp();
+  const { clients, societies, saveClient, deleteClient } = useApp();
   const [search, setSearch] = useState('');
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelFilters, setPanelFilters] = useState<PanelFilters>(defaultPanelFilters);
@@ -496,7 +497,7 @@ export default function ClientsPage() {
       </Sheet>
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editItem ? 'Editar Cliente' : 'Nueva Cliente'}</DialogTitle>
           </DialogHeader>
@@ -582,6 +583,26 @@ export default function ClientsPage() {
                 </div>
               </CollapsibleContent>
             </Collapsible>
+            <div>
+              <Label>ID AgileCheck</Label>
+              <Input
+                type="number"
+                placeholder="Número asignado en AgileCheck"
+                value={form.agilecheck_cliente_id != null ? String(form.agilecheck_cliente_id) : ''}
+                onChange={e => setForm(f => ({
+                  ...f,
+                  agilecheck_cliente_id: e.target.value === '' ? null : Number(e.target.value),
+                }))}
+              />
+              <p className="text-xs text-muted-foreground mt-1">ID numérico del cliente en AgileCheck. Se guarda al hacer clic en Guardar.</p>
+            </div>
+            {editItem && (
+              <AgileCheckProfilePanel
+                entityType="client"
+                entity={editItem}
+                onProfileUpdated={() => { /* el panel actualiza DB directamente; refresh si necesario */ }}
+              />
+            )}
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>

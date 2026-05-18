@@ -688,6 +688,22 @@ grant all on table public.sync_notifications to service_role;
 alter table public.clients add column if not exists tipo_cliente text
   check (tipo_cliente in ('Persona Natural', 'Persona Juridica', 'PEP'));
 
+alter table public.clients add column if not exists agilecheck_cliente_id integer;
+alter table public.clients add column if not exists ag_riesgo numeric(10,4);
+alter table public.clients add column if not exists ag_riesgo_nivel integer;
+alter table public.clients add column if not exists ag_porcCompletadoDD numeric(5,2);
+alter table public.clients add column if not exists ag_verificado_en_listas boolean;
+alter table public.clients add column if not exists ag_last_sync_at timestamptz;
+alter table public.clients add column if not exists agilecheck_data jsonb;
+
+alter table public.societies add column if not exists agilecheck_cliente_id integer;
+alter table public.societies add column if not exists ag_riesgo numeric(10,4);
+alter table public.societies add column if not exists ag_riesgo_nivel integer;
+alter table public.societies add column if not exists ag_porcCompletadoDD numeric(5,2);
+alter table public.societies add column if not exists ag_verificado_en_listas boolean;
+alter table public.societies add column if not exists ag_last_sync_at timestamptz;
+alter table public.societies add column if not exists agilecheck_data jsonb;
+
 create table if not exists public.compliance_checks (
   id uuid primary key default gen_random_uuid(),
   entity_type text not null check (entity_type in ('client', 'director', 'society')),
@@ -735,6 +751,118 @@ alter table public.case_invoices add column if not exists pdf_status text
 comment on column public.case_invoices.error_detalle is 'Último error al enviar o sincronizar con QuickBooks.';
 comment on column public.case_invoices.qb_total is 'TotalAmt en QBO (última sync webhook o creación).';
 comment on column public.case_invoices.qb_balance is 'Balance en QBO (saldo pendiente).';
+
+-- Numeración correlativa local para QuickBooks cuando "Custom transaction numbers" está activo.
+create table if not exists public.invoice_number_sequences (
+  provider text primary key,
+  last_number bigint not null default 0,
+  prefix text not null default '',
+  padding integer not null default 0,
+  updated_at timestamptz not null default now()
+);
+
+insert into public.invoice_number_sequences (provider, last_number, prefix, padding)
+values ('quickbooks', 30424, '', 0)
+on conflict (provider) do nothing;
+
+create or replace function public.format_qbo_invoice_number(
+  p_number bigint,
+  p_prefix text default '',
+  p_padding integer default 0
+) returns text
+language sql
+immutable
+as $$
+  select coalesce(p_prefix, '') ||
+    case
+      when coalesce(p_padding, 0) > 0 then lpad(p_number::text, p_padding, '0')
+      else p_number::text
+    end
+$$;
+
+create or replace function public.peek_qbo_invoice_number(
+  p_provider text default 'quickbooks'
+) returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_seq public.invoice_number_sequences%rowtype;
+begin
+  insert into public.invoice_number_sequences (provider, last_number, prefix, padding)
+  values (p_provider, 30424, '', 0)
+  on conflict (provider) do nothing;
+
+  select * into v_seq
+  from public.invoice_number_sequences
+  where provider = p_provider;
+
+  return public.format_qbo_invoice_number(v_seq.last_number + 1, v_seq.prefix, v_seq.padding);
+end;
+$$;
+
+create or replace function public.reserve_qbo_invoice_number(
+  p_provider text default 'quickbooks'
+) returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_seq public.invoice_number_sequences%rowtype;
+  v_next bigint;
+begin
+  insert into public.invoice_number_sequences (provider, last_number, prefix, padding)
+  values (p_provider, 30424, '', 0)
+  on conflict (provider) do nothing;
+
+  select * into v_seq
+  from public.invoice_number_sequences
+  where provider = p_provider
+  for update;
+
+  v_next := v_seq.last_number + 1;
+
+  update public.invoice_number_sequences
+  set last_number = v_next,
+      updated_at = now()
+  where provider = p_provider;
+
+  return public.format_qbo_invoice_number(v_next, v_seq.prefix, v_seq.padding);
+end;
+$$;
+
+create or replace function public.sync_qbo_invoice_number_sequence(
+  p_doc_number text,
+  p_provider text default 'quickbooks'
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_number bigint;
+begin
+  if p_doc_number is null or btrim(p_doc_number) !~ '^\d+$' then
+    return;
+  end if;
+
+  v_number := btrim(p_doc_number)::bigint;
+
+  insert into public.invoice_number_sequences (provider, last_number, prefix, padding)
+  values (p_provider, greatest(v_number, 30424), '', 0)
+  on conflict (provider) do update
+    set last_number = greatest(public.invoice_number_sequences.last_number, excluded.last_number),
+        updated_at = now();
+end;
+$$;
+
+grant select, insert, update, delete on table public.invoice_number_sequences to anon, authenticated;
+grant all on table public.invoice_number_sequences to service_role;
+grant execute on function public.peek_qbo_invoice_number(text) to anon, authenticated, service_role;
+grant execute on function public.reserve_qbo_invoice_number(text) to anon, authenticated, service_role;
+grant execute on function public.sync_qbo_invoice_number_sequence(text, text) to anon, authenticated, service_role;
 
 -- Cola simple: factura en QBO sin fila local enlazada por qb_invoice_id.
 create table if not exists public.qbo_invoice_unmatched (

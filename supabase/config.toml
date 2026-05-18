@@ -48,6 +48,18 @@ verify_jwt = false
 [functions.agilecheck-verify]
 verify_jwt = false
 
+[functions.agilecheck-sync-client]
+verify_jwt = false
+
+[functions.agilecheck-fetch-profile]
+verify_jwt = false
+
+[functions.agilecheck-sync-society]
+verify_jwt = false
+
+[functions.agilecheck-push-profile]
+verify_jwt = false
+
 # Crear factura en QBO desde la app (secreto compartido).
 [functions.qbo-create-invoice]
 verify_jwt = false

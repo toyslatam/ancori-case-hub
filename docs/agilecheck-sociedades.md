@@ -1,5 +1,70 @@
 # Integración AgileCheck → Sociedades (LAFT/PEP) en Ancori Case Hub
 
+> **Guía paso a paso (configuración, flujo y pendientes):** ver [`agilecheck-paso-a-paso.md`](./agilecheck-paso-a-paso.md).
+
+---
+
+## Fase 1 — checklist (token OAuth2)
+
+Marcá cada ítem cuando esté listo:
+
+| # | Qué | Dónde |
+|---|-----|--------|
+| 1 | `AGILECHECK_TOKEN_URL`, `AGILECHECK_USERNAME`, `AGILECHECK_PASSWORD` (y `AGILECHECK_GRANT_TYPE=password` si aplica) | Secrets Supabase |
+| 2 | `FUNCTION_SECRET` en Supabase = `VITE_AGILECHECK_SECRET` en el frontend | Supabase + `.env` del build |
+| 3 | `AGILECHECK_API_BASE` = base del Hub (ej. pruebas: `https://pruebas.agilecheck.io/HubQueryEngine_agilecheck`) | Secret Supabase |
+| 4 | Edge Function `agilecheck-verify` desplegada | `npx supabase functions deploy agilecheck-verify` |
+
+Si los cuatro están OK, **Fase 1 está cerrada**: el servidor puede obtener `access_token` y llamar al API bajo la misma base URL.
+
+---
+
+## Fase 2 — tus tres líneas de API (Consulta, Cliente, Detalle de riesgo)
+
+En el Swagger de HubQueryEngine encajan así:
+
+| Bloque | Rol típico para una **sociedad** (persona jurídica) |
+|--------|-----------------------------------------------------|
+| **Consulta** | `POST /api/Consulta/Buscar` — listas (natural: nombres + apellidos; jurídica: razón social + comercial; opcional `NumeroId`). **Implementado** en `agilecheck-verify`. **`EsJuridico`:** por defecto `society` → `true`; `client` / `director` → `false`. Cliente jurídico en Ancori: body `es_juridico: true` o `verifyEntity(..., { es_juridico: true })`. |
+| **Cliente** | Alta o localización del **cliente en AgileCheck** (`PostCliente`, `GetClienteByDocIdentidad`, etc.). Devuelve un **`idCliente` numérico** interno de AgileCheck. |
+| **DetalleCalculoRiesgo** | `GET /api/DetalleCalculoRiesgo/GetDetalleCalculoRiesgoByCliente?idCliente=...` — **porcentaje / detalle del cálculo de riesgo** que ya tiene **ese** cliente en AgileCheck. **No** sustituye a `Consulta/Buscar`; se usa cuando ya existe `idCliente`. |
+
+**Orden lógico recomendado para “todo lo que la persona/sociedad ya tiene”:**
+
+1. **Consulta** (`Buscar`) → coincidencias en listas + contexto de la búsqueda.  
+2. Si el negocio exige **riesgo formal en AgileCheck**: **Cliente** (crear o buscar por RUC) → obtener `idCliente`.  
+3. **DetalleCalculoRiesgo** → detalle o % de riesgo asociado a ese `idCliente`.
+
+En la primera versión se puede implementar solo **(1)** y dejar **(2)+(3)** cuando tengamos RUC estable y un ejemplo real de respuesta de `PostCliente` / `GetDetalleCalculoRiesgoByCliente`.
+
+---
+
+## Fase 2 — qué haré **yo** (código / repo) y qué harás **tú** (config + negocio)
+
+### Yo (desarrollo en el proyecto)
+
+- Implementar en `agilecheck-verify` la **Fase 2 real**: llamadas HTTP con `Authorization: Bearer <token>` al API de Hub (sin JSON-RPC inventado).
+- **`POST /api/Consulta/Buscar`** implementado: body `ConsultaIndividualDTOIN`, listas desde `AGILECHECK_LISTA_IDS` o `GET /api/List/GetListas`, parseo de respuesta → `compliance_checks`.
+- Encadenar cuando toque: **`Cliente`** + **`DetalleCalculoRiesgo`** (pendiente de acuerdo y ejemplos JSON).
+- Construir el body desde `entity_name` y campos opcionales (`es_juridico`, `nombres`, `apellidos`, `numero_id`); mapear respuesta a `status`, `risk_level`, `result_summary`, `result_data`, `agilecheck_id` (`consultaId` cuando exista).
+- Afinar parseo si el JSON real difiere (enviar ejemplo 200 desde Swagger).
+- Si hace falta, ampliar el **body** que acepta la función (`tax_id`, `check_mode`, etc.) y documentarlo aquí y en `agilecheck-paso-a-paso.md`.
+- Opcional: botón/flujo en **Sociedades** que llame a `verifyEntity('society', ...)` y muestre `getLatestCheck`.
+
+### Tú (configuración, datos y validación)
+
+- Confirmar **entorno**: mismos host en secrets (`pruebas` vs `app`) para token y `AGILECHECK_API_BASE`.
+- Configurar secret **`AGILECHECK_LISTA_IDS`** (recomendado) con los IDs que devuelve **`GET /api/List/GetListas`** en Swagger para vuestro tenant, o pedirlos a AgileCheck.
+- Probar en Swagger **una sociedad real** (o de prueba): `Buscar` con `EsJuridico: true`, nombres legales/comerciales y RUC en `NumeroId` si aplica; copiar un **ejemplo de JSON de respuesta** (200) para que el mapeo sea exacto.
+- Si usamos **Cliente + DetalleCalculoRiesgo**: confirmar si el cliente jurídico se crea solo con **PostCliente** o si primero va **Buscar**; y pegar un ejemplo de respuesta con **`idCliente`**.
+- Tras el deploy del código: `npx supabase functions deploy agilecheck-verify` y, si hace falta, `npx supabase secrets set AGILECHECK_QUERY_PATH=...` (si dejamos un solo path por defecto; si son varios pasos, puede que **no** uses un solo `QUERY_PATH` y lo dejemos todo en código con paths fijos del Swagger).
+
+### Secret `AGILECHECK_QUERY_PATH` en Fase 2 “multi-endpoint”
+
+Si la integración llama a **varios** paths en secuencia, `AGILECHECK_QUERY_PATH` puede quedar **vacío u omitido** y los paths quedan **fijos en código** (`api/Consulta/Buscar`, etc.). Si preferís un solo endpoint configurable, se define un secret por el principal (normalmente `api/Consulta/Buscar`).
+
+---
+
 ## Lo que entendí (tu requerimiento)
 Quieres que, para cada **sociedad** en la app:
 
@@ -16,7 +81,7 @@ Esto **ya está parcialmente preparado** en el proyecto con una tabla de auditor
   - Campos clave: `entity_type`, `entity_id`, `entity_name`, `check_type`, `status`, `risk_level`, `agilecheck_id`, `result_summary`, `result_data`, `checked_at`, `expires_at`.
 - **Edge Function**: `supabase/functions/agilecheck-verify/index.ts`
   - Recibe `entity_type='society'`, `entity_id`, `entity_name`, `check_type`.
-  - Llama a `callAgileCheckAPI(name, checkType)` (actualmente con endpoint **placeholder** `/check`) y luego inserta en `compliance_checks`.
+  - Obtiene token OAuth2 (`AGILECHECK_TOKEN_URL`) y llama a `callAgileCheckAPI` usando `AGILECHECK_API_BASE` + `AGILECHECK_QUERY_PATH` (el cuerpo de la petición aún debe alinearse con el Swagger real). Luego inserta en `compliance_checks`.
   - Protegida opcionalmente por header `x-ancori-secret` (`FUNCTION_SECRET`).
 - **Frontend API helper**: `src/lib/agileCheckApi.ts`
   - `verifyEntity('society', societyId, societyName, checkType)`
@@ -123,11 +188,10 @@ pero **no es obligatorio** (hoy ya funciona con `compliance_checks`).
 ## Seguridad y configuración
 
 ### Secrets en Supabase (Edge Function)
-En `supabase/functions/agilecheck-verify/index.ts` ya están documentados:
+En `supabase/functions/agilecheck-verify/index.ts` y en [`agilecheck-paso-a-paso.md`](./agilecheck-paso-a-paso.md) están documentados (flujo actual con OAuth2):
 
-- `AGILECHECK_API_URL`
-- `AGILECHECK_API_KEY`
-- `AGILECHECK_DB` (si aplica)
+- `AGILECHECK_TOKEN_URL`, `AGILECHECK_USERNAME`, `AGILECHECK_PASSWORD`, `AGILECHECK_GRANT_TYPE`
+- `AGILECHECK_API_BASE`, `AGILECHECK_QUERY_PATH`, `AGILECHECK_DB` (opcional)
 - `FUNCTION_SECRET` (para proteger el endpoint)
 
 ### Secrets en Frontend
@@ -141,21 +205,18 @@ Recomendación:
 - Usar **solo** `VITE_AGILECHECK_SECRET` para evitar mezclar con QBO.
 - Mantener el secreto **no vacío** en producción.
 
-## Cómo se conectaría con el Swagger de prueba que compartiste
-El link que enviaste es un Swagger UI:
+## Cómo se conecta con el Swagger de pruebas
 
-- `https://pruebas.agilecheck.io/HubQueryEngine_agilecheck/swagger/ui/index#/`
+- **Swagger UI:** `https://pruebas.agilecheck.io/HubQueryEngine_agilecheck/swagger/ui/index#/`
+- **OpenAPI JSON** (lista de paths): `https://pruebas.agilecheck.io/HubQueryEngine_agilecheck/swagger/docs/v1`
 
-En este entorno, el Swagger no respondió desde mi fetch (HTTP 500), así que no pude enumerar endpoints. Pero el “encaje” es directo:
+Endpoints ya identificados para Fase 2: ver sección **“Fase 2 — tus tres líneas de API”** arriba y [`agilecheck-paso-a-paso.md` §3.4](./agilecheck-paso-a-paso.md).
 
-1. Identificar en Swagger:
-   - endpoint de **búsqueda/consulta** por “sociedad” (por nombre o tax id)
-   - estructura de respuesta (estado/flags)
-2. Ajustar `callAgileCheckAPI()` en la Edge Function para:
-   - URL/paths reales
-   - headers (API key, token, etc.)
-   - payload exacto (query params/body)
-   - parseo de respuesta para poblar `status`, `risk_level`, `summary`, `raw_data`
+Implementación en código:
+
+1. Ajustar `callAgileCheckAPI()` (y llamadas encadenadas si aplica) en `agilecheck-verify`.
+2. Headers: `Authorization: Bearer <token>`, `Content-Type: application/json` donde corresponda.
+3. Payload y parseo según respuestas reales → `status`, `risk_level`, `summary`, `raw_data` en `compliance_checks`.
 
 ## Pasos concretos de implementación (checklist)
 

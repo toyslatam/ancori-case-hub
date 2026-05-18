@@ -646,6 +646,46 @@ Edge Function:
 - Si los TaxCodes de QBO no se pueden resolver, el envío falla con `qbo_tax_config`.
 - Si QuickBooks asigna correlativo automáticamente, el número real de factura solo se conoce después del envío.
 
+## Endurecimiento sugerido de `invoice_number_sequences` (no aplicado, solo documentado)
+
+Estado actual en `supabase/schema.sql`:
+
+```sql
+grant select, insert, update, delete on table public.invoice_number_sequences to anon, authenticated;
+grant all on table public.invoice_number_sequences to service_role;
+```
+
+Implicación: cualquier cliente con `anon key` o `authenticated key` puede modificar `last_number` directamente desde el frontend (vía `supabase-js`), sin pasar por la Edge Function.
+
+Riesgos potenciales (defensa en profundidad, no son bugs activos):
+
+- Saltos arbitrarios en el correlativo si alguien actualiza `last_number` desde el cliente.
+- Retrocesos del correlativo que generan reintentos por duplicado en QBO.
+- Manipulación intencional si la `anon key` se filtra (suele estar en el bundle JS).
+- Auditoría confusa: cualquier cambio aparece como `authenticated`/`anon`, no como la función oficial.
+
+Migración sugerida (cuando se decida aplicarla):
+
+```sql
+revoke all on table public.invoice_number_sequences from anon, authenticated;
+grant select, insert, update on table public.invoice_number_sequences to service_role;
+
+revoke execute on function public.reserve_qbo_invoice_number(text) from anon, authenticated;
+revoke execute on function public.sync_qbo_invoice_number_sequence(text, text) from anon, authenticated;
+
+grant execute on function public.peek_qbo_invoice_number(text) to anon, authenticated, service_role;
+grant execute on function public.reserve_qbo_invoice_number(text) to service_role;
+grant execute on function public.sync_qbo_invoice_number_sequence(text, text) to service_role;
+```
+
+Resultado:
+
+- `peek_qbo_invoice_number` queda accesible al frontend para mostrar el número previsto en `InvoiceModal`.
+- `reserve_qbo_invoice_number` y `sync_qbo_invoice_number_sequence` solo se ejecutan desde la Edge Function `qbo-create-invoice` (que usa `service_role`).
+- La tabla `invoice_number_sequences` deja de ser editable desde el cliente; única vía de cambio: las funciones `SECURITY DEFINER` o la Edge Function.
+
+Decisión actual: **no aplicar todavía**, dejar registrado como mejora futura de seguridad.
+
 ## Flujo resumido
 
 ```text

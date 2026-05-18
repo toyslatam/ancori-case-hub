@@ -33,6 +33,7 @@ import { SocietyServicesMultiSelect } from '@/components/maintenance/SocietyServ
 import { Plus, Trash2, Search, Filter, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { AgileCheckProfilePanel } from '@/components/compliance/AgileCheckProfilePanel';
 
 const SUPABASE_URL    = import.meta.env.VITE_SUPABASE_URL as string;
 const QBO_CRON_SECRET = import.meta.env.VITE_QBO_CRON_SECRET as string;
@@ -682,7 +683,7 @@ export default function SocietiesPage() {
       </Sheet>
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editItem ? 'Editar Sociedad' : 'Nueva Sociedad'}</DialogTitle>
           </DialogHeader>
@@ -743,13 +744,27 @@ export default function SocietiesPage() {
                 Opcional. Solo se pueden asignar servicios activos.
               </p>
             </div>
-            <div>
-              <Label>ID_QB</Label>
-              <Input
-                type="number"
-                value={form.id_qb != null && !Number.isNaN(Number(form.id_qb)) ? String(form.id_qb) : ''}
-                onChange={e => setForm(f => ({ ...f, id_qb: e.target.value === '' ? undefined : Number(e.target.value) }))}
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>ID_QB</Label>
+                <Input
+                  type="number"
+                  value={form.id_qb != null && !Number.isNaN(Number(form.id_qb)) ? String(form.id_qb) : ''}
+                  onChange={e => setForm(f => ({ ...f, id_qb: e.target.value === '' ? undefined : Number(e.target.value) }))}
+                />
+              </div>
+              <div>
+                <Label>ID AgileCheck</Label>
+                <Input
+                  type="number"
+                  placeholder="Número en AgileCheck"
+                  value={form.agilecheck_cliente_id != null ? String(form.agilecheck_cliente_id) : ''}
+                  onChange={e => setForm(f => ({
+                    ...f,
+                    agilecheck_cliente_id: e.target.value === '' ? undefined : Number(e.target.value),
+                  }))}
+                />
+              </div>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div>
@@ -817,6 +832,13 @@ export default function SocietiesPage() {
               <Switch checked={form.activo ?? true} onCheckedChange={v => setForm(f => ({ ...f, activo: v }))} />
               <Label>Activo</Label>
             </div>
+            {editItem && (
+              <AgileCheckProfilePanel
+                entityType="society"
+                entity={editItem}
+                onProfileUpdated={() => { /* el panel actualiza DB directamente */ }}
+              />
+            )}
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>

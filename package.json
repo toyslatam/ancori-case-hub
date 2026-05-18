@@ -15,8 +15,10 @@
     "fix:sociedades-csv": "node scripts/fix-sociedades-csv.mjs",
     "apply:excel-clientes": "node scripts/apply-excel-clientes-sociedades.mjs",
     "deploy:qbo-functions": "supabase functions deploy qbo-oauth-start && supabase functions deploy qbo-oauth-callback && supabase functions deploy qbo-oauth-refresh && supabase functions deploy qbo-oauth-status && supabase functions deploy qbo-sync-societies && supabase functions deploy qbo-webhook && supabase functions deploy qbo-society-push && supabase functions deploy qbo-create-invoice && supabase functions deploy qbo-invoice-pdf-sync",
+    "deploy:agilecheck-functions": "npx supabase functions deploy agilecheck-verify && npx supabase functions deploy agilecheck-sync-client && npx supabase functions deploy agilecheck-fetch-profile && npx supabase functions deploy agilecheck-sync-society && npx supabase functions deploy agilecheck-push-profile",
     "supabase:login": "supabase login",
-    "supabase:link": "supabase link"
+    "supabase:link": "supabase link",
+    "test:agilecheck-buscar": "node scripts/test-agilecheck-buscar.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

@@ -15,6 +15,20 @@ export interface Client {
   activo: boolean;
   observaciones?: string;
   created_at: string;
+  /** Id numérico del cliente en AgileCheck tras sync (api/Cliente). */
+  agilecheck_cliente_id?: number | null;
+  /** AG. — Puntuación de riesgo calculada por AgileCheck (0–100). */
+  ag_riesgo?: number | null;
+  /** AG. — Nivel de riesgo entero (1=bajo, 2=medio, 3=alto, 4=crítico). */
+  ag_riesgo_nivel?: number | null;
+  /** AG. — % de completado de debida diligencia en AgileCheck (0–100). */
+  ag_porcCompletadoDD?: number | null;
+  /** AG. — Verificado en listas restrictivas. */
+  ag_verificado_en_listas?: boolean | null;
+  /** AG. — Última vez que se sincronizó el perfil desde AgileCheck. */
+  ag_last_sync_at?: string | null;
+  /** AG. — Respuesta completa de GetCliente + DetalleCalculoRiesgo (raw). */
+  agilecheck_data?: Record<string, unknown> | null;
 }
 
 export type TipoSociedad = 'SOCIEDADES' | 'FUNDACIONES' | 'B.V.I';
@@ -60,6 +74,20 @@ export interface Society {
   qbo_sync_last_success_at?: string;
   activo: boolean;
   created_at: string;
+  /** AG. — Id numérico del registro en AgileCheck (api/Cliente). */
+  agilecheck_cliente_id?: number | null;
+  /** AG. — Puntuación de riesgo calculada por AgileCheck (0–100). */
+  ag_riesgo?: number | null;
+  /** AG. — Nivel de riesgo entero (1=bajo, 2=medio, 3=alto, 4=crítico). */
+  ag_riesgo_nivel?: number | null;
+  /** AG. — % de completado de debida diligencia en AgileCheck (0–100). */
+  ag_porcCompletadoDD?: number | null;
+  /** AG. — Verificado en listas restrictivas. */
+  ag_verificado_en_listas?: boolean | null;
+  /** AG. — Última vez que se sincronizó el perfil desde AgileCheck. */
+  ag_last_sync_at?: string | null;
+  /** AG. — Respuesta completa de GetCliente + DetalleCalculoRiesgo (raw). */
+  agilecheck_data?: Record<string, unknown> | null;
 }
 
 export interface SocietyService {
