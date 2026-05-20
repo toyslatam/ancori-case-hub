@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Check, ChevronsUpDown, Search, X } from 'lucide-react';
+import { Check, ChevronsUpDown, Pencil, Search, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -12,6 +12,7 @@ interface SocietyServicesMultiSelectProps {
   value: string[];
   onChange: (value: string[]) => void;
   onCreateService?: (name: string) => Promise<SocietyService | null>;
+  onEditService?: (id: string, newName: string) => Promise<boolean>;
   placeholder?: string;
   disabled?: boolean;
 }
@@ -21,12 +22,16 @@ export function SocietyServicesMultiSelect({
   value,
   onChange,
   onCreateService,
+  onEditService,
   placeholder = 'Seleccionar servicios',
   disabled = false,
 }: SocietyServicesMultiSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [creating, setCreating] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const activeServices = useMemo(
@@ -61,6 +66,27 @@ export function SocietyServicesMultiSelect({
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
     if (!next) setQuery('');
+  };
+
+  const startEdit = (service: SocietyService, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingId(service.id);
+    setEditValue(service.nombre);
+  };
+
+  const cancelEdit = () => { setEditingId(null); setEditValue(''); };
+
+  const handleSaveEdit = async (service: SocietyService) => {
+    const newName = editValue.trim();
+    if (!newName || !onEditService || saving) return;
+    if (newName === service.nombre) { cancelEdit(); return; }
+    setSaving(true);
+    try {
+      const ok = await onEditService(service.id, newName);
+      if (ok) cancelEdit();
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleCreate = async () => {
@@ -128,20 +154,76 @@ export function SocietyServicesMultiSelect({
             ) : (
               filtered.map(service => {
                 const checked = selectedSet.has(service.id);
+                const isEditing = editingId === service.id;
+
+                if (isEditing) {
+                  return (
+                    <div key={service.id} className="flex items-center gap-1.5 rounded-sm px-2 py-1.5 bg-accent/30">
+                      <Checkbox
+                        checked={checked}
+                        tabIndex={-1}
+                        aria-hidden="true"
+                        className="shrink-0"
+                        onCheckedChange={() => toggle(service.id)}
+                      />
+                      <input
+                        autoFocus
+                        value={editValue}
+                        onChange={e => setEditValue(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') { e.preventDefault(); void handleSaveEdit(service); }
+                          if (e.key === 'Escape') cancelEdit();
+                        }}
+                        onClick={e => e.stopPropagation()}
+                        className="min-w-0 flex-1 rounded border border-input bg-background px-2 py-0.5 text-sm outline-none focus:ring-1 focus:ring-ring"
+                      />
+                      <button
+                        type="button"
+                        onClick={e => { e.stopPropagation(); void handleSaveEdit(service); }}
+                        disabled={saving || !editValue.trim()}
+                        className="shrink-0 rounded p-0.5 text-green-600 hover:text-green-700 disabled:opacity-40"
+                        title="Guardar"
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={e => { e.stopPropagation(); cancelEdit(); }}
+                        className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+                        title="Cancelar"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  );
+                }
+
                 return (
-                  <button
+                  <div
                     key={service.id}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => toggle(service.id)}
+                    onKeyDown={e => e.key === 'Enter' && toggle(service.id)}
                     className={cn(
-                      'flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground',
+                      'group flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground',
                       checked && 'bg-accent/50',
                     )}
                   >
                     <Checkbox checked={checked} tabIndex={-1} aria-hidden="true" />
                     <span className={cn('min-w-0 flex-1 truncate', checked && 'font-medium')}>{service.nombre}</span>
+                    {onEditService && (
+                      <button
+                        type="button"
+                        onClick={e => startEdit(service, e)}
+                        className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-muted/50 hover:text-foreground"
+                        title="Editar nombre"
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                    )}
                     <Check className={cn('h-4 w-4 shrink-0', checked ? 'opacity-100' : 'opacity-0')} />
-                  </button>
+                  </div>
                 );
               })
             )}

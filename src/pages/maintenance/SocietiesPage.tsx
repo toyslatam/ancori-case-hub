@@ -396,6 +396,16 @@ export default function SocietiesPage() {
     return service;
   };
 
+  const handleEditSocietyService = async (id: string, newName: string): Promise<boolean> => {
+    const clean = newName.trim();
+    if (!clean) return false;
+    const existing = societyServices.find(s => s.id === id);
+    if (!existing) return false;
+    const ok = await saveSocietyService({ ...existing, nombre: clean }, true);
+    if (ok) toast.success(`Servicio renombrado a "${clean}"`);
+    return ok;
+  };
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -738,6 +748,7 @@ export default function SocietiesPage() {
                 value={selectedSocietyServiceIds}
                 onChange={setSelectedSocietyServiceIds}
                 onCreateService={handleCreateSocietyService}
+                onEditService={handleEditSocietyService}
                 placeholder="Seleccionar servicios"
               />
               <p className="text-xs text-muted-foreground mt-1">
