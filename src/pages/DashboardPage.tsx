@@ -40,13 +40,7 @@ const ESTADO_BADGE: Record<string, string> = {
   'Cancelado': 'bg-gray-100 text-gray-500',
 };
 
-const PRIORIDAD_BADGE: Record<string, string> = {
-  'Baja': 'bg-slate-100 text-slate-600',
-  'Media': 'bg-amber-100 text-amber-700',
-  'Urgente': 'bg-red-100 text-red-700',
-};
-
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 10;
 
 const MESES = [
   '', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -58,21 +52,6 @@ const ALL = '__all__';
 /* ================================================================== */
 /*  Helpers                                                            */
 /* ================================================================== */
-
-function fmtDate(iso?: string): string {
-  if (!iso) return '';
-  const d = iso.slice(0, 10).split('-');
-  if (d.length !== 3) return iso;
-  return `${d[2]}/${d[1]}/${d[0]}`;
-}
-
-function diasVencimiento(fechaVenc?: string): number | null {
-  if (!fechaVenc) return null;
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
-  const venc = new Date(fechaVenc + 'T00:00:00');
-  return Math.ceil((venc.getTime() - hoy.getTime()) / 86400000);
-}
 
 function exportToCSV(
   rows: Array<Record<string, string | number>>,
@@ -147,7 +126,8 @@ function CustomTooltip({ active, payload, label }: any) {
 export default function DashboardPage() {
   const navigate = useNavigate();
   const {
-    cases, clients, services, getClientName, getServiceName, getUsuarioName,
+    cases, clients, services, getClientName, getSocietyName, getServiceName,
+    getServiceItemName, getUsuarioName,
   } = useApp();
 
   // ── Filtros ──────────────────────────────────────────────────────
@@ -214,7 +194,7 @@ export default function DashboardPage() {
   }, [filtered]);
 
   // ── Tabla: sort + paginación ────────────────────────────────────
-  type SortKey = 'n_tarea' | 'descripcion' | 'servicio' | 'estado' | 'prioridad' | 'usuario' | 'fecha_caso' | 'fecha_vencimiento' | 'dias';
+  type SortKey = 'n_tarea' | 'cliente' | 'sociedad' | 'creado_por' | 'servicio_item' | 'descripcion' | 'estado' | 'responsable';
   const [sortKey, setSortKey] = useState<SortKey>('n_tarea');
   const [sortAsc, setSortAsc] = useState(false);
   const [page, setPage] = useState(0);
@@ -227,26 +207,25 @@ export default function DashboardPage() {
     return filtered.map(c => ({
       raw: c,
       n_tarea: c.n_tarea ?? 0,
+      cliente: c.society_id
+        ? (getClientName(c.client_id) || getSocietyName(c.society_id))
+        : getClientName(c.client_id),
+      sociedad: getSocietyName(c.society_id),
+      creado_por: c.creado_por || '',
+      servicio_item: c.service_item_id
+        ? getServiceItemName(c.service_item_id)
+        : (c.service_id ? getServiceName(c.service_id) : ''),
       descripcion: c.descripcion || '',
-      servicio: c.service_id ? getServiceName(c.service_id) : '',
       estado: c.estado,
-      prioridad: c.prioridad || '',
-      usuario: c.usuario_asignado_id ? getUsuarioName(c.usuario_asignado_id) : (c.responsable || ''),
-      fecha_caso: c.fecha_caso || '',
-      fecha_vencimiento: c.fecha_vencimiento || '',
-      dias: diasVencimiento(c.fecha_vencimiento),
+      responsable: c.usuario_asignado_id ? getUsuarioName(c.usuario_asignado_id) : (c.responsable || ''),
     }));
-  }, [filtered, getServiceName, getUsuarioName]);
+  }, [filtered, getClientName, getSocietyName, getServiceItemName, getServiceName, getUsuarioName]);
 
   const sortedRows = useMemo(() => {
     const rows = [...tableRows];
     rows.sort((a, b) => {
       let va: any = a[sortKey];
       let vb: any = b[sortKey];
-      if (sortKey === 'dias') {
-        va = va ?? 99999;
-        vb = vb ?? 99999;
-      }
       if (typeof va === 'string') va = va.toLowerCase();
       if (typeof vb === 'string') vb = vb.toLowerCase();
       if (va < vb) return sortAsc ? -1 : 1;
@@ -296,26 +275,24 @@ export default function DashboardPage() {
   // ── Export ──────────────────────────────────────────────────────
   function handleExport() {
     const headers = [
-      { key: 'caso', label: '# CASOS' },
+      { key: 'caso', label: 'CASO' },
+      { key: 'cliente', label: 'CLIENTE' },
+      { key: 'sociedad', label: 'SOCIEDAD' },
+      { key: 'creado_por', label: 'CREADO POR' },
+      { key: 'servicio_item', label: 'SERVICIO' },
       { key: 'descripcion', label: 'DESCRIPCION' },
-      { key: 'proceso', label: 'PROCESO' },
       { key: 'estado', label: 'ESTADO' },
-      { key: 'prioridad', label: 'PRIORIDAD' },
-      { key: 'usuario', label: 'USUARIO ASIGNADO' },
-      { key: 'fecha_ingreso', label: 'FECHA INGRESO' },
-      { key: 'fecha_seguimiento', label: 'FECHA SEGUIMIENTO' },
-      { key: 'dias', label: 'DIAS DE VENCIMIENTO' },
+      { key: 'responsable', label: 'RESPONSABLE' },
     ];
     const rows = sortedRows.map(r => ({
       caso: formatNTarea(r.n_tarea) || String(r.n_tarea),
+      cliente: r.cliente,
+      sociedad: r.sociedad,
+      creado_por: r.creado_por,
+      servicio_item: r.servicio_item,
       descripcion: r.descripcion,
-      proceso: r.servicio,
       estado: r.estado,
-      prioridad: r.prioridad,
-      usuario: r.usuario,
-      fecha_ingreso: fmtDate(r.fecha_caso),
-      fecha_seguimiento: fmtDate(r.fecha_vencimiento),
-      dias: r.dias != null ? String(r.dias) : '',
+      responsable: r.responsable,
     }));
     const now = new Date().toISOString().slice(0, 10);
     exportToCSV(rows, headers, `Casos_Ancori_${now}.csv`);
@@ -474,15 +451,14 @@ export default function DashboardPage() {
               <thead>
                 <tr className="bg-muted/50 border-y border-border">
                   {([
-                    ['n_tarea', '# CASOS', 'w-[90px]'],
-                    ['descripcion', 'DESCRIPCION', 'min-w-[200px]'],
-                    ['servicio', 'PROCESO', 'min-w-[160px]'],
-                    ['estado', 'ESTADO', 'w-[150px]'],
-                    ['prioridad', 'PRIORIDAD', 'w-[110px]'],
-                    ['usuario', 'USUARIO ASIGNADO', 'min-w-[150px]'],
-                    ['fecha_caso', 'FECHA INGRESO', 'w-[120px]'],
-                    ['fecha_vencimiento', 'FECHA SEGUIMIENTO', 'w-[140px]'],
-                    ['dias', 'DIAS VENC.', 'w-[100px]'],
+                    ['n_tarea',      'CASO',       'min-w-[95px]'],
+                    ['cliente',      'CLIENTE',    'min-w-[180px]'],
+                    ['sociedad',     'SOCIEDAD',   'min-w-[180px]'],
+                    ['creado_por',   'CREADO POR', 'min-w-[130px]'],
+                    ['servicio_item','SERVICIO',   'min-w-[180px]'],
+                    ['descripcion',  'DESCRIPCIÓN','min-w-[200px]'],
+                    ['estado',       'ESTADO',     'w-[150px]'],
+                    ['responsable',  'RESPONSABLE','min-w-[140px]'],
                   ] as [SortKey, string, string][]).map(([key, label, cls]) => (
                     <th
                       key={key}
@@ -500,7 +476,7 @@ export default function DashboardPage() {
               <tbody>
                 {pageRows.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="text-center py-12 text-muted-foreground">
+                    <td colSpan={8} className="text-center py-12 text-muted-foreground">
                       No hay casos que coincidan con los filtros seleccionados
                     </td>
                   </tr>
@@ -513,37 +489,39 @@ export default function DashboardPage() {
                     )}
                     onClick={() => navigate('/casos')}
                   >
-                    <td className="px-3 py-2.5 font-mono text-xs font-semibold text-primary">
+                    <td className="px-3 py-2.5 font-mono text-xs font-semibold text-primary whitespace-nowrap">
                       {formatNTarea(r.n_tarea) || r.raw.numero_caso}
                     </td>
-                    <td className="px-3 py-2.5 max-w-[300px] truncate" title={r.descripcion}>
-                      {r.descripcion || '—'}
-                    </td>
-                    <td className="px-3 py-2.5 text-muted-foreground">{r.servicio || '—'}</td>
                     <td className="px-3 py-2.5">
+                      <span className="line-clamp-2 text-xs font-semibold leading-snug text-gray-800" title={r.cliente}>
+                        {r.cliente || '—'}
+                      </span>
+                      {r.raw.cliente_temporal && (
+                        <span className="block text-[10px] font-semibold uppercase tracking-wide text-amber-500 mt-0.5">Temporal</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <span className="line-clamp-2 text-xs leading-snug text-muted-foreground" title={r.sociedad}>
+                        {r.sociedad || '—'}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground">{r.creado_por || '—'}</td>
+                    <td className="px-3 py-2.5">
+                      <span className="line-clamp-2 text-xs leading-snug text-gray-700" title={r.servicio_item}>
+                        {r.servicio_item || '—'}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <span className="line-clamp-2 text-xs leading-snug text-muted-foreground" title={r.descripcion}>
+                        {r.descripcion || '—'}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
                       <span className={cn('inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium', ESTADO_BADGE[r.estado])}>
                         {r.estado}
                       </span>
                     </td>
-                    <td className="px-3 py-2.5">
-                      {r.prioridad ? (
-                        <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium', PRIORIDAD_BADGE[r.prioridad])}>
-                          {r.prioridad}
-                        </span>
-                      ) : <span className="text-muted-foreground text-xs">—</span>}
-                    </td>
-                    <td className="px-3 py-2.5 text-muted-foreground">{r.usuario || '—'}</td>
-                    <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{fmtDate(r.fecha_caso)}</td>
-                    <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{fmtDate(r.fecha_vencimiento)}</td>
-                    <td className="px-3 py-2.5 tabular-nums font-medium text-center">
-                      {r.dias != null ? (
-                        <span className={cn(
-                          r.dias < 0 ? 'text-red-600' : r.dias <= 7 ? 'text-amber-600' : 'text-green-600',
-                        )}>
-                          {r.dias}
-                        </span>
-                      ) : <span className="text-muted-foreground">—</span>}
-                    </td>
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground">{r.responsable || '—'}</td>
                   </tr>
                 ))}
               </tbody>

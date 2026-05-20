@@ -7,12 +7,14 @@ import { EditCaseModal } from '@/components/cases/EditCaseModal';
 import { CommentsDrawer } from '@/components/cases/CommentsDrawer';
 import { ExpensesModal } from '@/components/cases/ExpensesModal';
 import { InvoiceModal } from '@/components/cases/InvoiceModal';
-import { FiltersModal } from '@/components/cases/FiltersModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Card, CardContent } from '@/components/ui/card';
+import { SearchableCombo } from '@/components/ui/searchable-combo';
 import { Case, CASE_ESTADOS, CASE_PRIORIDADES } from '@/data/mockData';
-import { Plus, Filter, Search, X } from 'lucide-react';
+import { Plus, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -26,7 +28,6 @@ export default function CasesPage() {
   const [filterPrioridad, setFilterPrioridad] = useState('__all__');
   const [filters, setFilters] = useState<Record<string, any>>({});
   const [showNewCase, setShowNewCase] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
   const [editCase, setEditCase] = useState<Case | null>(null);
   const [commentsCase, setCommentsCase] = useState<Case | null>(null);
   const [expensesCase, setExpensesCase] = useState<Case | null>(null);
@@ -96,20 +97,16 @@ export default function CasesPage() {
     urgent: cases.filter(c => c.prioridad === 'Urgente' || c.prioridad_urgente).length,
   }), [cases]);
 
-  const advancedFilterCount = useMemo(() => {
-    return Object.values(filters).filter(v => {
-      if (typeof v === 'boolean') return v;
-      if (typeof v === 'string') return v.trim().length > 0;
-      return v != null;
-    }).length;
-  }, [filters]);
-  const quickFilterCount =
-    (filterEstado && filterEstado !== '__all__' ? 1 : 0) +
-    (filterPrioridad && filterPrioridad !== '__all__' ? 1 : 0);
-  const activeFilterCount = quickFilterCount + advancedFilterCount;
-  const hasActiveFilters = activeFilterCount > 0;
+  const hasActiveFilters =
+    !!search.trim() ||
+    filterEstado !== '__all__' ||
+    filterPrioridad !== '__all__' ||
+    Object.values(filters).some(v =>
+      typeof v === 'boolean' ? v : typeof v === 'string' ? v.trim().length > 0 : v != null,
+    );
 
   const clearFilters = () => {
+    setSearch('');
     setFilterEstado('__all__');
     setFilterPrioridad('__all__');
     setFilters({});
@@ -133,81 +130,156 @@ export default function CasesPage() {
       )}
     >
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-foreground">CASOS</h1>
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar por descripción, cliente…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="pl-9 w-64 bg-card"
-            />
-          </div>
-          <Button onClick={() => setShowNewCase(true)} className="gap-1">
-            <Plus className="h-4 w-4" /> Nuevo Caso
-          </Button>
-        </div>
+        <Button onClick={() => setShowNewCase(true)} className="gap-1">
+          <Plus className="h-4 w-4" /> Nuevo Caso
+        </Button>
       </div>
 
       {/* KPIs */}
       <KPICards totalCases={kpi.total} pending={kpi.pending} completed={kpi.completed} urgent={kpi.urgent} />
 
-      {/* Quick Filters */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2">
-          <Select value={filterEstado} onValueChange={setFilterEstado}>
-            <SelectTrigger className="w-44 bg-card">
-              <SelectValue placeholder="Estado: todos" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">Todos los estados</SelectItem>
-              {CASE_ESTADOS.map(e => <SelectItem key={e} value={e}>{e}</SelectItem>)}
-            </SelectContent>
-          </Select>
+      {/* Filtros inline */}
+      <Card className="shadow-sm">
+        <CardContent className="pt-4 pb-3 space-y-3">
 
-          <Select value={filterPrioridad} onValueChange={setFilterPrioridad}>
-            <SelectTrigger className="w-44 bg-card">
-              <SelectValue placeholder="Prioridad: todas" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">Todas las prioridades</SelectItem>
-              {CASE_PRIORIDADES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          {/* Fila 1: Búsqueda, Estado, Prioridad, # Caso */}
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex-1 min-w-[200px]">
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Búsqueda</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Descripción, cliente, responsable…"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="pl-9 h-9"
+                />
+              </div>
+            </div>
+            <div className="min-w-[170px]">
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Estado</label>
+              <Select value={filterEstado} onValueChange={setFilterEstado}>
+                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Todos" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">Todos los estados</SelectItem>
+                  {CASE_ESTADOS.map(e => <SelectItem key={e} value={e}>{e}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="min-w-[150px]">
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Prioridad</label>
+              <Select value={filterPrioridad} onValueChange={setFilterPrioridad}>
+                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Todas" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">Todas las prioridades</SelectItem>
+                  {CASE_PRIORIDADES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="min-w-[130px]">
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block"># Caso</label>
+              <Input
+                placeholder="Ej: 00001"
+                value={filters.numero_caso || ''}
+                onChange={e => setFilters(f => ({ ...f, numero_caso: e.target.value }))}
+                className="h-9 text-sm"
+              />
+            </div>
+          </div>
 
-          <Button
-            variant="outline"
-            className={cn(
-              'relative gap-1',
-              advancedFilterCount > 0 && 'border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 hover:text-orange-800',
-            )}
-            onClick={() => setShowFilters(true)}
-          >
-            <Filter className="h-4 w-4" /> Más Filtros
-            {advancedFilterCount > 0 && (
-              <span className="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-500 px-1.5 text-[11px] font-bold text-white">
-                {advancedFilterCount}
+          {/* Fila 2: Responsable, Cliente, Sociedad */}
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex-1 min-w-[200px]">
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Responsable</label>
+              <SearchableCombo
+                options={[{ value: '__all__', label: 'Todos' }, ...responsableOptions]}
+                value={filters.responsable_id || '__all__'}
+                onChange={v => setFilters(f => ({ ...f, responsable_id: !v || v === '__all__' ? undefined : v }))}
+                placeholder="Seleccionar responsable"
+                emptyLabel="Sin responsables"
+              />
+            </div>
+            <div className="flex-1 min-w-[200px]">
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Cliente</label>
+              <SearchableCombo
+                options={[{ value: '__all__', label: 'Todos' }, ...clientOptions]}
+                value={filters.client_id || '__all__'}
+                onChange={v => setFilters(f => ({ ...f, client_id: !v || v === '__all__' ? undefined : v }))}
+                placeholder="Seleccionar cliente"
+                emptyLabel="Sin clientes"
+              />
+            </div>
+            <div className="flex-1 min-w-[200px]">
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Sociedad</label>
+              <SearchableCombo
+                options={[{ value: '__all__', label: 'Todas' }, ...societyOptions]}
+                value={filters.society_id || '__all__'}
+                onChange={v => setFilters(f => ({ ...f, society_id: !v || v === '__all__' ? undefined : v }))}
+                placeholder="Seleccionar sociedad"
+                emptyLabel="Sin sociedades"
+              />
+            </div>
+          </div>
+
+          {/* Fila 3: Fechas, Switches, contador + limpiar */}
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[150px]">
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Fecha Desde</label>
+              <Input
+                type="date"
+                value={filters.fecha_desde || ''}
+                onChange={e => setFilters(f => ({ ...f, fecha_desde: e.target.value }))}
+                className="h-9 text-sm"
+              />
+            </div>
+            <div className="min-w-[150px]">
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Fecha Hasta</label>
+              <Input
+                type="date"
+                value={filters.fecha_hasta || ''}
+                onChange={e => setFilters(f => ({ ...f, fecha_hasta: e.target.value }))}
+                className="h-9 text-sm"
+              />
+            </div>
+            <div className="flex items-center gap-5 pb-0.5 flex-wrap">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Switch
+                  checked={filters.prioridad_urgente || false}
+                  onCheckedChange={v => setFilters(f => ({ ...f, prioridad_urgente: v }))}
+                />
+                <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">Solo Urgente</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Switch
+                  checked={filters.con_comentarios || false}
+                  onCheckedChange={v => setFilters(f => ({ ...f, con_comentarios: v }))}
+                />
+                <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">Con Comentarios</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Switch
+                  checked={filters.con_gastos || false}
+                  onCheckedChange={v => setFilters(f => ({ ...f, con_gastos: v }))}
+                />
+                <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">Con Gastos</span>
+              </label>
+            </div>
+            <div className="ml-auto flex items-center gap-2 pb-0.5">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                {filtered.length} de {cases.length} caso{cases.length !== 1 ? 's' : ''}
               </span>
-            )}
-          </Button>
+              {hasActiveFilters && (
+                <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground h-8" onClick={clearFilters}>
+                  <X className="h-3.5 w-3.5" /> Limpiar
+                </Button>
+              )}
+            </div>
+          </div>
 
-          {hasActiveFilters && (
-            <>
-              <span className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-xs font-medium text-orange-700">
-                {activeFilterCount} filtro{activeFilterCount !== 1 ? 's' : ''} activo{activeFilterCount !== 1 ? 's' : ''}
-              </span>
-              <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground" onClick={clearFilters}>
-                <X className="h-3 w-3" /> Limpiar
-              </Button>
-            </>
-          )}
-        </div>
-        <span className="text-sm text-muted-foreground ml-auto">
-          {filtered.length} de {cases.length} caso{cases.length !== 1 ? 's' : ''}
-        </span>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Table */}
       <CasesTable
@@ -235,14 +307,6 @@ export default function CasesPage() {
         caseData={currentInvoiceCase}
         open={!!invoiceCase}
         onClose={() => setInvoiceCase(null)}
-      />
-      <FiltersModal
-        open={showFilters}
-        onClose={() => setShowFilters(false)}
-        onApply={setFilters}
-        responsableOptions={responsableOptions}
-        clientOptions={clientOptions}
-        societyOptions={societyOptions}
       />
     </div>
   );

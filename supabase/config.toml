@@ -60,6 +60,10 @@ verify_jwt = false
 [functions.agilecheck-push-profile]
 verify_jwt = false
 
+# Notificación email al crear o enviar factura a QB.
+[functions.send-invoice-notification]
+verify_jwt = false
+
 # Crear factura en QBO desde la app (secreto compartido).
 [functions.qbo-create-invoice]
 verify_jwt = false

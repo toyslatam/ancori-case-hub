@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
-import { AgileCheckProfilePanel } from '@/components/compliance/AgileCheckProfilePanel';
+import { AgileCheckProfilePanel, type AgUpdatedFields } from '@/components/compliance/AgileCheckProfilePanel';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -148,8 +148,42 @@ export default function CumplimientoPage() {
     entityId: string;
     entityName: string;
   } | null>(null);
+  const [agOverride, setAgOverride] = useState<Map<string, AgUpdatedFields>>(new Map());
 
   const userCanVerify = canVerify(user?.rol);
+
+  const handleProfileUpdated = useCallback((entityId: string, fields: AgUpdatedFields) => {
+    setAgOverride(m => { const nm = new Map(m); nm.set(entityId, fields); return nm; });
+  }, []);
+
+  function getAgFields(entityId: string, entityType: 'client' | 'director' | 'society'): AgUpdatedFields | null {
+    const override = agOverride.get(entityId);
+    if (override) return override;
+    if (entityType === 'client') {
+      const c = clients.find(x => x.id === entityId);
+      if (c && (c.ag_riesgo_nivel != null || c.ag_riesgo != null)) {
+        return {
+          ag_riesgo: (c as any).ag_riesgo ?? null,
+          ag_riesgo_nivel: (c as any).ag_riesgo_nivel ?? null,
+          ag_porcCompletadoDD: (c as any).ag_porcCompletadoDD ?? null,
+          ag_verificado_en_listas: (c as any).ag_verificado_en_listas ?? null,
+          ag_last_sync_at: (c as any).ag_last_sync_at ?? '',
+        };
+      }
+    } else if (entityType === 'society') {
+      const s = societies.find(x => x.id === entityId);
+      if (s && (s.ag_riesgo_nivel != null || s.ag_riesgo != null)) {
+        return {
+          ag_riesgo: (s as any).ag_riesgo ?? null,
+          ag_riesgo_nivel: (s as any).ag_riesgo_nivel ?? null,
+          ag_porcCompletadoDD: (s as any).ag_porcCompletadoDD ?? null,
+          ag_verificado_en_listas: (s as any).ag_verificado_en_listas ?? null,
+          ag_last_sync_at: (s as any).ag_last_sync_at ?? '',
+        };
+      }
+    }
+    return null;
+  }
 
   useEffect(() => { loadChecks(); }, []);
 
@@ -641,14 +675,15 @@ export default function CumplimientoPage() {
                       </div>
                     </th>
                   ))}
+                  <th className="px-3 py-2.5 text-left font-semibold text-xs uppercase tracking-wider whitespace-nowrap w-[130px]">AG Riesgo</th>
                   {userCanVerify && <th className="px-3 py-2.5 text-center text-xs font-semibold uppercase w-[80px]">Accion</th>}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={9} className="text-center py-12"><Loader2 className="h-6 w-6 animate-spin mx-auto text-orange-400" /></td></tr>
+                  <tr><td colSpan={10} className="text-center py-12"><Loader2 className="h-6 w-6 animate-spin mx-auto text-orange-400" /></td></tr>
                 ) : pageRows.length === 0 ? (
-                  <tr><td colSpan={9} className="text-center py-12 text-muted-foreground">
+                  <tr><td colSpan={10} className="text-center py-12 text-muted-foreground">
                     {checks.length === 0 ? 'No hay verificaciones registradas. Use los botones de verificacion para comenzar.' : 'Sin resultados para los filtros seleccionados'}
                   </td></tr>
                 ) : pageRows.map((c, i) => {
@@ -685,6 +720,25 @@ export default function CumplimientoPage() {
                       </td>
                       <td className="px-3 py-2 text-xs text-muted-foreground max-w-[250px] truncate" title={c.result_summary ?? ''}>
                         {c.result_summary ?? '—'}
+                      </td>
+                      <td className="px-3 py-2">
+                        {(() => {
+                          const ag = getAgFields(c.entity_id, c.entity_type);
+                          if (!ag || ag.ag_riesgo_nivel == null) return <span className="text-muted-foreground text-xs">—</span>;
+                          const nivelMap: Record<number, { label: string; cls: string }> = {
+                            1: { label: 'Bajo', cls: 'bg-green-100 text-green-800' },
+                            2: { label: 'Medio', cls: 'bg-yellow-100 text-yellow-800' },
+                            3: { label: 'Alto', cls: 'bg-orange-100 text-orange-800' },
+                            4: { label: 'Crítico', cls: 'bg-red-100 text-red-800' },
+                          };
+                          const entry = nivelMap[ag.ag_riesgo_nivel];
+                          return (
+                            <div className="flex items-center gap-1.5">
+                              {entry && <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', entry.cls)}>{entry.label}</span>}
+                              {ag.ag_riesgo != null && <span className="text-xs text-muted-foreground tabular-nums">{ag.ag_riesgo.toFixed(2)}</span>}
+                            </div>
+                          );
+                        })()}
                       </td>
                       {userCanVerify && (
                         <td className="px-3 py-2 text-center">
@@ -746,7 +800,7 @@ export default function CumplimientoPage() {
               <AgileCheckProfilePanel
                 entityType={agDetail.entityType}
                 entity={entity}
-                onProfileUpdated={() => {}}
+                onProfileUpdated={handleProfileUpdated}
               />
             );
           })()}

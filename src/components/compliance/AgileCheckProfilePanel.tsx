@@ -95,10 +95,18 @@ function extractAgValues(profile: Record<string, unknown>): Record<string, strin
 
 // ─── Componente ─────────────────────────────────────────────────────────────
 
+export type AgUpdatedFields = {
+  ag_riesgo: number | null;
+  ag_riesgo_nivel: number | null;
+  ag_porcCompletadoDD: number | null;
+  ag_verificado_en_listas: boolean | null;
+  ag_last_sync_at: string;
+};
+
 type Props = {
   entityType: EntityType;
   entity: Client | Society;
-  onProfileUpdated?: () => void;
+  onProfileUpdated?: (entityId: string, fields: AgUpdatedFields) => void;
 };
 
 export function AgileCheckProfilePanel({ entityType, entity, onProfileUpdated }: Props) {
@@ -143,7 +151,7 @@ export function AgileCheckProfilePanel({ entityType, entity, onProfileUpdated }:
       return;
     }
     setProfile(result);
-    onProfileUpdated?.();
+    onProfileUpdated?.(entity.id, result.updated_fields);
   }, [entityType, entity.id, onProfileUpdated]);
 
   // ── Vincular ID AgileCheck manualmente (solo escribe en DB, nunca toca AgileCheck) ──
@@ -161,8 +169,7 @@ export function AgileCheckProfilePanel({ entityType, entity, onProfileUpdated }:
     setManualId('');
     setNoLink(false);
     await handleFetch();
-    onProfileUpdated?.();
-  }, [manualId, entityType, entity.id, handleFetch, onProfileUpdated]);
+  }, [manualId, entityType, entity.id, handleFetch]);
 
   // ── Registrar en AgileCheck (primera vez) ──
   const handleSync = useCallback(async () => {

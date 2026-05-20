@@ -6,7 +6,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
 import { Case, CaseInvoice, InvoiceLine, Service, formatNTarea } from '@/data/mockData';
+import { sendInvoiceNotification, linesToNotify } from '@/lib/invoiceNotification';
 import { Plus, Trash2, Send, Loader2, CheckCircle2, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { SearchableCombo, type ComboOption } from '@/components/ui/searchable-combo';
@@ -98,6 +100,7 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
     services, invoiceTerms, qbItems, getClientName, getSocietyName,
     saveInvoice, patchInvoice, allInvoices,
   } = useApp();
+  const { user } = useAuth();
 
   /** Facturas ya guardadas con `case_id` = este caso (lista al abrir desde Casos). */
   const invoicesForCase = useMemo(() => {
@@ -318,7 +321,7 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
           if (qbItem?.impuesto_default != null) updated.itbms = qbItem.impuesto_default;
         }
       } else {
-        (updated as Record<string, unknown>)[field] = value;
+        (updated as unknown as Record<string, unknown>)[field] = value;
       }
 
       updated.importe = Number(updated.cantidad) * Number(updated.tarifa);
@@ -382,6 +385,24 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
       ]);
       if (ok) {
         toast.success(isEdit ? 'Factura actualizada' : 'Factura guardada');
+        if (!isEdit) {
+          sendInvoiceNotification({
+            tipo: 'creacion',
+            caso_numero: caseData.n_tarea != null ? formatNTarea(caseData.n_tarea) : String(caseData.numero_caso ?? caseData.id),
+            client_name: getClientName(caseData.client_id),
+            society_name: caseData.society_id ? getSocietyName(caseData.society_id) : undefined,
+            bill_to_society: billToSociety && !!caseData.society_id,
+            numero_factura: inv.numero_factura,
+            fecha_factura: inv.fecha_factura,
+            estado: inv.estado,
+            subtotal: inv.subtotal,
+            itbms: inv.impuesto,
+            total: inv.total,
+            lines: linesToNotify(lines),
+            creado_por_nombre: user?.nombre ?? user?.email ?? 'Sistema',
+            creado_por_email: user?.email ?? '',
+          });
+        }
         onClose();
       } else {
         toast.error('No se pudo guardar la factura (timeout o error).');
@@ -443,6 +464,25 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
             qb_last_sync_at: new Date().toISOString(),
           });
           toast.success(`¡Enviada a QuickBooks! Factura QB #${data.doc_number ?? data.qb_invoice_id}`);
+          sendInvoiceNotification({
+            tipo: 'enviada_qb',
+            caso_numero: caseData.n_tarea != null ? formatNTarea(caseData.n_tarea) : String(caseData.numero_caso ?? caseData.id),
+            client_name: clientName,
+            society_name: billToSociety && caseData.society_id ? societyName : undefined,
+            bill_to_society: billToSociety && !!caseData.society_id,
+            numero_factura: inv.numero_factura,
+            qb_numero_factura: data.doc_number,
+            fecha_factura: inv.fecha_factura,
+            estado: 'enviada',
+            subtotal: inv.subtotal,
+            itbms: inv.impuesto,
+            total: inv.total,
+            qb_total: typeof data.total_amt === 'number' ? data.total_amt : undefined,
+            qb_balance: typeof data.balance === 'number' ? data.balance : undefined,
+            lines: linesToNotify(lines),
+            creado_por_nombre: user?.nombre ?? user?.email ?? 'Sistema',
+            creado_por_email: user?.email ?? '',
+          });
         }
       } catch (e) {
         const msg = e instanceof Error && e.name === 'AbortError'

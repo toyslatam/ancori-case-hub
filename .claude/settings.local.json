@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(sed -n '1363,1400p' /tmp/swagger.json)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(node -e ' *)"
     ]
   }
 }

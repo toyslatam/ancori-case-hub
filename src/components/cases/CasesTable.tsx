@@ -49,7 +49,7 @@ export function CasesTable({
   const [sortDir, setSortDir]     = useState<'asc' | 'desc'>('desc');
   const [page, setPage]           = useState(0);
   const [observacionesModal, setObservacionesModal] = useState<{ caseLabel: string; items: string[] } | null>(null);
-  const perPage = 20;
+  const perPage = 10;
 
   const toggleSort = (field: string) => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
