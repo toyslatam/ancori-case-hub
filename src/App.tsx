@@ -25,11 +25,21 @@ import CumplimientoPage from "./pages/CumplimientoPage";
 import ReportesPage from "./pages/ReportesPage";
 import InstructivosPage from "./pages/InstructivosPage";
 import ConfigPage from "./pages/ConfigPage";
+import UsersPage from "./pages/UsersPage";
 import NotFound from "./pages/NotFound";
-import ComingSoonPage from "./pages/ComingSoonPage";
 import { Loader2 } from "lucide-react";
+import { usePermissions } from "@/hooks/usePermissions";
+import type { AppModule } from "@/data/mockData";
+import { ReactNode } from "react";
 
 const queryClient = new QueryClient();
+
+/** Redirige a la primera ruta accesible si el usuario no tiene permiso. */
+function Guard({ module, children }: { module: AppModule; children: ReactNode }) {
+  const { can, firstAccessibleRoute } = usePermissions();
+  if (!can(module)) return <Navigate to={firstAccessibleRoute()} replace />;
+  return <>{children}</>;
+}
 
 /** Rutas protegidas: si no hay sesión → redirige a /login */
 function ProtectedApp() {
@@ -51,25 +61,26 @@ function ProtectedApp() {
     <AppProvider>
       <AppLayout>
         <Routes>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/inicio" element={<DashboardPage />} />
-          <Route path="/casos" element={<CasesPage />} />
-          <Route path="/facturas" element={<FacturasPage />} />
-          <Route path="/conciliacion" element={<ConciliacionPage />} />
-          <Route path="/cumplimiento" element={<CumplimientoPage />} />
-          <Route path="/reportes" element={<ReportesPage />} />
-          <Route path="/instructivos" element={<InstructivosPage />} />
-          <Route path="/mantenimiento/clientes" element={<ClientsPage />} />
-          <Route path="/mantenimiento/directores" element={<DirectoresPage />} />
-          <Route path="/mantenimiento/sociedades" element={<SocietiesPage />} />
-          <Route path="/mantenimiento/servicios" element={<ServicesPage />} />
-          <Route path="/mantenimiento/terminos" element={<InvoiceTermsPage />} />
-          <Route path="/mantenimiento/qb-items" element={<QBItemsPage />} />
-          <Route path="/utilidades/categorias" element={<CategoriesPage />} />
-          <Route path="/utilidades/servicios" element={<UtilServicesPage />} />
-          <Route path="/utilidades/items-servicio" element={<ServiceItemsPage />} />
-          <Route path="/utilidades/etapas" element={<EtapasPage />} />
+          <Route path="/"        element={<Guard module="dashboard"><DashboardPage /></Guard>} />
+          <Route path="/inicio"  element={<Guard module="dashboard"><DashboardPage /></Guard>} />
+          <Route path="/casos"   element={<Guard module="casos"><CasesPage /></Guard>} />
+          <Route path="/facturas" element={<Guard module="facturas"><FacturasPage /></Guard>} />
+          <Route path="/conciliacion" element={<Guard module="conciliacion"><ConciliacionPage /></Guard>} />
+          <Route path="/cumplimiento" element={<Guard module="cumplimiento"><CumplimientoPage /></Guard>} />
+          <Route path="/reportes"    element={<Guard module="reportes"><ReportesPage /></Guard>} />
+          <Route path="/instructivos" element={<Guard module="instructivos"><InstructivosPage /></Guard>} />
+          <Route path="/mantenimiento/clientes"  element={<Guard module="mantenimiento"><ClientsPage /></Guard>} />
+          <Route path="/mantenimiento/directores" element={<Guard module="mantenimiento"><DirectoresPage /></Guard>} />
+          <Route path="/mantenimiento/sociedades" element={<Guard module="mantenimiento"><SocietiesPage /></Guard>} />
+          <Route path="/mantenimiento/servicios"  element={<Guard module="mantenimiento"><ServicesPage /></Guard>} />
+          <Route path="/mantenimiento/terminos"   element={<Guard module="mantenimiento"><InvoiceTermsPage /></Guard>} />
+          <Route path="/mantenimiento/qb-items"   element={<Guard module="mantenimiento"><QBItemsPage /></Guard>} />
+          <Route path="/utilidades/categorias"     element={<Guard module="utilidades"><CategoriesPage /></Guard>} />
+          <Route path="/utilidades/servicios"      element={<Guard module="utilidades"><UtilServicesPage /></Guard>} />
+          <Route path="/utilidades/items-servicio" element={<Guard module="utilidades"><ServiceItemsPage /></Guard>} />
+          <Route path="/utilidades/etapas"         element={<Guard module="utilidades"><EtapasPage /></Guard>} />
           <Route path="/configuracion" element={<ConfigPage />} />
+          <Route path="/usuarios" element={<UsersPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </AppLayout>

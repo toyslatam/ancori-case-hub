@@ -19,6 +19,7 @@ import type {
   TipoSociedad,
   TipoDocumentoDirector,
   Usuario,
+  AppModule,
 } from '@/data/mockData';
 
 function isoDate(s: string): string {
@@ -227,6 +228,10 @@ export function serviceItemToRow(si: ServiceItem): Record<string, unknown> {
 }
 
 export function rowToUsuario(row: Record<string, unknown>): Usuario {
+  const rawPermisos = row.permisos;
+  let permisos: Usuario['permisos'] = null;
+  if (Array.isArray(rawPermisos)) permisos = rawPermisos.map(String) as AppModule[];
+
   return {
     id: String(row.id),
     nombre: String(row.nombre),
@@ -236,6 +241,7 @@ export function rowToUsuario(row: Record<string, unknown>): Usuario {
     correo_microsoft: row.correo_microsoft ? String(row.correo_microsoft) : undefined,
     activo: Boolean(row.activo),
     created_at: row.created_at ? isoDate(String(row.created_at)) : undefined,
+    permisos,
   };
 }
 
@@ -248,6 +254,7 @@ export function usuarioToRow(u: Usuario): Record<string, unknown> {
     puesto: u.puesto ?? null,
     correo_microsoft: u.correo_microsoft ?? null,
     activo: u.activo,
+    permisos: u.permisos ?? null,
     ...(u.created_at ? { created_at: u.created_at.includes('T') ? u.created_at : `${u.created_at}T12:00:00Z` } : {}),
   };
 }

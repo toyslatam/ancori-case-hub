@@ -10,7 +10,6 @@ import {
   Building2,
   FileText,
   CreditCard,
-  Package,
   ChevronDown,
   Menu,
   Briefcase,
@@ -26,6 +25,7 @@ import {
   GitCompare,
   Shield,
   LogOut,
+  UsersRound,
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { NavLink } from '@/components/NavLink';
@@ -51,6 +51,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { usePendingConflicts } from '@/hooks/usePendingConflicts';
+import { usePermissions } from '@/hooks/usePermissions';
 
 const LOGO_SRC = '/Logo%20Ancori.jpg';
 
@@ -80,6 +81,7 @@ export function AppSidebar() {
   const isUtilActive = utilItems.some(i => location.pathname === i.url);
   const { user, session, signOut } = useAuth();
   const pendingConflicts = usePendingConflicts();
+  const { can, isSuperAdmin } = usePermissions();
   const fallbackName = session?.user?.email?.split('@')[0] ?? 'Usuario';
   const displayName = user?.nombre?.trim() || fallbackName;
   const displayInitials = user?.initials || displayName.slice(0, 1).toUpperCase() || 'U';
@@ -117,16 +119,19 @@ export function AppSidebar() {
         <SidebarGroup className="py-2">
           <SidebarGroupContent>
             <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip="Inicio" isActive={location.pathname === '/'}>
-                  <NavLink to="/" end className="text-sidebar-foreground/80 hover:text-sidebar-foreground" activeClassName={navLinkActive}>
-                    <Home className="shrink-0" />
-                    <span>Inicio</span>
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
 
-              {!collapsed ? (
+              {can('dashboard') && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild tooltip="Inicio" isActive={location.pathname === '/'}>
+                    <NavLink to="/" end className="text-sidebar-foreground/80 hover:text-sidebar-foreground" activeClassName={navLinkActive}>
+                      <Home className="shrink-0" />
+                      <span>Inicio</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+
+              {can('mantenimiento') && !collapsed && (
                 <Collapsible defaultOpen={isMaintActive} className="group/collapsible">
                   <SidebarMenuItem>
                     <CollapsibleTrigger asChild>
@@ -152,9 +157,9 @@ export function AppSidebar() {
                     </CollapsibleContent>
                   </SidebarMenuItem>
                 </Collapsible>
-              ) : null}
+              )}
 
-              {!collapsed ? (
+              {can('utilidades') && !collapsed && (
                 <Collapsible defaultOpen={isUtilActive} className="group/collapsible-util">
                   <SidebarMenuItem>
                     <CollapsibleTrigger asChild>
@@ -180,91 +185,112 @@ export function AppSidebar() {
                     </CollapsibleContent>
                   </SidebarMenuItem>
                 </Collapsible>
-              ) : null}
+              )}
 
-              {collapsed ? (
-                <>
-                  {maintItems.map(item => (
-                    <SidebarMenuItem key={item.url}>
-                      <SidebarMenuButton asChild tooltip={item.title} isActive={location.pathname === item.url}>
-                        <NavLink to={item.url} className="text-sidebar-foreground/80" activeClassName={navLinkActive}>
-                          <item.icon className="shrink-0" />
-                          <span>{item.title}</span>
-                        </NavLink>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                  {utilItems.map(item => (
-                    <SidebarMenuItem key={item.url}>
-                      <SidebarMenuButton asChild tooltip={item.title} isActive={location.pathname === item.url}>
-                        <NavLink to={item.url} className="text-sidebar-foreground/80" activeClassName={navLinkActive}>
-                          <item.icon className="shrink-0" />
-                          <span>{item.title}</span>
-                        </NavLink>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </>
-              ) : null}
+              {collapsed && can('mantenimiento') && maintItems.map(item => (
+                <SidebarMenuItem key={item.url}>
+                  <SidebarMenuButton asChild tooltip={item.title} isActive={location.pathname === item.url}>
+                    <NavLink to={item.url} className="text-sidebar-foreground/80" activeClassName={navLinkActive}>
+                      <item.icon className="shrink-0" />
+                      <span>{item.title}</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
 
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip="Casos" isActive={location.pathname === '/casos'}>
-                  <NavLink to="/casos" className="text-sidebar-foreground/80" activeClassName={navLinkActive}>
-                    <Briefcase className="shrink-0" />
-                    <span>Casos</span>
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {collapsed && can('utilidades') && utilItems.map(item => (
+                <SidebarMenuItem key={item.url}>
+                  <SidebarMenuButton asChild tooltip={item.title} isActive={location.pathname === item.url}>
+                    <NavLink to={item.url} className="text-sidebar-foreground/80" activeClassName={navLinkActive}>
+                      <item.icon className="shrink-0" />
+                      <span>{item.title}</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
 
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip="Facturas" isActive={location.pathname === '/facturas'}>
-                  <NavLink to="/facturas" className="text-sidebar-foreground/80" activeClassName={navLinkActive}>
-                    <Receipt className="shrink-0" />
-                    <span>Facturas</span>
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {can('casos') && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild tooltip="Casos" isActive={location.pathname === '/casos'}>
+                    <NavLink to="/casos" className="text-sidebar-foreground/80" activeClassName={navLinkActive}>
+                      <Briefcase className="shrink-0" />
+                      <span>Casos</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
 
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip="Conciliacion" isActive={location.pathname === '/conciliacion'}>
-                  <NavLink to="/conciliacion" className="text-sidebar-foreground/80" activeClassName={navLinkActive}>
-                    <GitCompare className="shrink-0" />
-                    <span>Conciliacion</span>
-                    {pendingConflicts > 0 && (
-                      <Badge variant="destructive" className="ml-auto h-5 min-w-[20px] px-1 text-[10px] leading-none">
-                        {pendingConflicts}
-                      </Badge>
-                    )}
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {can('facturas') && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild tooltip="Facturas" isActive={location.pathname === '/facturas'}>
+                    <NavLink to="/facturas" className="text-sidebar-foreground/80" activeClassName={navLinkActive}>
+                      <Receipt className="shrink-0" />
+                      <span>Facturas</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
 
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip="Cumplimiento" isActive={location.pathname === '/cumplimiento'}>
-                  <NavLink to="/cumplimiento" className="text-sidebar-foreground/80" activeClassName={navLinkActive}>
-                    <Shield className="shrink-0" />
-                    <span>Cumplimiento</span>
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {can('conciliacion') && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild tooltip="Conciliacion" isActive={location.pathname === '/conciliacion'}>
+                    <NavLink to="/conciliacion" className="text-sidebar-foreground/80" activeClassName={navLinkActive}>
+                      <GitCompare className="shrink-0" />
+                      <span>Conciliacion</span>
+                      {pendingConflicts > 0 && (
+                        <Badge variant="destructive" className="ml-auto h-5 min-w-[20px] px-1 text-[10px] leading-none">
+                          {pendingConflicts}
+                        </Badge>
+                      )}
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
 
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip="Reportes" isActive={location.pathname === '/reportes'}>
-                  <NavLink to="/reportes" className="text-sidebar-foreground/80" activeClassName={navLinkActive}>
-                    <BarChart3 className="shrink-0" />
-                    <span>Reportes</span>
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {can('cumplimiento') && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild tooltip="Cumplimiento" isActive={location.pathname === '/cumplimiento'}>
+                    <NavLink to="/cumplimiento" className="text-sidebar-foreground/80" activeClassName={navLinkActive}>
+                      <Shield className="shrink-0" />
+                      <span>Cumplimiento</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
 
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip="Instructivos" isActive={location.pathname === '/instructivos'}>
-                  <NavLink to="/instructivos" className="text-sidebar-foreground/80" activeClassName={navLinkActive}>
-                    <PlaySquare className="shrink-0" />
-                    <span>Instructivos</span>
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {can('reportes') && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild tooltip="Reportes" isActive={location.pathname === '/reportes'}>
+                    <NavLink to="/reportes" className="text-sidebar-foreground/80" activeClassName={navLinkActive}>
+                      <BarChart3 className="shrink-0" />
+                      <span>Reportes</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+
+              {can('instructivos') && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild tooltip="Instructivos" isActive={location.pathname === '/instructivos'}>
+                    <NavLink to="/instructivos" className="text-sidebar-foreground/80" activeClassName={navLinkActive}>
+                      <PlaySquare className="shrink-0" />
+                      <span>Instructivos</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+
+              {isSuperAdmin && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild tooltip="Usuarios" isActive={location.pathname === '/usuarios'}>
+                    <NavLink to="/usuarios" className="text-sidebar-foreground/80" activeClassName={navLinkActive}>
+                      <UsersRound className="shrink-0" />
+                      <span>Usuarios</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

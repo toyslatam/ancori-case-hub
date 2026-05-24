@@ -129,6 +129,23 @@ export type TipoCliente = typeof TIPOS_CLIENTE[number];
 
 export type RolUsuario = typeof ROLES_USUARIO[number];
 
+export const APP_MODULES = [
+  'dashboard', 'casos', 'facturas', 'conciliacion',
+  'cumplimiento', 'reportes', 'instructivos', 'mantenimiento', 'utilidades',
+] as const;
+export type AppModule = typeof APP_MODULES[number];
+export const MODULE_LABELS: Record<AppModule, string> = {
+  dashboard:     'Inicio / Dashboard',
+  casos:         'Casos',
+  facturas:      'Facturas',
+  conciliacion:  'Conciliación',
+  cumplimiento:  'Cumplimiento',
+  reportes:      'Reportes',
+  instructivos:  'Instructivos / Encuestas',
+  mantenimiento: 'Mantenimiento',
+  utilidades:    'Utilidades',
+};
+
 export interface Usuario {
   id: string;
   nombre: string;
@@ -138,6 +155,8 @@ export interface Usuario {
   correo_microsoft?: string;
   activo: boolean;
   created_at?: string;
+  /** null = acceso completo; array = lista blanca de módulos permitidos */
+  permisos?: AppModule[] | null;
 }
 
 export const mockUsuarios: Usuario[] = [
