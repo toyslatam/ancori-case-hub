@@ -30,7 +30,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { SocietyServicesMultiSelect } from '@/components/maintenance/SocietyServicesMultiSelect';
-import { Plus, Trash2, Search, Filter, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Search, Filter, RefreshCw, Building2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { AgileCheckProfilePanel } from '@/components/compliance/AgileCheckProfilePanel';
@@ -373,6 +373,11 @@ export default function SocietiesPage() {
 
   const clearPanel = () => setPanelFilters(defaultPanelFilters());
 
+  const totalSociedades     = societies.length;
+  const countSociedadAnonima = societies.filter(s => s.tipo_sociedad === 'SOCIEDADES').length;
+  const countFundaciones    = societies.filter(s => s.tipo_sociedad === 'FUNDACIONES').length;
+  const countBVI            = societies.filter(s => s.tipo_sociedad === 'B.V.I').length;
+
   const handleCreateSocietyService = async (name: string): Promise<SocietyService | null> => {
     const clean = name.trim();
     if (!clean) return null;
@@ -432,6 +437,44 @@ export default function SocietiesPage() {
           <Button onClick={openNew} className="gap-1 shrink-0 w-full sm:w-auto">
             <Plus className="h-4 w-4" /> Nueva Sociedad
           </Button>
+        </div>
+      </div>
+
+      {/* ── Tarjetas de estadísticas ─────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {/* Total */}
+        <div className="relative overflow-hidden rounded-xl bg-[#1e2433] p-5 text-white shadow-sm">
+          <p className="text-sm font-medium text-gray-300">Total Sociedades</p>
+          <p className="mt-2 text-4xl font-bold">{totalSociedades}</p>
+          <p className="mt-1 text-xs text-gray-400">{sorted.length} registros filtrados</p>
+          <Building2 className="absolute right-4 top-4 h-12 w-12 text-white/10" />
+        </div>
+        {/* Sociedad Anónima */}
+        <div className="relative overflow-hidden rounded-xl bg-emerald-600 p-5 text-white shadow-sm">
+          <p className="text-sm font-medium text-emerald-100">Sociedad Anónima</p>
+          <p className="mt-2 text-4xl font-bold">{countSociedadAnonima}</p>
+          <p className="mt-1 text-xs text-emerald-200">
+            {totalSociedades > 0 ? Math.round((countSociedadAnonima / totalSociedades) * 100) : 0}% del total
+          </p>
+          <Building2 className="absolute right-4 top-4 h-12 w-12 text-white/15" />
+        </div>
+        {/* Fundaciones */}
+        <div className="relative overflow-hidden rounded-xl bg-blue-600 p-5 text-white shadow-sm">
+          <p className="text-sm font-medium text-blue-100">Fundaciones</p>
+          <p className="mt-2 text-4xl font-bold">{countFundaciones}</p>
+          <p className="mt-1 text-xs text-blue-200">
+            {totalSociedades > 0 ? Math.round((countFundaciones / totalSociedades) * 100) : 0}% del total
+          </p>
+          <Building2 className="absolute right-4 top-4 h-12 w-12 text-white/15" />
+        </div>
+        {/* B.V.I */}
+        <div className="relative overflow-hidden rounded-xl bg-violet-600 p-5 text-white shadow-sm">
+          <p className="text-sm font-medium text-violet-100">B.V.I</p>
+          <p className="mt-2 text-4xl font-bold">{countBVI}</p>
+          <p className="mt-1 text-xs text-violet-200">
+            {totalSociedades > 0 ? Math.round((countBVI / totalSociedades) * 100) : 0}% del total
+          </p>
+          <Building2 className="absolute right-4 top-4 h-12 w-12 text-white/15" />
         </div>
       </div>
 
