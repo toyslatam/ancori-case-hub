@@ -29,8 +29,8 @@ function fmtMoney(n: number): string {
   return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function fmtDate(iso?: string): string {
-  if (!iso) return '—';
+function fmtDate(iso?: string, fallback = '-'): string {
+  if (!iso) return fallback;
   const d = iso.slice(0, 10).split('-');
   return d.length === 3 ? `${d[2]}/${d[1]}/${d[0]}` : iso;
 }
@@ -76,6 +76,7 @@ function buildHtml(p: NotifyPayload): string {
 
   return `<!DOCTYPE html>
 <html lang="es">
+<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
 <body style="font-family:Arial,sans-serif;color:#222;max-width:620px;margin:0 auto;padding:24px;background:#f9f9f9">
   <div style="background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.1)">
     <div style="background:${headerColor};padding:18px 24px">
@@ -133,28 +134,29 @@ function buildText(p: NotifyPayload): string {
   const esQb = p.tipo === 'enviada_qb';
   const entidad = p.bill_to_society && p.society_name ? p.society_name : p.client_name;
   const tipoEntidad = p.bill_to_society && p.society_name ? 'Sociedad' : 'Cliente';
-  const numFactura = esQb ? (p.qb_numero_factura ?? p.numero_factura ?? '—') : (p.numero_factura || 'Por asignar');
+  const numFactura = esQb ? (p.qb_numero_factura ?? p.numero_factura ?? '-') : (p.numero_factura || 'Por asignar');
   const total = esQb ? (p.qb_total ?? p.total) : p.total;
-  const lineas = p.lines.map(l => `  ${l.descripcion || '—'}  ${fmtMoney(Number(l.importe ?? 0))}`).join('\n');
+  const sep = '-'.repeat(56);
+  const lineas = p.lines.map(l => `  ${l.descripcion || '-'}  ${fmtMoney(Number(l.importe ?? 0))}`).join('\n');
 
   return `${esQb ? 'FACTURA ENVIADA A QUICKBOOKS' : 'NUEVA FACTURA REGISTRADA EN ANCORI'}
-${'─'.repeat(56)}
-Número de Caso : #${p.caso_numero}
+${sep}
+Numero de Caso : #${p.caso_numero}
 ${tipoEntidad}      : ${entidad}
-N° Factura     : ${numFactura}
+N Factura      : ${numFactura}
 Fecha Factura  : ${fmtDate(p.fecha_factura)}
 Estado         : ${p.estado}
 
 DETALLE
-${'─'.repeat(56)}
+${sep}
 ${lineas}
-${'─'.repeat(56)}
+${sep}
 Subtotal       : ${fmtMoney(p.subtotal)}
 ITBMS          : ${fmtMoney(p.itbms)}
 TOTAL          : ${fmtMoney(total)}${esQb && p.qb_balance != null ? `\nBalance        : ${fmtMoney(p.qb_balance)}` : ''}
 
 ${esQb ? 'Enviado' : 'Creado'} por: ${p.creado_por_nombre} (${p.creado_por_email})
-Sistema Ancori — notificación automática`;
+Sistema Ancori - notificacion automatica`;
 }
 
 serve(async (req) => {
@@ -182,8 +184,8 @@ serve(async (req) => {
   const entidad = payload.bill_to_society && payload.society_name ? payload.society_name : payload.client_name;
   const total = esQb ? (payload.qb_total ?? payload.total) : payload.total;
   const subject = esQb
-    ? `[Ancori] Factura QB — Caso #${payload.caso_numero} | ${entidad} — ${fmtMoney(total)}`
-    : `[Ancori] Nueva Factura — Caso #${payload.caso_numero} | ${entidad} — ${fmtMoney(total)}`;
+    ? `[Ancori] Factura QB - Caso #${payload.caso_numero} | ${entidad} - ${fmtMoney(total)}`
+    : `[Ancori] Nueva Factura - Caso #${payload.caso_numero} | ${entidad} - ${fmtMoney(total)}`;
 
   if (!SMTP_PASSWORD) {
     console.error('SMTP_PASSWORD no configurado');

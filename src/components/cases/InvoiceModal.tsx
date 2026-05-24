@@ -9,7 +9,7 @@ import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { Case, CaseInvoice, InvoiceLine, Service, formatNTarea } from '@/data/mockData';
 import { sendInvoiceNotification, linesToNotify } from '@/lib/invoiceNotification';
-import { Plus, Trash2, Send, Loader2, CheckCircle2, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, Send, Loader2, CheckCircle2, ArrowLeft, FileDown, Mail, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { SearchableCombo, type ComboOption } from '@/components/ui/searchable-combo';
 import {
@@ -98,7 +98,7 @@ function normalizeInvoiceLines(raw: InvoiceLine[] | undefined | null, services: 
 export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalProps) {
   const {
     services, invoiceTerms, qbItems, getClientName, getSocietyName,
-    saveInvoice, patchInvoice, allInvoices,
+    saveInvoice, patchInvoice, allInvoices, clients, societies,
   } = useApp();
   const { user } = useAuth();
 
@@ -130,6 +130,14 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
   const [sending, setSending] = useState(false);
   const [estimatedInvoiceNumber, setEstimatedInvoiceNumber] = useState('');
   const [loadingEstimatedNumber, setLoadingEstimatedNumber] = useState(false);
+
+  // ── Panel envío al cliente ────────────────────────────────────────────────
+  const [showSendPanel, setShowSendPanel] = useState(false);
+  const [sendEmail, setSendEmail]         = useState('');
+  const [sendSubject, setSendSubject]     = useState('');
+  const [sendBody, setSendBody]           = useState('');
+  const [sendingToClient, setSendingToClient] = useState(false);
+  const [pdfViewLoading, setPdfViewLoading]   = useState(false);
 
   // Al abrir: desde Facturas → formulario directo; desde Casos → lista si ya hay facturas vinculadas.
   useEffect(() => {
@@ -217,6 +225,80 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
       return true;
     });
   }, [qbItems]);
+
+  // ── Helpers PDF / envío al cliente ───────────────────────────────────────
+  const openSendPanel = () => {
+    const isSociety = billToSociety && !!caseData?.society_id;
+    const defEmail = isSociety
+      ? (societies.find(s => s.id === caseData?.society_id)?.correo ?? '')
+      : (clients.find(c => c.id === caseData?.client_id)?.email ?? '');
+    const invNum = effectiveInvoice?.numero_factura ?? '';
+    setSendEmail(defEmail);
+    setSendSubject(`Factura${invNum ? ` No. ${invNum}` : ''}`);
+    setSendBody('');
+    setShowSendPanel(true);
+  };
+
+  const handleViewPdf = async () => {
+    if (!effectiveInvoice?.pdf_path) return;
+    setPdfViewLoading(true);
+    try {
+      const sb = getSupabase();
+      if (!sb) { toast.error('Sin conexión a Supabase'); return; }
+      const { data, error } = await sb.storage.from('invoices').createSignedUrl(effectiveInvoice.pdf_path, 3600);
+      if (error || !data?.signedUrl) { toast.error('No se pudo generar la URL del PDF'); return; }
+      window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+    } finally {
+      setPdfViewLoading(false);
+    }
+  };
+
+  const handleSendToClient = async () => {
+    if (!sendEmail.trim()) { toast.error('Ingresa un correo destinatario'); return; }
+    if (!SUPABASE_URL?.trim() || !FUNCTION_SECRET?.trim()) {
+      toast.error('Configuración de servidor incompleta'); return;
+    }
+    setSendingToClient(true);
+    try {
+      let pdfUrl: string | undefined;
+      if (effectiveInvoice?.pdf_path) {
+        const sb = getSupabase();
+        if (sb) {
+          const { data } = await sb.storage.from('invoices').createSignedUrl(effectiveInvoice.pdf_path, 3600 * 24 * 7);
+          pdfUrl = data?.signedUrl ?? undefined;
+        }
+      }
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/send-invoice-to-client`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-ancori-secret': FUNCTION_SECRET,
+        },
+        body: JSON.stringify({
+          to_email: sendEmail.trim(),
+          subject: sendSubject.trim() || `Factura${effectiveInvoice?.numero_factura ? ` No. ${effectiveInvoice.numero_factura}` : ''}`,
+          body: sendBody.trim() || undefined,
+          pdf_url: pdfUrl,
+          invoice_number: effectiveInvoice?.numero_factura,
+          client_name: billToSociety && caseData?.society_id ? getSocietyName(caseData.society_id) : getClientName(caseData?.client_id ?? ''),
+          total: effectiveInvoice?.total,
+          fecha_factura: effectiveInvoice?.fecha_factura,
+          sent_by_nombre: user?.nombre ?? user?.email ?? 'Sistema',
+        }),
+      });
+      const data = await res.json() as { ok?: boolean; error?: string; detail?: string };
+      if (!res.ok || !data.ok) {
+        toast.error(`Error al enviar: ${data.detail ?? data.error ?? res.status}`);
+      } else {
+        toast.success(`Factura enviada a ${sendEmail}`);
+        setShowSendPanel(false);
+      }
+    } catch (err) {
+      toast.error(`Error de red: ${String(err)}`);
+    } finally {
+      setSendingToClient(false);
+    }
+  };
 
   if (!caseData) return null;
 
@@ -753,7 +835,8 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
               </section>
             </div>
 
-            <aside className="xl:sticky xl:top-6 self-start">
+            <aside className="xl:sticky xl:top-6 self-start space-y-4">
+              {/* Resumen */}
               <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
                 <div className="px-5 py-4 border-b border-gray-100">
                   <h3 className="text-sm font-semibold text-gray-900">Resumen</h3>
@@ -774,6 +857,105 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
                   </div>
                 </div>
               </div>
+
+              {/* PDF & Envío al cliente — visible al editar cualquier factura existente */}
+              {isEdit && effectiveInvoice && (
+                <div className="rounded-2xl border border-sky-200 bg-white shadow-sm overflow-hidden">
+                  <div className="px-5 py-4 border-b border-sky-100 bg-sky-50/50 flex items-center gap-2">
+                    <Mail className="h-4 w-4 text-sky-600 shrink-0" />
+                    <h3 className="text-sm font-semibold text-sky-800">Envío al cliente</h3>
+                  </div>
+                  <div className="p-4 space-y-3">
+
+                    {/* Ver PDF — solo si hay PDF listo */}
+                    {effectiveInvoice.pdf_status === 'ok' && effectiveInvoice.pdf_path && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full h-9 text-sm gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                        onClick={handleViewPdf}
+                        disabled={pdfViewLoading}
+                      >
+                        {pdfViewLoading
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : <FileDown className="h-3.5 w-3.5" />}
+                        Ver PDF
+                      </Button>
+                    )}
+
+                    {/* Botón abrir formulario / formulario expandido */}
+                    {!showSendPanel ? (
+                      <Button
+                        type="button"
+                        className="w-full h-9 text-sm gap-1.5 bg-sky-600 hover:bg-sky-700 text-white"
+                        onClick={openSendPanel}
+                      >
+                        <Mail className="h-3.5 w-3.5" />
+                        Enviar al cliente
+                      </Button>
+                    ) : (
+                      <div className="space-y-3 rounded-xl border border-sky-100 bg-sky-50/40 p-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold text-sky-700 uppercase tracking-wide">Enviar al cliente</p>
+                          <button
+                            type="button"
+                            onClick={() => setShowSendPanel(false)}
+                            className="rounded p-0.5 text-gray-400 hover:text-gray-600"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1 block">Para</label>
+                          <Input
+                            type="email"
+                            value={sendEmail}
+                            onChange={e => setSendEmail(e.target.value)}
+                            placeholder="correo@cliente.com"
+                            className="h-9 text-sm rounded-lg border-gray-200"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1 block">Asunto</label>
+                          <Input
+                            value={sendSubject}
+                            onChange={e => setSendSubject(e.target.value)}
+                            placeholder="Asunto del correo"
+                            className="h-9 text-sm rounded-lg border-gray-200"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1 block">
+                            Mensaje <span className="font-normal normal-case text-gray-400">(opcional)</span>
+                          </label>
+                          <textarea
+                            value={sendBody}
+                            onChange={e => setSendBody(e.target.value)}
+                            placeholder="Mensaje adicional para el cliente..."
+                            rows={3}
+                            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-sky-400 resize-none"
+                          />
+                        </div>
+
+                        <Button
+                          type="button"
+                          className="w-full h-9 text-sm gap-1.5 bg-sky-600 hover:bg-sky-700 text-white"
+                          onClick={handleSendToClient}
+                          disabled={sendingToClient || !sendEmail.trim()}
+                        >
+                          {sendingToClient
+                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            : <Send className="h-3.5 w-3.5" />}
+                          {sendingToClient ? 'Enviando...' : 'Enviar'}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </aside>
           </div>
         </div>

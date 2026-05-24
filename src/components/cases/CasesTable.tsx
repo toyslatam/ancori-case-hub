@@ -113,8 +113,9 @@ export function CasesTable({
 
       <div
         className={cn(
-          'w-full overflow-x-auto overscroll-x-contain',
-          '[&::-webkit-scrollbar]:h-1.5',
+          'w-full overflow-x-auto overflow-y-auto overscroll-contain',
+          'max-h-[750px]',
+          '[&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar]:w-1.5',
           '[&::-webkit-scrollbar-track]:bg-transparent',
           '[&::-webkit-scrollbar-thumb]:rounded-full',
           READABLE_CASES_TABLE_SAMPLE
@@ -122,20 +123,18 @@ export function CasesTable({
             : '[&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb:hover]:bg-gray-300',
         )}
       >
-        <table className={cn('w-full border-collapse', READABLE_CASES_TABLE_SAMPLE ? 'min-w-[1450px]' : 'min-w-[1040px]')}>
+        <table className={cn('border-collapse', READABLE_CASES_TABLE_SAMPLE ? 'min-w-[1450px] w-full' : 'min-w-[1040px] w-full')}>
           {/* ── THEAD sticky ──────────────────────────────────────────── */}
-          <thead>
+          <thead className="sticky top-0 z-10">
             <tr className="border-b border-gray-100">
               <SortTh field="n_tarea" className={READABLE_CASES_TABLE_SAMPLE ? 'min-w-[95px]' : 'min-w-[110px]'}>Caso</SortTh>
               <Th className={READABLE_CASES_TABLE_SAMPLE ? 'min-w-[180px]' : 'min-w-[190px]'}>Cliente</Th>
               <Th className={READABLE_CASES_TABLE_SAMPLE ? 'min-w-[210px]' : 'min-w-[180px]'}>Sociedad</Th>
               <Th className={READABLE_CASES_TABLE_SAMPLE ? 'min-w-[130px]' : 'min-w-[140px]'}>Creado Por</Th>
               <Th className={READABLE_CASES_TABLE_SAMPLE ? 'min-w-[210px]' : 'min-w-[260px]'}>Servicio</Th>
-              {READABLE_CASES_TABLE_SAMPLE && (
-                <Th className="min-w-[240px]">Descripción</Th>
-              )}
+              {READABLE_CASES_TABLE_SAMPLE && <Th className="min-w-[240px]">Descripción</Th>}
               <SortTh field="estado" className={READABLE_CASES_TABLE_SAMPLE ? 'min-w-[140px]' : 'min-w-[150px]'}>Estado</SortTh>
-              <Th className={READABLE_CASES_TABLE_SAMPLE ? 'min-w-[150px]' : 'min-w-[150px]'}>Responsable</Th>
+              <Th className="min-w-[150px]">Responsable</Th>
               <Th className={READABLE_CASES_TABLE_SAMPLE ? 'w-[145px] min-w-[145px] text-right' : 'w-[170px] min-w-[170px] text-right'}>Acciones</Th>
             </tr>
           </thead>
@@ -157,12 +156,13 @@ export function CasesTable({
               const observacionesCount = countObservaciones(observacionesText);
               const commentCount   = c.comments?.length ?? 0;
               const invoiceCount   = allInvoices.filter(i => i.case_id === c.id).length;
-              const rowBg          = idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40';
+              const hasPdfInvoice  = allInvoices.some(i => i.case_id === c.id && i.estado !== 'borrador' && i.estado !== 'anulada');
+              const rowBg          = hasPdfInvoice ? 'bg-red-100/70' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40';
 
               return (
                 <tr
                   key={c.id}
-                  className={cn('group cursor-pointer transition-colors duration-100 hover:bg-blue-50/30', rowBg)}
+                  className={cn('group cursor-pointer transition-colors duration-100', hasPdfInvoice ? 'hover:bg-red-200/60' : 'hover:bg-blue-50/30', rowBg)}
                   onClick={() => onEditCase(c)}
                 >
 
