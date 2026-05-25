@@ -118,8 +118,8 @@ function tipoSociedadBadgeClass(tipo: TipoSociedad): string {
 
 function tipoSociedadLabel(tipo: TipoSociedad): string {
   switch (tipo) {
-    case 'SOCIEDADES':  return 'S.A.';
-    case 'FUNDACIONES': return 'Fundación';
+    case 'SOCIEDADES':  return 'SOCIEDAD';
+    case 'FUNDACIONES': return 'FUNDACIÓN';
     case 'B.V.I':       return 'B.V.I';
     default:            return tipo;
   }
@@ -133,6 +133,9 @@ type PanelFilters = {
   fechaInscDesde: string;
   fechaInscHasta: string;
   semestre: '' | '1' | '2';
+  presidenteId: string;
+  tesoreroId: string;
+  secretarioId: string;
 };
 
 const defaultPanelFilters = (): PanelFilters => ({
@@ -143,6 +146,9 @@ const defaultPanelFilters = (): PanelFilters => ({
   fechaInscDesde: '',
   fechaInscHasta: '',
   semestre: '',
+  presidenteId: '',
+  tesoreroId: '',
+  secretarioId: '',
 });
 
 export default function SocietiesPage() {
@@ -247,6 +253,18 @@ export default function SocietiesPage() {
       if (panelFilters.tipoSociedad && s.tipo_sociedad !== panelFilters.tipoSociedad) return false;
       if (panelFilters.clienteId && s.client_id !== panelFilters.clienteId) return false;
       if (panelFilters.societyId && s.id !== panelFilters.societyId) return false;
+      if (panelFilters.presidenteId) {
+        if (panelFilters.presidenteId === FILTER_NONE) { if (s.presidente_id) return false; }
+        else if (s.presidente_id !== panelFilters.presidenteId) return false;
+      }
+      if (panelFilters.tesoreroId) {
+        if (panelFilters.tesoreroId === FILTER_NONE) { if (s.tesorero_id) return false; }
+        else if (s.tesorero_id !== panelFilters.tesoreroId) return false;
+      }
+      if (panelFilters.secretarioId) {
+        if (panelFilters.secretarioId === FILTER_NONE) { if (s.secretario_id) return false; }
+        else if (s.secretario_id !== panelFilters.secretarioId) return false;
+      }
 
       const fi = s.fecha_inscripcion ? normDate(s.fecha_inscripcion) : '';
       if (panelFilters.fechaInscDesde || panelFilters.fechaInscHasta) {
@@ -502,6 +520,40 @@ export default function SocietiesPage() {
             {totalSociedades > 0 ? Math.round((countBVI / totalSociedades) * 100) : 0}% del total
           </p>
           <Building2 className="absolute right-4 top-4 h-12 w-12 text-white/15" />
+        </div>
+      </div>
+
+      {/* ── Filtros visibles ─────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-1">Presidente</span>
+          <SearchableCombo
+            options={[{ value: FILTER_ALL, label: 'Todos' }, ...directorOptions]}
+            value={panelFilters.presidenteId || FILTER_ALL}
+            onChange={v => setPanelFilters(f => ({ ...f, presidenteId: v === FILTER_ALL || !v ? '' : v }))}
+            placeholder="Todos"
+            emptyLabel="Sin directores"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-1">Tesorero</span>
+          <SearchableCombo
+            options={[{ value: FILTER_ALL, label: 'Todos' }, ...directorOptions]}
+            value={panelFilters.tesoreroId || FILTER_ALL}
+            onChange={v => setPanelFilters(f => ({ ...f, tesoreroId: v === FILTER_ALL || !v ? '' : v }))}
+            placeholder="Todos"
+            emptyLabel="Sin directores"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-1">Secretario</span>
+          <SearchableCombo
+            options={[{ value: FILTER_ALL, label: 'Todos' }, ...directorOptions]}
+            value={panelFilters.secretarioId || FILTER_ALL}
+            onChange={v => setPanelFilters(f => ({ ...f, secretarioId: v === FILTER_ALL || !v ? '' : v }))}
+            placeholder="Todos"
+            emptyLabel="Sin directores"
+          />
         </div>
       </div>
 

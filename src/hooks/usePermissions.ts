@@ -11,7 +11,7 @@ const MODULE_DEFAULT_ROUTE: Record<AppModule, string> = {
   casos:         '/casos',
   facturas:      '/facturas',
   conciliacion:  '/conciliacion',
-  cumplimiento:  '/cumplimiento',
+  cumplimiento:  '/cumplimiento/clientes',
   reportes:      '/reportes',
   instructivos:  '/instructivos',
   mantenimiento: '/mantenimiento/clientes',

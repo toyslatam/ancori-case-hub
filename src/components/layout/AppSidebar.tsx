@@ -55,6 +55,13 @@ import { usePermissions } from '@/hooks/usePermissions';
 
 const LOGO_SRC = '/Logo%20Ancori.jpg';
 
+const cumplItems = [
+  { title: 'General', url: '/cumplimiento', icon: Shield },
+  { title: 'Clientes', url: '/cumplimiento/clientes', icon: Users },
+  { title: 'Directores', url: '/cumplimiento/directores', icon: UserCog },
+  { title: 'Sociedades', url: '/cumplimiento/sociedades', icon: Building2 },
+];
+
 const maintItems = [
   { title: 'Clientes', url: '/mantenimiento/clientes', icon: Users },
   { title: 'Directores', url: '/mantenimiento/directores', icon: UserCog },
@@ -77,6 +84,7 @@ export function AppSidebar() {
   const { state, toggleSidebar } = useSidebar();
   const collapsed = state === 'collapsed';
   const location = useLocation();
+  const isCumplActive = cumplItems.some(i => location.pathname === i.url) || location.pathname === '/cumplimiento';
   const isMaintActive = maintItems.some(i => location.pathname === i.url);
   const isUtilActive = utilItems.some(i => location.pathname === i.url);
   const { user, session, signOut } = useAuth();
@@ -130,6 +138,45 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               )}
+
+              {can('cumplimiento') && !collapsed && (
+                <Collapsible defaultOpen={isCumplActive} className="group/collapsible-cumpl">
+                  <SidebarMenuItem>
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton className="text-sidebar-foreground/80 hover:text-sidebar-foreground">
+                        <Shield className="shrink-0" />
+                        <span className="flex-1 text-left">Cumplimiento</span>
+                        <ChevronDown className="ml-auto h-4 w-4 shrink-0 transition-transform group-data-[state=open]/collapsible-cumpl:rotate-180" />
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <SidebarMenuSub>
+                        {cumplItems.map(item => (
+                          <SidebarMenuSubItem key={item.url}>
+                            <SidebarMenuSubButton asChild isActive={location.pathname === item.url}>
+                              <NavLink to={item.url} className="text-sidebar-foreground/75" activeClassName={navLinkActive}>
+                                <item.icon className="shrink-0" />
+                                <span>{item.title}</span>
+                              </NavLink>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))}
+                      </SidebarMenuSub>
+                    </CollapsibleContent>
+                  </SidebarMenuItem>
+                </Collapsible>
+              )}
+
+              {collapsed && can('cumplimiento') && cumplItems.map(item => (
+                <SidebarMenuItem key={item.url}>
+                  <SidebarMenuButton asChild tooltip={item.title} isActive={location.pathname === item.url}>
+                    <NavLink to={item.url} className="text-sidebar-foreground/80" activeClassName={navLinkActive}>
+                      <item.icon className="shrink-0" />
+                      <span>{item.title}</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
 
               {can('mantenimiento') && !collapsed && (
                 <Collapsible defaultOpen={isMaintActive} className="group/collapsible">
@@ -242,17 +289,6 @@ export function AppSidebar() {
                           {pendingConflicts}
                         </Badge>
                       )}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-
-              {can('cumplimiento') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild tooltip="Cumplimiento" isActive={location.pathname === '/cumplimiento'}>
-                    <NavLink to="/cumplimiento" className="text-sidebar-foreground/80" activeClassName={navLinkActive}>
-                      <Shield className="shrink-0" />
-                      <span>Cumplimiento</span>
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

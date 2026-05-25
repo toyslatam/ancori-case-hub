@@ -66,7 +66,10 @@ function ProtectedApp() {
           <Route path="/casos"   element={<Guard module="casos"><CasesPage /></Guard>} />
           <Route path="/facturas" element={<Guard module="facturas"><FacturasPage /></Guard>} />
           <Route path="/conciliacion" element={<Guard module="conciliacion"><ConciliacionPage /></Guard>} />
-          <Route path="/cumplimiento" element={<Guard module="cumplimiento"><CumplimientoPage /></Guard>} />
+          <Route path="/cumplimiento"            element={<Guard module="cumplimiento"><CumplimientoPage /></Guard>} />
+          <Route path="/cumplimiento/clientes"   element={<Guard module="cumplimiento"><ClientsPage /></Guard>} />
+          <Route path="/cumplimiento/directores" element={<Guard module="cumplimiento"><DirectoresPage /></Guard>} />
+          <Route path="/cumplimiento/sociedades" element={<Guard module="cumplimiento"><SocietiesPage /></Guard>} />
           <Route path="/reportes"    element={<Guard module="reportes"><ReportesPage /></Guard>} />
           <Route path="/instructivos" element={<Guard module="instructivos"><InstructivosPage /></Guard>} />
           <Route path="/mantenimiento/clientes"  element={<Guard module="mantenimiento"><ClientsPage /></Guard>} />

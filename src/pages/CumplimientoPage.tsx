@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import {
   Shield, Search, Download, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
-  X, AlertTriangle, CheckCircle, Clock, Loader2, ShieldCheck, ShieldAlert,
+  X, AlertTriangle, Clock, Loader2, ShieldCheck, ShieldAlert,
   ShieldX, RefreshCw, Users, Building2, UserCog, CloudUpload,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -30,7 +30,7 @@ import {
 import {
   fetchComplianceChecks, verifyEntity, computeStats, syncClientToAgileCheck,
   getStatusLabel, getRiskLabel, getEntityLabel,
-  type ComplianceCheck, type ComplianceStats, type VerifyEntityHubOptions,
+  type ComplianceCheck, type VerifyEntityHubOptions,
 } from '@/lib/agileCheckApi';
 
 const ALL = '__all__';
@@ -366,7 +366,7 @@ export default function CumplimientoPage() {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Shield className="h-6 w-6 text-orange-500" />
-            Cumplimiento
+            Cumplimiento — General
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             Verificaciones PEP/AML - AgileCheck
@@ -688,8 +688,22 @@ export default function CumplimientoPage() {
                   </td></tr>
                 ) : pageRows.map((c, i) => {
                   const expired = isExpired(c.expires_at);
+                  const canOpenPanel = c.entity_type === 'client' || c.entity_type === 'society';
+                  const handleRowClick = () => {
+                    if (canOpenPanel) {
+                      setAgDetail({ entityType: c.entity_type as 'client' | 'society', entityId: c.entity_id, entityName: c.entity_name });
+                    }
+                  };
                   return (
-                    <tr key={c.id} className={cn('border-b border-border/50 hover:bg-blue-50/40', i % 2 === 1 && 'bg-muted/20')}>
+                    <tr
+                      key={c.id}
+                      onClick={handleRowClick}
+                      className={cn(
+                        'border-b border-border/50 hover:bg-blue-50/40 transition-colors',
+                        i % 2 === 1 && 'bg-muted/20',
+                        canOpenPanel && 'cursor-pointer',
+                      )}
+                    >
                       <td className="px-3 py-2">
                         <Badge variant="outline" className="text-xs">
                           {c.entity_type === 'client' && <Users className="h-3 w-3 mr-1" />}
@@ -698,7 +712,9 @@ export default function CumplimientoPage() {
                           {getEntityLabel(c.entity_type)}
                         </Badge>
                       </td>
-                      <td className="px-3 py-2 font-medium">{c.entity_name}</td>
+                      <td className="px-3 py-2 font-medium">
+                        <span className={cn(canOpenPanel && 'text-blue-700 hover:underline')}>{c.entity_name}</span>
+                      </td>
                       <td className="px-3 py-2 text-muted-foreground text-xs">{c.check_type}</td>
                       <td className="px-3 py-2">
                         <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-medium', STATUS_BADGE[c.status])}>
@@ -741,21 +757,12 @@ export default function CumplimientoPage() {
                         })()}
                       </td>
                       {userCanVerify && (
-                        <td className="px-3 py-2 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            {(c.entity_type === 'client' || c.entity_type === 'society') && (
-                              <Button size="sm" variant="ghost" className="h-7 px-2 text-[10px] text-blue-700 hover:bg-blue-50"
-                                onClick={() => setAgDetail({ entityType: c.entity_type as 'client' | 'society', entityId: c.entity_id, entityName: c.entity_name })}
-                                title="Ver ficha AgileCheck">
-                                <ShieldCheck className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" disabled={verifying === c.entity_id}
-                              onClick={() => setConfirmVerify({ entityType: c.entity_type, entityId: c.entity_id, entityName: c.entity_name })}
-                              title="Re-verificar">
-                              <RefreshCw className={cn('h-3.5 w-3.5', verifying === c.entity_id && 'animate-spin')} />
-                            </Button>
-                          </div>
+                        <td className="px-3 py-2 text-center" onClick={e => e.stopPropagation()}>
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" disabled={verifying === c.entity_id}
+                            onClick={() => setConfirmVerify({ entityType: c.entity_type, entityId: c.entity_id, entityName: c.entity_name })}
+                            title="Re-verificar">
+                            <RefreshCw className={cn('h-3.5 w-3.5', verifying === c.entity_id && 'animate-spin')} />
+                          </Button>
                         </td>
                       )}
                     </tr>
@@ -782,7 +789,7 @@ export default function CumplimientoPage() {
 
       {/* Sheet Ficha AgileCheck */}
       <Sheet open={agDetail != null} onOpenChange={open => { if (!open) setAgDetail(null); }}>
-        <SheetContent side="right" className="w-full sm:max-w-[560px] overflow-y-auto">
+        <SheetContent side="right" className="w-full sm:max-w-[720px] overflow-y-auto">
           <SheetHeader className="mb-4">
             <SheetTitle className="flex items-center gap-2">
               <ShieldCheck className="h-5 w-5 text-blue-600" />

@@ -490,54 +490,73 @@ async function runConsultaBuscar(req: CheckRequest): Promise<AgileCheckResult> {
   const queryPath = Deno.env.get('AGILECHECK_QUERY_PATH')?.trim() || PATH_BUSCAR;
   const endpoint = apiUrlJoin(apiBase, queryPath);
   const dbName = Deno.env.get('AGILECHECK_DB')?.trim();
+  const headers = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'Authorization': `Bearer ${token}`,
+    ...(dbName ? { 'X-Agilecheck-DB': dbName } : {}),
+  };
+  const bodyStr = JSON.stringify(payload);
 
-  try {
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Authorization': `Bearer ${token}`,
-        ...(dbName ? { 'X-Agilecheck-DB': dbName } : {}),
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const text = await res.text();
-    let data: Record<string, unknown> = {};
+  /** Hace UN intento y devuelve { ok, data } o error. */
+  async function doFetch(): Promise<{ ok: true; data: Record<string, unknown> } | AgileCheckResult> {
     try {
-      data = JSON.parse(text) as Record<string, unknown>;
-    } catch {
-      return {
-        status: 'error',
-        risk_level: null,
-        agilecheck_id: null,
-        summary: `AgileCheck respuesta no-JSON: ${text.slice(0, 200)}`,
-        raw_data: { raw: text.slice(0, 500), http_status: res.status },
-      };
+      const res = await fetch(endpoint, { method: 'POST', headers, body: bodyStr });
+      const text = await res.text();
+      let data: Record<string, unknown> = {};
+      try { data = JSON.parse(text) as Record<string, unknown>; } catch {
+        return { status: 'error', risk_level: null, agilecheck_id: null,
+          summary: `AgileCheck respuesta no-JSON: ${text.slice(0, 200)}`,
+          raw_data: { raw: text.slice(0, 500), http_status: res.status } };
+      }
+      if (!res.ok) {
+        return { status: 'error', risk_level: null, agilecheck_id: null,
+          summary: `AgileCheck HTTP ${res.status}: ${JSON.stringify(data).slice(0, 280)}`,
+          raw_data: { ...data, _http_status: res.status } };
+      }
+      return { ok: true, data };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { status: 'error', risk_level: null, agilecheck_id: null,
+        summary: `Error de conexion: ${msg.slice(0, 200)}`, raw_data: { error: msg } };
     }
-
-    if (!res.ok) {
-      return {
-        status: 'error',
-        risk_level: null,
-        agilecheck_id: null,
-        summary: `AgileCheck HTTP ${res.status}: ${JSON.stringify(data).slice(0, 280)}`,
-        raw_data: { ...data, _http_status: res.status },
-      };
-    }
-
-    return parseAgileCheckResult(data);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return {
-      status: 'error',
-      risk_level: null,
-      agilecheck_id: null,
-      summary: `Error de conexion: ${msg.slice(0, 200)}`,
-      raw_data: { error: msg },
-    };
   }
+
+  /** Devuelve true si la respuesta ya está finalizada (terminado !== false o tiene hits). */
+  function isTerminado(data: Record<string, unknown>): boolean {
+    const root = unwrapAspNetD(data);
+    const terminado = root.terminado ?? root.Terminado;
+    if (terminado === false) {
+      const rowsRaw = root.consultaRows ?? root.ConsultaRows ?? [];
+      const rows = Array.isArray(rowsRaw) ? rowsRaw as Record<string, unknown>[] : [];
+      const nonDescartados = rows.filter(r => r && typeof r === 'object' && r.esDescartado !== true);
+      const totalResult = Number(root.totalResult ?? root.TotalResult ?? nonDescartados.length);
+      const hasHits = nonDescartados.length > 0 || (Number.isFinite(totalResult) && totalResult > 0);
+      return hasHits;
+    }
+    return true;
+  }
+
+  // Primer intento
+  const first = await doFetch();
+  if (!('ok' in first)) return first;
+
+  // Si ya terminó, devolver directamente
+  if (isTerminado(first.data)) return parseAgileCheckResult(first.data);
+
+  // Reintentos: AgileCheck procesa async → esperar y volver a consultar (hasta 3 veces, 4 s entre cada uno)
+  const MAX_RETRIES = 3;
+  const WAIT_MS = 4000;
+  let lastData = first.data;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, WAIT_MS));
+    const retry = await doFetch();
+    if (!('ok' in retry)) return retry; // error de red → devolver el error
+    lastData = retry.data;
+    if (isTerminado(lastData)) break;
+  }
+
+  return parseAgileCheckResult(lastData);
 }
 
 Deno.serve(async (req) => {
