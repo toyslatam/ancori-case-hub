@@ -34,10 +34,13 @@ import { Plus, Trash2, Search, Filter, RefreshCw, Building2 } from 'lucide-react
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { AgileCheckProfilePanel } from '@/components/compliance/AgileCheckProfilePanel';
+import {
+  isQboSocietyPushConfigured,
+  pushSocietyToQuickbooksUpsert,
+} from '@/lib/qboIntegration';
 
 const SUPABASE_URL    = import.meta.env.VITE_SUPABASE_URL as string;
 const QBO_CRON_SECRET = import.meta.env.VITE_QBO_CRON_SECRET as string;
-const QBO_SOCIETIES_ENABLED = false; // desactivado temporalmente por solicitud
 
 const FILTER_ALL = '__all__';
 const FILTER_NONE = '__none__';
@@ -110,6 +113,15 @@ function tipoSociedadBadgeClass(tipo: TipoSociedad): string {
       return 'border-violet-600 bg-violet-50 text-violet-800';
     default:
       return 'border-border text-muted-foreground';
+  }
+}
+
+function tipoSociedadLabel(tipo: TipoSociedad): string {
+  switch (tipo) {
+    case 'SOCIEDADES':  return 'S.A.';
+    case 'FUNDACIONES': return 'Fundación';
+    case 'B.V.I':       return 'B.V.I';
+    default:            return tipo;
   }
 }
 
@@ -189,9 +201,11 @@ export default function SocietiesPage() {
     { value: '2', label: 'Semestre 2' },
   ];
 
+  const qboPushEnabled = isQboSocietyPushConfigured();
+
   const handleSyncNames = async () => {
-    if (!QBO_SOCIETIES_ENABLED) {
-      toast.info('QuickBooks está desactivado temporalmente para Sociedades.');
+    if (!qboPushEnabled) {
+      toast.info('Configura VITE_QBO_SOCIETY_PUSH_SECRET en .env.local para habilitar QuickBooks.');
       return;
     }
     if (!QBO_CRON_SECRET) { toast.error('VITE_QBO_CRON_SECRET no configurado'); return; }
@@ -350,6 +364,19 @@ export default function SocietiesPage() {
       if (!servicesOk) return;
       toast.success(editItem ? 'Sociedad actualizada' : 'Sociedad creada');
       setShowForm(false);
+
+      // Push a QuickBooks en background (no bloquea si falla)
+      if (qboPushEnabled) {
+        pushSocietyToQuickbooksUpsert(society).then(result => {
+          if (result.quickbooks_customer_id || result.id_qb != null) {
+            const action = society.activo ? 'sincronizada' : 'desactivada';
+            toast.success(`QB: sociedad ${action} en QuickBooks`, { duration: 4000 });
+          }
+        }).catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          toast.warning(`Guardado OK, pero QB falló: ${msg}`, { duration: 6000 });
+        });
+      }
     } catch (e) {
       toast.error(String(e));
     } finally {
@@ -428,11 +455,11 @@ export default function SocietiesPage() {
           <Button
             variant="outline"
             onClick={handleSyncNames}
-            disabled={syncing || !QBO_SOCIETIES_ENABLED}
+            disabled={syncing || !qboPushEnabled}
             className="gap-1.5 shrink-0 w-full sm:w-auto border-emerald-200 text-emerald-700 hover:bg-emerald-50"
           >
             <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-            {!QBO_SOCIETIES_ENABLED ? 'QuickBooks desactivado' : (syncing ? 'Sincronizando...' : 'Sincronizar nombres QB')}
+            {!qboPushEnabled ? 'QuickBooks desactivado' : (syncing ? 'Sincronizando...' : 'Sincronizar nombres QB')}
           </Button>
           <Button onClick={openNew} className="gap-1 shrink-0 w-full sm:w-auto">
             <Plus className="h-4 w-4" /> Nueva Sociedad
@@ -563,14 +590,25 @@ export default function SocietiesPage() {
                 </div>
 
                 <div className="flex min-w-0 items-center justify-end gap-3">
-                  <div className="min-w-0 text-right">
-                    <Badge variant="outline" className={cn('font-semibold', tipoSociedadBadgeClass(s.tipo_sociedad))}>
-                      {s.tipo_sociedad}
-                    </Badge>
-                    <p className="mt-1 hidden max-w-[180px] truncate text-xs text-muted-foreground sm:block lg:hidden" title={presidentName}>
+                  <div className="min-w-0 text-right space-y-1">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <span className={cn(
+                        'inline-block h-2 w-2 rounded-full shrink-0',
+                        s.activo ? 'bg-emerald-500' : 'bg-red-400',
+                      )} />
+                      <Badge variant="outline" className={cn('font-semibold', tipoSociedadBadgeClass(s.tipo_sociedad))}>
+                        {tipoSociedadLabel(s.tipo_sociedad)}
+                      </Badge>
+                    </div>
+                    {!s.activo && (
+                      <span className="inline-block rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700">
+                        Inactiva
+                      </span>
+                    )}
+                    <p className="hidden max-w-[180px] truncate text-xs text-muted-foreground sm:block lg:hidden" title={presidentName}>
                       Presidente: {presidentName}
                     </p>
-                    <p className="mt-1 hidden text-xs text-muted-foreground xl:block">
+                    <p className="hidden text-xs text-muted-foreground xl:block">
                       {s.fecha_inscripcion ? toDMY(s.fecha_inscripcion) : 'Sin fecha'}
                     </p>
                   </div>
