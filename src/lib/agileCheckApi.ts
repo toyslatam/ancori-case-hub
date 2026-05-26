@@ -224,7 +224,7 @@ export async function verifyEntity(
     const sync_agilecheck_client =
       syncRaw && typeof syncRaw === 'object' && !Array.isArray(syncRaw)
         ? (syncRaw as {
-          ok?: boolean;
+          ok: boolean;
           agilecheck_cliente_id?: number;
           action?: string;
           error?: string;
@@ -398,6 +398,129 @@ export async function pushAgileCheckField(
   } catch (err) {
     return { ok: false, error: String(err) };
   }
+}
+
+// ─── Bitácora / Sync Log ───────────────────────────────────────────────────
+
+export type SyncLogEntry = {
+  id: string;
+  entity_type: string;
+  entity_id: string;
+  action: 'fetch' | 'push' | 'verify' | 'app_update' | string;
+  performed_by: string | null;
+  snapshot: Record<string, unknown> | null;
+  changes: Array<{ field: string; old_value: unknown; new_value: unknown }> | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export async function fetchSyncLog(
+  entityType: string,
+  entityId: string,
+  limit = 50,
+): Promise<SyncLogEntry[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+  const { data } = await sb
+    .from('agilecheck_sync_log')
+    .select('*')
+    .eq('entity_type', entityType)
+    .eq('entity_id', entityId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  return (data ?? []) as SyncLogEntry[];
+}
+
+/** Retorna un mapa entity_id → cantidad de entradas en la bitácora para un conjunto de IDs. */
+export async function fetchSyncLogCounts(entityIds: string[]): Promise<Map<string, number>> {
+  const sb = getSupabase();
+  if (!sb || entityIds.length === 0) return new Map();
+  const { data } = await sb
+    .from('agilecheck_sync_log')
+    .select('entity_id')
+    .in('entity_id', entityIds);
+  const counts = new Map<string, number>();
+  for (const row of (data ?? []) as { entity_id: string }[]) {
+    counts.set(row.entity_id, (counts.get(row.entity_id) ?? 0) + 1);
+  }
+  return counts;
+}
+
+export async function insertSyncLog(entry: {
+  entity_type: string;
+  entity_id: string;
+  action: string;
+  performed_by?: string | null;
+  snapshot?: Record<string, unknown> | null;
+  changes?: Array<{ field: string; old_value: unknown; new_value: unknown }> | null;
+  notes?: string | null;
+}): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) return;
+  await sb.from('agilecheck_sync_log').insert(entry);
+}
+
+// ─── Documentos Entregados ─────────────────────────────────────────────────
+
+export const DOCUMENTOS_CHECKLIST = [
+  'Copia de documento de Identificación',
+  'Formulario KYC',
+  'Comprobante de domicilio',
+  'Certificado de Registro Público o Pacto Social',
+  'Registro de directores y accionistas',
+  'Declaración Jurada de Beneficiario Final',
+  'Aviso de operaciones o Permiso de operaciones',
+  'Registro contable',
+  'Copia de Cédula de Accionistas',
+] as const;
+
+export type DocumentoItem = {
+  id: string;
+  entity_type: string;
+  entity_id: string;
+  documento: string;
+  entregado: boolean;
+  fecha_entrega: string | null;
+  updated_by: string | null;
+  updated_at: string;
+};
+
+export async function fetchDocumentos(
+  entityType: string,
+  entityId: string,
+): Promise<DocumentoItem[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+  const { data } = await sb
+    .from('agilecheck_documentos')
+    .select('*')
+    .eq('entity_type', entityType)
+    .eq('entity_id', entityId);
+  return (data ?? []) as DocumentoItem[];
+}
+
+export async function upsertDocumento(
+  entityType: string,
+  entityId: string,
+  documento: string,
+  entregado: boolean,
+  updatedBy?: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+  const sb = getSupabase();
+  if (!sb) return { ok: false, error: 'Supabase no configurado' };
+  const { error } = await sb.from('agilecheck_documentos').upsert(
+    {
+      entity_type: entityType,
+      entity_id: entityId,
+      documento,
+      entregado,
+      fecha_entrega: entregado ? new Date().toISOString().slice(0, 10) : null,
+      updated_by: updatedBy ?? null,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'entity_type,entity_id,documento' },
+  );
+  return error ? { ok: false, error: error.message } : { ok: true };
 }
 
 /** Sincroniza un cliente Ancori → AgileCheck (`POST/PUT /api/Cliente`) vía Edge Function `agilecheck-sync-client`. */

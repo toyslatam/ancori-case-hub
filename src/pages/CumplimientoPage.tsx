@@ -29,6 +29,7 @@ import {
 } from 'recharts';
 import {
   fetchComplianceChecks, verifyEntity, computeStats, syncClientToAgileCheck,
+  fetchSyncLogCounts,
   getStatusLabel, getRiskLabel, getEntityLabel,
   type ComplianceCheck, type VerifyEntityHubOptions,
 } from '@/lib/agileCheckApi';
@@ -149,6 +150,7 @@ export default function CumplimientoPage() {
     entityName: string;
   } | null>(null);
   const [agOverride, setAgOverride] = useState<Map<string, AgUpdatedFields>>(new Map());
+  const [logCounts, setLogCounts] = useState<Map<string, number>>(new Map());
 
   const userCanVerify = canVerify(user?.rol);
 
@@ -192,6 +194,8 @@ export default function CumplimientoPage() {
     const data = await fetchComplianceChecks();
     setChecks(data);
     setLoading(false);
+    const ids = [...new Set(data.map(c => c.entity_id))];
+    fetchSyncLogCounts(ids).then(setLogCounts);
   }
 
   // Stats
@@ -676,14 +680,15 @@ export default function CumplimientoPage() {
                     </th>
                   ))}
                   <th className="px-3 py-2.5 text-left font-semibold text-xs uppercase tracking-wider whitespace-nowrap w-[130px]">AG Riesgo</th>
+                  <th className="px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wider whitespace-nowrap w-[80px]">Bitácora</th>
                   {userCanVerify && <th className="px-3 py-2.5 text-center text-xs font-semibold uppercase w-[80px]">Accion</th>}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={10} className="text-center py-12"><Loader2 className="h-6 w-6 animate-spin mx-auto text-orange-400" /></td></tr>
+                  <tr><td colSpan={11} className="text-center py-12"><Loader2 className="h-6 w-6 animate-spin mx-auto text-orange-400" /></td></tr>
                 ) : pageRows.length === 0 ? (
-                  <tr><td colSpan={10} className="text-center py-12 text-muted-foreground">
+                  <tr><td colSpan={11} className="text-center py-12 text-muted-foreground">
                     {checks.length === 0 ? 'No hay verificaciones registradas. Use los botones de verificacion para comenzar.' : 'Sin resultados para los filtros seleccionados'}
                   </td></tr>
                 ) : pageRows.map((c, i) => {
@@ -753,6 +758,30 @@ export default function CumplimientoPage() {
                               {entry && <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', entry.cls)}>{entry.label}</span>}
                               {ag.ag_riesgo != null && <span className="text-xs text-muted-foreground tabular-nums">{ag.ag_riesgo.toFixed(2)}</span>}
                             </div>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-3 py-2 text-center" onClick={e => e.stopPropagation()}>
+                        {(() => {
+                          const count = logCounts.get(c.entity_id) ?? 0;
+                          const canOpen = c.entity_type === 'client' || c.entity_type === 'society';
+                          if (count === 0) return <span className="text-muted-foreground text-xs">—</span>;
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (canOpen) setAgDetail({ entityType: c.entity_type as 'client' | 'society', entityId: c.entity_id, entityName: c.entity_name });
+                              }}
+                              title={`${count} entrada${count !== 1 ? 's' : ''} en bitácora`}
+                              className={cn(
+                                'inline-flex items-center justify-center rounded-full h-5 min-w-[20px] px-1.5 text-[10px] font-semibold transition-colors',
+                                canOpen
+                                  ? 'bg-blue-100 text-blue-700 hover:bg-blue-200 cursor-pointer'
+                                  : 'bg-slate-100 text-slate-600 cursor-default',
+                              )}
+                            >
+                              {count}
+                            </button>
                           );
                         })()}
                       </td>

@@ -189,11 +189,16 @@ Deno.serve(async (req) => {
         entity_id,
       });
     }
+    // Incluir el HTTP status de AgileCheck para que el frontend pueda mostrarlo
+    const bodySnippet = detailStr === '""' || detailStr === '{}' ? '(sin cuerpo)' : detailStr.slice(0, 200);
+    const detail = profileResult.status > 0
+      ? `HTTP ${profileResult.status} — ${bodySnippet}`
+      : bodySnippet;
     return json(502, {
       ok: false,
       error: 'agilecheck_get_cliente_failed',
       http_status: profileResult.status,
-      detail: detailStr.slice(0, 300),
+      detail,
     });
   }
 
@@ -215,18 +220,24 @@ Deno.serve(async (req) => {
     .eq('id', entity_id);
 
   if (updateErr) {
-    // Si el error es de caché de esquema (columnas ag_* aún no visibles en PostgREST),
-    // intentar guardar solo agilecheck_cliente_id y continuar devolviendo los datos.
     if (updateErr.message.includes('schema cache') || updateErr.message.includes('column')) {
       await supabase
         .from(table)
         .update({ agilecheck_cliente_id: agileId })
         .eq('id', entity_id);
-      // Continuar — los datos del perfil se devuelven igual al frontend.
     } else {
       return json(500, { ok: false, error: 'db_update_failed', detail: updateErr.message });
     }
   }
+
+  // Bitácora — snapshot completo del perfil en este momento
+  await supabase.from('agilecheck_sync_log').insert({
+    entity_type,
+    entity_id,
+    action: 'fetch',
+    snapshot: agilecheck_data,
+    notes: `Perfil consultado desde AgileCheck (ID: ${agileId})`,
+  });
 
   return json(200, {
     ok: true,

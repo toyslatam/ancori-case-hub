@@ -160,6 +160,21 @@ Deno.serve(async (req) => {
     .update({ ag_last_sync_at: new Date().toISOString() })
     .eq('id', entity_id);
 
+  // Bitácora — registrar qué campos se enviaron a AgileCheck y sus valores anteriores/nuevos
+  const diff = Object.keys(fields).map(key => ({
+    field: key,
+    old_value: currentProfile[key] ?? null,
+    new_value: fields[key],
+  }));
+  await supabase.from('agilecheck_sync_log').insert({
+    entity_type,
+    entity_id,
+    action: 'push',
+    changes: diff,
+    snapshot: { ...currentProfile, ...fields },
+    notes: `Campos enviados a AgileCheck: ${Object.keys(fields).join(', ')}`,
+  });
+
   return json(200, {
     ok: true,
     agilecheck_cliente_id: agileId,

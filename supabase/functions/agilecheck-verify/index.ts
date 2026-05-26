@@ -620,6 +620,16 @@ Deno.serve(async (req) => {
     return json(500, { error: 'db_insert_failed', detail: dbErr.message, check_result: result });
   }
 
+  // Bitácora — evento de verificación con snapshot del resultado
+  await supabase.from('agilecheck_sync_log').insert({
+    entity_type,
+    entity_id,
+    action: 'verify',
+    performed_by: body.checked_by_correo ?? null,
+    snapshot: { compliance_check_id: inserted?.id, status: result.status, risk_level: result.risk_level, summary: result.summary, raw: result.raw_data },
+    notes: `Verificación ${check_type}: ${result.status} — ${result.summary?.slice(0, 120) ?? ''}`,
+  });
+
   let syncPayload: Record<string, unknown> | undefined;
   if (body.sync_agilecheck_client && entity_type === 'client') {
     const sr = await syncAncoriClientToAgileCheck(supabase, entity_id);

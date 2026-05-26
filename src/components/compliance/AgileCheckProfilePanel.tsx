@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getSupabase } from '@/lib/supabaseClient';
@@ -13,11 +14,14 @@ import {
 import {
   RefreshCw, Upload, ExternalLink, AlertTriangle, CheckCircle2,
   Link2Off, ShieldCheck, List, Loader2, ChevronDown, Save, Users,
+  FileCheck2, Clock, Banknote,
 } from 'lucide-react';
 import {
   fetchAgileCheckProfile, syncClientToAgileCheck, syncSocietyToAgileCheck,
   pushAgileCheckField, fetchComplianceChecks, verifyEntity,
-  type AgileCheckProfile, type ComplianceCheck,
+  fetchSyncLog, fetchDocumentos, upsertDocumento,
+  DOCUMENTOS_CHECKLIST,
+  type AgileCheckProfile, type ComplianceCheck, type SyncLogEntry, type DocumentoItem,
 } from '@/lib/agileCheckApi';
 import type { Client, Society } from '@/data/mockData';
 import { useAuth } from '@/context/AuthContext';
@@ -161,11 +165,51 @@ function extractRelacionados(profile: Record<string, unknown>): Relacionado[] {
   return [];
 }
 
+type PerfilFinanciero = Record<string, unknown>;
+type ProductoUtilizado = Record<string, unknown>;
+
+function extractFinancialData(profile: Record<string, unknown>): {
+  perfiles: PerfilFinanciero[];
+  productos: ProductoUtilizado[];
+} {
+  const perfiles = (
+    profile.PerfilFinanciero ?? profile.perfilFinanciero ??
+    profile.PerfilesFinancieros ?? profile.perfilesFinancieros ?? []
+  );
+  const productos = (
+    profile.ProductoUtilizado ?? profile.productoUtilizado ??
+    profile.Productos ?? profile.productos ??
+    profile.ProductosUtilizados ?? []
+  );
+  return {
+    perfiles: Array.isArray(perfiles) ? (perfiles as PerfilFinanciero[]) : [],
+    productos: Array.isArray(productos) ? (productos as ProductoUtilizado[]) : [],
+  };
+}
+
 function str(v: unknown): string { return v != null && v !== '' ? String(v) : ''; }
 
 function nivelRiesgoLabel(nivel: number | null | undefined): string {
   const map: Record<number, string> = { 1: 'bajo', 2: 'medio', 3: 'alto', 4: 'critico' };
   return nivel != null ? (map[nivel] ?? 'desconocido') : 'desconocido';
+}
+
+const ACTION_LABELS: Record<string, string> = {
+  fetch: 'Consulta de perfil',
+  push: 'Envío de campos',
+  verify: 'Verificación PEP/Listas',
+  app_update: 'Actualización en app',
+};
+
+function actionLabel(action: string): string {
+  return ACTION_LABELS[action] ?? action;
+}
+
+function actionColor(action: string): string {
+  if (action === 'verify') return 'bg-purple-100 text-purple-800';
+  if (action === 'push') return 'bg-blue-100 text-blue-800';
+  if (action === 'fetch') return 'bg-slate-100 text-slate-700';
+  return 'bg-muted text-muted-foreground';
 }
 
 // ─── Tipos exportados ────────────────────────────────────────────────────────
@@ -209,6 +253,15 @@ export function AgileCheckProfilePanel({ entityType, entity, onProfileUpdated }:
   const [manualId, setManualId] = useState('');
   const [savingId, setSavingId] = useState(false);
 
+  // Bitácora
+  const [syncLog, setSyncLog] = useState<SyncLogEntry[]>([]);
+  const [loadingLog, setLoadingLog] = useState(false);
+  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+
+  // Documentos entregados
+  const [documentos, setDocumentos] = useState<DocumentoItem[]>([]);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+
   const { session } = useAuth();
   const agileId = entity.agilecheck_cliente_id ?? profile?.agilecheck_cliente_id ?? null;
 
@@ -227,7 +280,6 @@ export function AgileCheckProfilePanel({ entityType, entity, onProfileUpdated }:
       numeroDeId: str(p.numeroDeId),
       canalVinculacion: str(p.canalVinculacion),
       estatusCliente: str(p.estatusCliente ?? p.estatus),
-      // PersonaNatural
       nombres: str(nat?.nombres),
       apellidos: str(nat?.apellidos),
       fechaNacimiento: str(nat?.fechaNacimiento),
@@ -238,7 +290,6 @@ export function AgileCheckProfilePanel({ entityType, entity, onProfileUpdated }:
       fechaVencimientoIdentificacion: str(nat?.fechaVencimientoIdentificacion),
       paisNacimiento: str(nat?.paisNacimiento),
       esCiudadanoEstadounidense: str(nat?.esCiudadanoEstadounidense),
-      // PersonaJuridica
       nombreComercial: str(jur?.nombreComercial),
       nombreLegal: str(jur?.nombreLegal),
       canalOperacion: str(jur?.canalOperacion ?? p.canalOperacion),
@@ -310,6 +361,27 @@ export function AgileCheckProfilePanel({ entityType, entity, onProfileUpdated }:
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entity.id, entityType]);
 
+  // ── Cargar bitácora y documentos ──
+  useEffect(() => {
+    let cancelled = false;
+    async function loadLogAndDocs() {
+      setLoadingLog(true);
+      setLoadingDocs(true);
+      const [log, docs] = await Promise.all([
+        fetchSyncLog(entityType, entity.id),
+        fetchDocumentos(entityType, entity.id),
+      ]);
+      if (cancelled) return;
+      setSyncLog(log);
+      setLoadingLog(false);
+      setDocumentos(docs);
+      setLoadingDocs(false);
+    }
+    void loadLogAndDocs();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entity.id, entityType]);
+
   // ── Guardar datos personales → AgileCheck ──
   const handleSaveDatos = useCallback(async () => {
     if (!profile) return;
@@ -370,15 +442,23 @@ export function AgileCheckProfilePanel({ entityType, entity, onProfileUpdated }:
     setLoading(false);
     if (!result.ok) {
       const r = result as { ok: false; error: string; detail?: string };
-      if (r.error === 'no_agilecheck_link' || r.error === 'agilecheck_wrong_company') {
+      if (r.error === 'no_agilecheck_link' || r.error === 'agilecheck_wrong_company' || r.error === 'agilecheck_get_cliente_failed') {
         setNoLink(true);
-        if (r.error === 'agilecheck_wrong_company') setError(r.detail ?? 'ID no pertenece a esta empresa.');
+        if (r.error === 'agilecheck_wrong_company') {
+          setError(r.detail ?? 'ID no pertenece a esta empresa. Ingresa el ID correcto.');
+        } else if (r.error === 'agilecheck_get_cliente_failed') {
+          setError(r.detail
+            ? `AgileCheck no pudo obtener el perfil (${r.detail}). El ID puede ser incorrecto o pertenecer a otra empresa.`
+            : 'AgileCheck no pudo obtener el perfil. El ID puede ser incorrecto o pertenecer a otra empresa.');
+        }
       } else { setError(r.detail ? `${r.error}: ${r.detail}` : r.error); }
       return;
     }
     setProfile(result);
     onProfileUpdated?.(entity.id, result.updated_fields);
     fetchComplianceChecks(entityType, entity.id).then(setChecks);
+    // Recargar bitácora
+    fetchSyncLog(entityType, entity.id).then(setSyncLog);
   }, [entityType, entity.id, onProfileUpdated]);
 
   const handleLinkId = useCallback(async () => {
@@ -419,6 +499,38 @@ export function AgileCheckProfilePanel({ entityType, entity, onProfileUpdated }:
     await handleFetch();
   }, [pendingPush, entityType, entity.id, handleFetch]);
 
+  // ── Toggle documento entregado ──
+  const handleToggleDoc = useCallback(async (documento: string, entregado: boolean) => {
+    const userEmail = session?.user?.email ?? null;
+    // Actualización optimista
+    setDocumentos(prev => {
+      const existing = prev.find(d => d.documento === documento);
+      if (existing) {
+        return prev.map(d =>
+          d.documento === documento
+            ? { ...d, entregado, fecha_entrega: entregado ? new Date().toISOString().slice(0, 10) : null }
+            : d,
+        );
+      }
+      return [...prev, {
+        id: '',
+        entity_type: entityType,
+        entity_id: entity.id,
+        documento,
+        entregado,
+        fecha_entrega: entregado ? new Date().toISOString().slice(0, 10) : null,
+        updated_by: userEmail,
+        updated_at: new Date().toISOString(),
+      }];
+    });
+    const result = await upsertDocumento(entityType, entity.id, documento, entregado, userEmail);
+    if (!result.ok) {
+      toast.error(`Error al guardar documento: ${result.error}`);
+      const docs = await fetchDocumentos(entityType, entity.id);
+      setDocumentos(docs);
+    }
+  }, [entityType, entity.id, session]);
+
   // ── Comparaciones campo a campo ──
   const comparisons: FieldComparison[] = (() => {
     if (!profile) return [];
@@ -455,12 +567,17 @@ export function AgileCheckProfilePanel({ entityType, entity, onProfileUpdated }:
       : null);
 
   const relacionados = profile ? extractRelacionados(profile.profile) : [];
+  const { perfiles: finPerfiles, productos: finProductos } = profile
+    ? extractFinancialData(profile.profile)
+    : { perfiles: [], productos: [] };
 
   const nat = profile && Array.isArray(profile.profile.PersonaNatural) && (profile.profile.PersonaNatural as unknown[]).length > 0
     ? (profile.profile.PersonaNatural as Record<string, unknown>[])[0] : null;
   const jur = profile && Array.isArray(profile.profile.PersonaJuridica) && (profile.profile.PersonaJuridica as unknown[]).length > 0
     ? (profile.profile.PersonaJuridica as Record<string, unknown>[])[0] : null;
   const isNatural = !!nat;
+
+  const docsEntregados = documentos.filter(d => d.entregado).length;
 
   function setField(key: string, val: string) {
     setFormDatos(f => ({ ...f, [key]: val }));
@@ -538,24 +655,29 @@ export function AgileCheckProfilePanel({ entityType, entity, onProfileUpdated }:
 
         {profile && (
           <Tabs defaultValue="datos" className="w-full">
-            <TabsList className="w-full grid grid-cols-4 h-8 text-xs">
-              <TabsTrigger value="datos" className="text-xs">Datos</TabsTrigger>
-              <TabsTrigger value="riesgo" className="text-xs">
-                Riesgo
-                {enLista && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-red-500 inline-block" />}
+            <TabsList className="flex flex-wrap h-auto gap-0.5 p-0.5 w-full">
+              <TabsTrigger value="datos" className="text-[10px] h-7 px-2 flex-1 min-w-[56px]">Datos</TabsTrigger>
+              <TabsTrigger value="riesgo" className="text-[10px] h-7 px-2 flex-1 min-w-[56px]">
+                Riesgo{enLista && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-red-500 inline-block" />}
               </TabsTrigger>
-              <TabsTrigger value="relacionados" className="text-xs">
-                Relacionados {relacionados.length > 0 && `(${relacionados.length})`}
+              <TabsTrigger value="finprod" className="text-[10px] h-7 px-2 flex-1 min-w-[56px]">Fin./Prod.</TabsTrigger>
+              <TabsTrigger value="relacionados" className="text-[10px] h-7 px-2 flex-1 min-w-[56px]">
+                Relacion.{relacionados.length > 0 && ` (${relacionados.length})`}
               </TabsTrigger>
-              <TabsTrigger value="verificaciones" className="text-xs">
-                Verificaciones {checks.length > 0 && `(${checks.length})`}
+              <TabsTrigger value="verificaciones" className="text-[10px] h-7 px-2 flex-1 min-w-[56px]">
+                Verific.{checks.length > 0 && ` (${checks.length})`}
+              </TabsTrigger>
+              <TabsTrigger value="documentos" className="text-[10px] h-7 px-2 flex-1 min-w-[56px]">
+                Docs{docsEntregados > 0 && ` (${docsEntregados}/${DOCUMENTOS_CHECKLIST.length})`}
+              </TabsTrigger>
+              <TabsTrigger value="historial" className="text-[10px] h-7 px-2 flex-1 min-w-[56px]">
+                Historial{syncLog.length > 0 && ` (${syncLog.length})`}
               </TabsTrigger>
             </TabsList>
 
             {/* ── TAB: DATOS PERSONALES ─────────────────────────────── */}
             <TabsContent value="datos" className="space-y-3 pt-3">
               {isNatural ? (
-                // Persona Natural
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -621,7 +743,6 @@ export function AgileCheckProfilePanel({ entityType, entity, onProfileUpdated }:
                   </div>
                 </div>
               ) : (
-                // Persona Jurídica
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -664,7 +785,6 @@ export function AgileCheckProfilePanel({ entityType, entity, onProfileUpdated }:
                 </div>
               )}
 
-              {/* Comparación con Ancori */}
               {comparisons.length > 0 && (
                 <details className="mt-1">
                   <summary className="text-[10px] text-muted-foreground cursor-pointer select-none hover:text-foreground">
@@ -785,6 +905,63 @@ export function AgileCheckProfilePanel({ entityType, entity, onProfileUpdated }:
               )}
             </TabsContent>
 
+            {/* ── TAB: PERFIL FINANCIERO / PRODUCTOS ───────────────── */}
+            <TabsContent value="finprod" className="pt-3 space-y-4">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                <Banknote className="h-3.5 w-3.5" />
+                Perfil Financiero
+              </div>
+
+              {finPerfiles.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-3">
+                  Sin datos de perfil financiero en AgileCheck.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {finPerfiles.map((pf, i) => (
+                    <div key={i} className="rounded border divide-y text-xs">
+                      {Object.entries(pf)
+                        .filter(([, v]) => v != null && v !== '' && typeof v !== 'object')
+                        .map(([k, v]) => (
+                          <div key={k} className="px-3 py-1.5 flex items-start justify-between gap-2">
+                            <span className="text-muted-foreground capitalize shrink-0">{k.replace(/([A-Z])/g, ' $1').trim()}</span>
+                            <span className="font-medium text-right">{String(v)}</span>
+                          </div>
+                        ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide pt-1">
+                <List className="h-3.5 w-3.5" />
+                Productos Utilizados
+              </div>
+
+              {finProductos.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-3">
+                  Sin productos registrados en AgileCheck.
+                </p>
+              ) : (
+                <div className="rounded border divide-y text-xs">
+                  {finProductos.map((prod, i) => {
+                    const nombre = String(
+                      prod.nombreProducto ?? prod.NombreProducto ?? prod.nombre ?? prod.Nombre ?? prod.producto ?? `Producto ${i + 1}`
+                    );
+                    const desc = String(prod.descripcion ?? prod.Descripcion ?? prod.detalle ?? '');
+                    return (
+                      <div key={i} className="px-3 py-2">
+                        <p className="font-medium">{nombre}</p>
+                        {desc && <p className="text-[10px] text-muted-foreground mt-0.5">{desc}</p>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <p className="text-[10px] text-muted-foreground text-right">Solo lectura — datos provenientes de AgileCheck</p>
+            </TabsContent>
+
             {/* ── TAB: RELACIONADOS ─────────────────────────────────── */}
             <TabsContent value="relacionados" className="pt-3">
               {relacionados.length === 0 ? (
@@ -885,6 +1062,135 @@ export function AgileCheckProfilePanel({ entityType, entity, onProfileUpdated }:
                       );
                     })}
                   </div>
+                </div>
+              )}
+            </TabsContent>
+
+            {/* ── TAB: DOCUMENTOS ENTREGADOS ────────────────────────── */}
+            <TabsContent value="documentos" className="pt-3">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                  <FileCheck2 className="h-3.5 w-3.5" />
+                  Documentos Entregados
+                </p>
+                {loadingDocs && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+                <span className="text-xs text-muted-foreground">
+                  {docsEntregados}/{DOCUMENTOS_CHECKLIST.length}
+                </span>
+              </div>
+
+              <div className="rounded border divide-y text-xs">
+                {DOCUMENTOS_CHECKLIST.map(doc => {
+                  const item = documentos.find(d => d.documento === doc);
+                  const entregado = item?.entregado ?? false;
+                  return (
+                    <div key={doc} className="flex items-start gap-3 px-3 py-2.5">
+                      <Checkbox
+                        id={`doc-${doc}`}
+                        checked={entregado}
+                        onCheckedChange={(checked) => handleToggleDoc(doc, !!checked)}
+                        className="mt-0.5 shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <label htmlFor={`doc-${doc}`} className={`text-xs cursor-pointer leading-snug ${entregado ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>
+                          {doc}
+                        </label>
+                        {entregado && item?.fecha_entrega && (
+                          <p className="text-[10px] text-green-700 mt-0.5">
+                            Entregado el {new Date(item.fecha_entrega).toLocaleDateString('es-PA')}
+                          </p>
+                        )}
+                      </div>
+                      {entregado && <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0 mt-0.5" />}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <p className="text-[10px] text-muted-foreground mt-2">
+                Los cambios se guardan automáticamente en Ancori.
+              </p>
+            </TabsContent>
+
+            {/* ── TAB: HISTORIAL / BITÁCORA ─────────────────────────── */}
+            <TabsContent value="historial" className="pt-3">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                  <Clock className="h-3.5 w-3.5" />
+                  Historial de cambios
+                </p>
+                {loadingLog && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+              </div>
+
+              {!loadingLog && syncLog.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-4">
+                  Sin historial registrado aún. Se genera al consultar o modificar datos en AgileCheck.
+                </p>
+              ) : (
+                <div className="rounded border divide-y text-xs">
+                  {syncLog.map(entry => {
+                    const isExpanded = expandedLogId === entry.id;
+                    const hasChanges = Array.isArray(entry.changes) && entry.changes.length > 0;
+                    const date = new Date(entry.created_at);
+                    return (
+                      <div key={entry.id}>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedLogId(isExpanded ? null : entry.id)}
+                          className="w-full px-3 py-2 flex items-start justify-between gap-2 hover:bg-muted/30 transition-colors text-left"
+                        >
+                          <div className="flex items-start gap-2 flex-1 min-w-0">
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold shrink-0 mt-0.5 ${actionColor(entry.action)}`}>
+                              {actionLabel(entry.action)}
+                            </span>
+                            <div className="min-w-0">
+                              {entry.notes && (
+                                <p className="text-[10px] text-muted-foreground leading-snug truncate">
+                                  {entry.notes}
+                                </p>
+                              )}
+                              {entry.performed_by && (
+                                <p className="text-[10px] text-muted-foreground/70 mt-0.5">por {entry.performed_by}</p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                              {date.toLocaleString('es-PA', { dateStyle: 'short', timeStyle: 'short' })}
+                            </span>
+                            <ChevronDown className={`h-3 w-3 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                          </div>
+                        </button>
+
+                        {isExpanded && (
+                          <div className="px-3 pb-3 pt-1 space-y-2 bg-muted/20 border-t">
+                            {hasChanges && (
+                              <div className="space-y-1">
+                                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Campos modificados</p>
+                                <div className="rounded border divide-y">
+                                  {entry.changes!.map((c, i) => (
+                                    <div key={i} className="px-2 py-1.5 grid grid-cols-3 gap-2 text-[10px]">
+                                      <span className="font-medium text-muted-foreground truncate">{c.field}</span>
+                                      <span className="text-red-600 truncate">{c.old_value != null ? String(c.old_value) : <em>vacío</em>}</span>
+                                      <span className="text-green-700 truncate">{c.new_value != null ? String(c.new_value) : <em>vacío</em>}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {!hasChanges && entry.snapshot && (
+                              <p className="text-[10px] text-muted-foreground">
+                                Snapshot guardado con {Object.keys(entry.snapshot).length} campos.
+                              </p>
+                            )}
+                            <p className="text-[10px] text-muted-foreground">
+                              {date.toLocaleString('es-PA', { dateStyle: 'long', timeStyle: 'medium' })}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </TabsContent>

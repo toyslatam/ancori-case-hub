@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
 import { Case, CaseComment } from '@/data/mockData';
 import { Send } from 'lucide-react';
 
@@ -52,8 +53,14 @@ function formatCommentDate(iso: string): string {
 
 export function CommentsDrawer({ caseData, open, onClose }: CommentsDrawerProps) {
   const { addComment } = useApp();
+  const { user, session } = useAuth();
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+
+  const currentUserName =
+    user?.nombre?.trim() ||
+    session?.user?.email?.split('@')[0] ||
+    'Usuario';
 
   if (!caseData) return null;
 
@@ -68,7 +75,7 @@ export function CommentsDrawer({ caseData, open, onClose }: CommentsDrawerProps)
     const comment: CaseComment = {
       id: crypto.randomUUID(),
       case_id: caseData.id,
-      user_name: 'Usuario Actual',
+      user_name: currentUserName,
       comentario: trimmed,
       created_at: new Date().toISOString(),
     };
