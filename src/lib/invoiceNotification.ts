@@ -21,6 +21,8 @@ export type InvoiceNotifyPayload = {
   lines: Array<{ descripcion: string; importe: number }>;
   creado_por_nombre: string;
   creado_por_email: string;
+  /** URL firmada del PDF de la factura (Supabase Storage), válida 7 días. */
+  pdf_url?: string;
 };
 
 /** Fire-and-forget: no bloquea el flujo principal, solo loguea si falla. */

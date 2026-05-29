@@ -546,6 +546,19 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
             qb_last_sync_at: new Date().toISOString(),
           });
           toast.success(`¡Enviada a QuickBooks! Factura QB #${data.doc_number ?? data.qb_invoice_id}`);
+
+          // Generar URL firmada del PDF si existe (válida 7 días)
+          let pdfUrl: string | undefined;
+          if (inv.pdf_path) {
+            const sb = getSupabase();
+            if (sb) {
+              const { data: pdfData } = await sb.storage
+                .from('invoices')
+                .createSignedUrl(inv.pdf_path, 3600 * 24 * 7);
+              pdfUrl = pdfData?.signedUrl ?? undefined;
+            }
+          }
+
           sendInvoiceNotification({
             tipo: 'enviada_qb',
             caso_numero: caseData.n_tarea != null ? formatNTarea(caseData.n_tarea) : String(caseData.numero_caso ?? caseData.id),
@@ -564,6 +577,7 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
             lines: linesToNotify(lines),
             creado_por_nombre: user?.nombre ?? user?.email ?? 'Sistema',
             creado_por_email: user?.email ?? '',
+            pdf_url: pdfUrl,
           });
         }
       } catch (e) {

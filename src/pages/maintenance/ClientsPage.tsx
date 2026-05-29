@@ -24,10 +24,11 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Plus, Trash2, Search, Filter, ChevronDown } from 'lucide-react';
+import { Plus, Trash2, Search, Filter, ChevronDown, FolderOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { AgileCheckProfilePanel } from '@/components/compliance/AgileCheckProfilePanel';
+import { SharePointDocsPanel } from '@/components/sharepoint/SharePointDocsPanel';
 
 const FILTER_ALL = '__all__';
 const DELETE_CONFIRM_TEXT = 'ELIMINAR';
@@ -103,6 +104,7 @@ export default function ClientsPage() {
 
   const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [spPanel, setSpPanel] = useState<{ entityId: string; entityName: string } | null>(null);
   const activoOptions: ComboOption[] = useMemo(
     () => [
       { value: FILTER_ALL, label: 'Todos' },
@@ -346,16 +348,29 @@ export default function ClientsPage() {
                     </td>
 
                     <td className="px-5 py-5 text-right" onClick={e => e.stopPropagation()}>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="text-destructive hover:text-destructive hover:bg-red-50"
-                        aria-label="Eliminar cliente"
-                        onClick={() => setDeleteTarget(c)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="text-amber-500 hover:text-amber-700 hover:bg-amber-50"
+                          aria-label="Documentos SharePoint"
+                          title="Ver documentos en SharePoint"
+                          onClick={() => setSpPanel({ entityId: c.id, entityName: c.nombre })}
+                        >
+                          <FolderOpen className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive hover:text-destructive hover:bg-red-50"
+                          aria-label="Eliminar cliente"
+                          onClick={() => setDeleteTarget(c)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -372,6 +387,14 @@ export default function ClientsPage() {
           </div>
         </div>
       </div>
+
+      <SharePointDocsPanel
+        entityId={spPanel?.entityId ?? ''}
+        entityType="client"
+        entityName={spPanel?.entityName ?? ''}
+        open={spPanel != null}
+        onClose={() => setSpPanel(null)}
+      />
 
       <Sheet open={panelOpen} onOpenChange={setPanelOpen}>
         <SheetContent side="right" className="w-full sm:max-w-md flex flex-col gap-0 p-0">

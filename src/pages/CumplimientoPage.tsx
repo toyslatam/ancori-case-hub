@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { AgileCheckProfilePanel, type AgUpdatedFields } from '@/components/compliance/AgileCheckProfilePanel';
+import { SharePointDocsPanel } from '@/components/sharepoint/SharePointDocsPanel';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,7 +20,7 @@ import {
 import {
   Shield, Search, Download, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   X, AlertTriangle, Clock, Loader2, ShieldCheck, ShieldAlert,
-  ShieldX, RefreshCw, Users, Building2, UserCog, CloudUpload,
+  ShieldX, RefreshCw, Users, Building2, UserCog, CloudUpload, FolderOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -151,6 +152,7 @@ export default function CumplimientoPage() {
   } | null>(null);
   const [agOverride, setAgOverride] = useState<Map<string, AgUpdatedFields>>(new Map());
   const [logCounts, setLogCounts] = useState<Map<string, number>>(new Map());
+  const [spPanel, setSpPanel] = useState<{ entityId: string; entityType: 'client' | 'society'; entityName: string } | null>(null);
 
   const userCanVerify = canVerify(user?.rol);
 
@@ -718,7 +720,19 @@ export default function CumplimientoPage() {
                         </Badge>
                       </td>
                       <td className="px-3 py-2 font-medium">
-                        <span className={cn(canOpenPanel && 'text-blue-700 hover:underline')}>{c.entity_name}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className={cn(canOpenPanel && 'text-blue-700 hover:underline')}>{c.entity_name}</span>
+                          {(c.entity_type === 'society' || c.entity_type === 'client') && (
+                            <button
+                              type="button"
+                              onClick={e => { e.stopPropagation(); setSpPanel({ entityId: c.entity_id, entityType: c.entity_type as 'client' | 'society', entityName: c.entity_name }); }}
+                              title="Ver documentos en SharePoint"
+                              className="flex-shrink-0 p-0.5 rounded hover:bg-amber-100 text-amber-500 hover:text-amber-700 transition-colors"
+                            >
+                              <FolderOpen className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td className="px-3 py-2 text-muted-foreground text-xs">{c.check_type}</td>
                       <td className="px-3 py-2">
@@ -815,6 +829,15 @@ export default function CumplimientoPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Panel documentos SharePoint */}
+      <SharePointDocsPanel
+        entityId={spPanel?.entityId ?? ''}
+        entityType={spPanel?.entityType ?? 'society'}
+        entityName={spPanel?.entityName ?? ''}
+        open={spPanel != null}
+        onClose={() => setSpPanel(null)}
+      />
 
       {/* Sheet Ficha AgileCheck */}
       <Sheet open={agDetail != null} onOpenChange={open => { if (!open) setAgDetail(null); }}>

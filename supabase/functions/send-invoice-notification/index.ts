@@ -55,6 +55,7 @@ type NotifyPayload = {
   lines: InvoiceLine[];
   creado_por_nombre: string;
   creado_por_email: string;
+  pdf_url?: string;
 };
 
 function buildHtml(p: NotifyPayload): string {
@@ -159,6 +160,123 @@ ${esQb ? 'Enviado' : 'Creado'} por: ${p.creado_por_nombre} (${p.creado_por_email
 Sistema Ancori - notificacion automatica`;
 }
 
+// ── Email personalizado para el creador del caso ─────────────────────────────
+
+function buildCreatorHtml(p: NotifyPayload): string {
+  const entidad = p.bill_to_society && p.society_name ? p.society_name : p.client_name;
+  const tipoEntidad = p.bill_to_society && p.society_name ? 'Sociedad' : 'Cliente';
+  const numFactura = p.qb_numero_factura ?? p.numero_factura ?? '—';
+  const total = p.qb_total ?? p.total;
+  const firstName = p.creado_por_nombre.split(' ')[0] || p.creado_por_nombre;
+
+  const linesHtml = p.lines.map(l =>
+    `<tr>
+      <td style="padding:4px 0;font-size:13px;color:#444">${l.descripcion || '—'}</td>
+      <td style="padding:4px 0;font-size:13px;color:#444;text-align:right;white-space:nowrap">${fmtMoney(Number(l.importe ?? 0))}</td>
+    </tr>`
+  ).join('');
+
+  const pdfBtn = p.pdf_url
+    ? `<div style="margin:20px 0;text-align:center">
+         <a href="${p.pdf_url}" target="_blank"
+            style="display:inline-block;background:#0a7c4d;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:bold;font-size:14px">
+           Ver / Descargar Factura PDF
+         </a>
+       </div>`
+    : '';
+
+  return `<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+<body style="font-family:Arial,sans-serif;color:#222;max-width:620px;margin:0 auto;padding:24px;background:#f9f9f9">
+  <div style="background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.1)">
+    <div style="background:#0a7c4d;padding:18px 24px">
+      <p style="margin:0;color:#fff;font-size:16px;font-weight:bold">FACTURA REGISTRADA EN QUICKBOOKS ✓</p>
+    </div>
+    <div style="padding:24px">
+      <p style="font-size:14px;color:#333;margin:0 0 16px">
+        Hola <strong>${firstName}</strong>,
+      </p>
+      <p style="font-size:13px;color:#555;margin:0 0 16px">
+        La factura del caso que gestionas fue procesada correctamente en QuickBooks.
+      </p>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:16px;background:#f8fafb;border-radius:6px">
+        <tr><td style="padding:7px 12px;font-size:13px;color:#666;width:160px">Número de Caso</td>
+            <td style="padding:7px 12px;font-size:13px;font-weight:bold">#${p.caso_numero}</td></tr>
+        <tr style="background:#f0f4f0"><td style="padding:7px 12px;font-size:13px;color:#666">${tipoEntidad}</td>
+            <td style="padding:7px 12px;font-size:13px;font-weight:bold">${entidad}</td></tr>
+        <tr><td style="padding:7px 12px;font-size:13px;color:#666">N° Factura QB</td>
+            <td style="padding:7px 12px;font-size:13px">${numFactura}</td></tr>
+        <tr style="background:#f0f4f0"><td style="padding:7px 12px;font-size:13px;color:#666">Fecha</td>
+            <td style="padding:7px 12px;font-size:13px">${fmtDate(p.fecha_factura)}</td></tr>
+      </table>
+      <hr style="border:none;border-top:1px solid #eee;margin:16px 0"/>
+      <p style="font-size:12px;font-weight:bold;color:#888;text-transform:uppercase;margin:0 0 8px">Detalle de servicios</p>
+      <table style="width:100%;border-collapse:collapse">
+        ${linesHtml}
+        <tr><td colspan="2"><hr style="border:none;border-top:1px solid #eee;margin:8px 0"/></td></tr>
+        <tr>
+          <td style="padding:3px 0;font-size:13px;color:#666">Subtotal</td>
+          <td style="padding:3px 0;font-size:13px;text-align:right">${fmtMoney(p.subtotal)}</td>
+        </tr>
+        <tr>
+          <td style="padding:3px 0;font-size:13px;color:#666">ITBMS</td>
+          <td style="padding:3px 0;font-size:13px;text-align:right">${fmtMoney(p.itbms)}</td>
+        </tr>
+        <tr>
+          <td style="padding:5px 0;font-size:15px;font-weight:bold">TOTAL</td>
+          <td style="padding:5px 0;font-size:15px;font-weight:bold;text-align:right;color:#0a7c4d">${fmtMoney(total)}</td>
+        </tr>
+        ${p.qb_balance != null ? `<tr>
+          <td style="padding:3px 0;font-size:13px;color:#666">Balance pendiente</td>
+          <td style="padding:3px 0;font-size:13px;text-align:right">${fmtMoney(p.qb_balance)}</td>
+        </tr>` : ''}
+      </table>
+      ${pdfBtn}
+      <hr style="border:none;border-top:1px solid #eee;margin:16px 0"/>
+      <p style="font-size:12px;color:#888;margin:0">
+        Procesado por: <strong>${p.creado_por_nombre}</strong>
+        &nbsp;·&nbsp; ${fmtDate(new Date().toISOString())}
+      </p>
+      <p style="font-size:11px;color:#bbb;margin:8px 0 0">Sistema Ancori — notificación automática</p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+function buildCreatorText(p: NotifyPayload): string {
+  const entidad = p.bill_to_society && p.society_name ? p.society_name : p.client_name;
+  const numFactura = p.qb_numero_factura ?? p.numero_factura ?? '-';
+  const total = p.qb_total ?? p.total;
+  const sep = '-'.repeat(56);
+  const firstName = p.creado_por_nombre.split(' ')[0] || p.creado_por_nombre;
+  const lineas = p.lines.map(l => `  ${l.descripcion || '-'}  ${fmtMoney(Number(l.importe ?? 0))}`).join('\n');
+
+  return `FACTURA REGISTRADA EN QUICKBOOKS
+${sep}
+Hola ${firstName},
+
+La factura del caso que gestionas fue procesada correctamente en QuickBooks.
+
+Numero de Caso : #${p.caso_numero}
+Entidad        : ${entidad}
+N Factura QB   : ${numFactura}
+Fecha          : ${fmtDate(p.fecha_factura)}
+
+DETALLE
+${sep}
+${lineas}
+${sep}
+Subtotal       : ${fmtMoney(p.subtotal)}
+ITBMS          : ${fmtMoney(p.itbms)}
+TOTAL          : ${fmtMoney(total)}${p.qb_balance != null ? `\nBalance        : ${fmtMoney(p.qb_balance)}` : ''}
+${p.pdf_url ? `\nVer PDF: ${p.pdf_url}` : ''}
+
+Procesado por: ${p.creado_por_nombre}
+Sistema Ancori - notificacion automatica`;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });
@@ -214,6 +332,19 @@ serve(async (req) => {
     });
 
     console.log('Invoice notification sent', { subject, to: INVOICE_TO, cc: INVOICE_CC });
+
+    if (esQb && payload.creado_por_email?.trim()) {
+      const creatorEmail = payload.creado_por_email.trim();
+      const creatorSubject = `✓ Factura QB registrada — Caso #${payload.caso_numero} | ${entidad} - ${fmtMoney(total)}`;
+      await client.send({
+        from: `Ancori Plataforma <${MAIL_FROM}>`,
+        to: [creatorEmail],
+        subject: creatorSubject,
+        html: buildCreatorHtml(payload),
+        content: buildCreatorText(payload),
+      });
+      console.log('Creator notification sent', { to: creatorEmail, subject: creatorSubject });
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('SMTP error:', msg);

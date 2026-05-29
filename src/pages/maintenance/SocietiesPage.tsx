@@ -30,10 +30,11 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { SocietyServicesMultiSelect } from '@/components/maintenance/SocietyServicesMultiSelect';
-import { Plus, Trash2, Search, Filter, RefreshCw, Building2 } from 'lucide-react';
+import { Plus, Trash2, Search, Filter, RefreshCw, Building2, FolderOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { AgileCheckProfilePanel } from '@/components/compliance/AgileCheckProfilePanel';
+import { SharePointDocsPanel } from '@/components/sharepoint/SharePointDocsPanel';
 import {
   isQboSocietyPushConfigured,
   pushSocietyToQuickbooksUpsert,
@@ -179,6 +180,7 @@ export default function SocietiesPage() {
   const [selectedSocietyServiceIds, setSelectedSocietyServiceIds] = useState<string[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<Society | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [spPanel, setSpPanel] = useState<{ entityId: string; entityName: string } | null>(null);
 
   const clientOptions = useMemo<ComboOption[]>(
     () => [...clients]
@@ -668,6 +670,20 @@ export default function SocietiesPage() {
                     type="button"
                     variant="ghost"
                     size="icon"
+                    className="shrink-0 text-amber-500 hover:bg-amber-50 hover:text-amber-700"
+                    aria-label="Documentos SharePoint"
+                    title="Ver documentos en SharePoint"
+                    onClick={e => {
+                      e.stopPropagation();
+                      setSpPanel({ entityId: s.id, entityName: s.nombre });
+                    }}
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
                     className="shrink-0 text-destructive hover:bg-red-50 hover:text-destructive"
                     aria-label="Eliminar sociedad"
                     onClick={e => {
@@ -689,6 +705,14 @@ export default function SocietiesPage() {
           )}
         </div>
       </div>
+
+      <SharePointDocsPanel
+        entityId={spPanel?.entityId ?? ''}
+        entityType="society"
+        entityName={spPanel?.entityName ?? ''}
+        open={spPanel != null}
+        onClose={() => setSpPanel(null)}
+      />
 
       <Sheet open={panelOpen} onOpenChange={setPanelOpen}>
         <SheetContent side="right" className="w-full sm:max-w-md flex flex-col gap-0 p-0">
