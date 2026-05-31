@@ -67,6 +67,27 @@
   }
 }
 
+/* ── Scrollbars personalizados ──────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(24 95% 53% / 0.35);
+  border-radius: 9999px;
+  transition: background 0.2s;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(24 95% 53% / 0.65);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 @layer components {
   .kpi-card {
     background: linear-gradient(135deg, hsl(215 28% 17%) 0%, hsl(215 28% 22%) 50%, hsl(215 28% 17%) 100%);
