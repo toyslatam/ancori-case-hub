@@ -11,8 +11,12 @@ import { CASE_ESTADOS, CASE_PRIORIDADES, formatNTarea } from '@/data/mockData';
 import {
   BarChart3, Download, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   X, FileText, Users, Building2, Briefcase, TrendingUp, DollarSign,
-  AlertTriangle, Clock, CheckCircle, PieChart as PieIcon,
+  AlertTriangle, Clock, CheckCircle, Settings,
+  BookOpen, Scale, Shield,
 } from 'lucide-react';
+import { PowerBIAreaPanel } from '@/components/reports/PowerBIEmbed';
+import { PBIReportsManager } from '@/components/reports/PBIReportsManager';
+import { fetchPBIReports, PBI_AREA_LABELS, type PBIReportRow } from '@/lib/pbiReportsDb';
 import { cn } from '@/lib/utils';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -312,7 +316,7 @@ function SharedFilters({
 /*  ReportesPage                                                       */
 /* ================================================================== */
 
-function ReportesPageInner() {
+function ReportesPageInner({ embedded = false }: { embedded?: boolean }) {
   const {
     cases, clients, services, societies, usuarios,
     getClientName, getSocietyName, getServiceName, getUsuarioName,
@@ -527,15 +531,17 @@ function ReportesPageInner() {
   // ==================================================================
 
   return (
-    <div className="p-4 md:p-6 space-y-5">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-          <BarChart3 className="h-6 w-6 text-orange-500" />
-          Reportes
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">Analisis operativo y financiero de casos y facturacion</p>
-      </div>
+    <div className={embedded ? 'space-y-5' : 'p-4 md:p-6 space-y-5'}>
+      {/* Header — solo cuando no está embebido en tabs de área */}
+      {!embedded && (
+        <div>
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+            <BarChart3 className="h-6 w-6 text-orange-500" />
+            Reportes
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">Analisis operativo y financiero de casos y facturacion</p>
+        </div>
+      )}
 
       {/* Filtros compartidos */}
       <SharedFilters {...filterProps} />
@@ -869,11 +875,95 @@ class ReportesErrorBoundary extends React.Component<
   }
 }
 
-// Wrapper con Error Boundary
+const AREA_ICONS: Record<string, React.ReactNode> = {
+  contabilidad: <BookOpen    className="h-3.5 w-3.5" />,
+  legal:        <Scale       className="h-3.5 w-3.5" />,
+  cumplimiento: <Shield      className="h-3.5 w-3.5" />,
+  financiero:   <DollarSign  className="h-3.5 w-3.5" />,
+};
+
+// Wrapper con Error Boundary, carga dinámica desde Supabase y gestión de reportes
 export default function ReportesPageSafe() {
+  const [pbiReports, setPbiReports] = useState<PBIReportRow[]>([]);
+  const [managerOpen, setManagerOpen] = useState(false);
+
+  async function loadReports() {
+    setPbiReports(await fetchPBIReports());
+  }
+
+  useEffect(() => { void loadReports(); }, []);
+
+  const areas = Object.entries(PBI_AREA_LABELS);
+
   return (
     <ReportesErrorBoundary>
-      <ReportesPageInner />
+      <div className="p-4 md:p-6 space-y-5">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+              <BarChart3 className="h-6 w-6 text-orange-500" />
+              Reportes
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Analisis operativo, financiero y reportes Power BI por área
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 text-xs flex-shrink-0 mt-1"
+            onClick={() => setManagerOpen(true)}
+          >
+            <Settings className="h-3.5 w-3.5" />
+            Configurar reportes
+          </Button>
+        </div>
+
+        {/* Tabs de área */}
+        <Tabs defaultValue="general" className="space-y-5">
+          <TabsList className="flex flex-wrap h-auto gap-0.5 p-0.5 w-full">
+            <TabsTrigger value="general" className="gap-1.5 text-xs">
+              <BarChart3 className="h-3.5 w-3.5" /> General
+            </TabsTrigger>
+            {areas.map(([areaId, areaLabel]) => {
+              const count = pbiReports.filter(r => r.area === areaId).length;
+              return (
+                <TabsTrigger key={areaId} value={areaId} className="gap-1.5 text-xs">
+                  {AREA_ICONS[areaId]}
+                  {areaLabel}
+                  {count > 0 && (
+                    <span className="ml-1 rounded-full bg-orange-100 text-orange-700 text-[10px] font-semibold px-1.5 py-0.5">
+                      {count}
+                    </span>
+                  )}
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
+
+          {/* Tab General — analítica interna */}
+          <TabsContent value="general">
+            <ReportesPageInner embedded />
+          </TabsContent>
+
+          {/* Tabs Power BI por área */}
+          {areas.map(([areaId, areaLabel]) => (
+            <TabsContent key={areaId} value={areaId}>
+              <PowerBIAreaPanel
+                areaLabel={areaLabel}
+                reports={pbiReports.filter(r => r.area === areaId)}
+              />
+            </TabsContent>
+          ))}
+        </Tabs>
+
+        <PBIReportsManager
+          open={managerOpen}
+          onClose={() => setManagerOpen(false)}
+          onSaved={() => void loadReports()}
+        />
+      </div>
     </ReportesErrorBoundary>
   );
 }
