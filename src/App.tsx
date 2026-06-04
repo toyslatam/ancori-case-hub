@@ -15,6 +15,7 @@ import ServicesPage from "./pages/maintenance/ServicesPage";
 import InvoiceTermsPage from "./pages/maintenance/InvoiceTermsPage";
 import QBItemsPage from "./pages/maintenance/QBItemsPage";
 import DirectoresPage from "./pages/maintenance/DirectoresPage";
+import EstadosCuentaPage from "./pages/maintenance/EstadosCuentaPage";
 import CategoriesPage from "./pages/utilities/CategoriesPage";
 import UtilServicesPage from "./pages/utilities/ServicesPage";
 import ServiceItemsPage from "./pages/utilities/ServiceItemsPage";
@@ -77,7 +78,8 @@ function ProtectedApp() {
           <Route path="/mantenimiento/sociedades" element={<Guard module="mantenimiento"><SocietiesPage /></Guard>} />
           <Route path="/mantenimiento/servicios"  element={<Guard module="mantenimiento"><ServicesPage /></Guard>} />
           <Route path="/mantenimiento/terminos"   element={<Guard module="mantenimiento"><InvoiceTermsPage /></Guard>} />
-          <Route path="/mantenimiento/qb-items"   element={<Guard module="mantenimiento"><QBItemsPage /></Guard>} />
+          <Route path="/mantenimiento/qb-items"      element={<Guard module="mantenimiento"><QBItemsPage /></Guard>} />
+          <Route path="/mantenimiento/estados-cuenta" element={<Guard module="mantenimiento"><EstadosCuentaPage /></Guard>} />
           <Route path="/utilidades/categorias"     element={<Guard module="utilidades"><CategoriesPage /></Guard>} />
           <Route path="/utilidades/servicios"      element={<Guard module="utilidades"><UtilServicesPage /></Guard>} />
           <Route path="/utilidades/items-servicio" element={<Guard module="utilidades"><ServiceItemsPage /></Guard>} />

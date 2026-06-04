@@ -26,6 +26,7 @@ import {
   Shield,
   LogOut,
   UsersRound,
+  ReceiptText,
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { NavLink } from '@/components/NavLink';
@@ -68,6 +69,7 @@ const maintItems = [
   { title: 'Sociedades', url: '/mantenimiento/sociedades', icon: Building2 },
   { title: 'Términos de Factura', url: '/mantenimiento/terminos', icon: FileText },
   { title: 'Productos/Servicios QB', url: '/mantenimiento/qb-items', icon: CreditCard },
+  { title: 'Estados de Cuenta', url: '/mantenimiento/estados-cuenta', icon: ReceiptText },
 ];
 
 const utilItems = [

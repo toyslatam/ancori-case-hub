@@ -633,9 +633,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
           toast.error(res.error.message);
           return false;
         }
+
+        // Si cambió el cliente de la sociedad, propagar a todos sus casos
+        if (isEdit) {
+          const prev = societies.find(s => s.id === society.id);
+          if (prev && prev.client_id !== society.client_id) {
+            await sb.from('cases').update({ client_id: society.client_id ?? null }).eq('society_id', society.id);
+            setCases(cs => cs.map(c =>
+              c.society_id === society.id ? { ...c, client_id: society.client_id ?? c.client_id } : c
+            ));
+          }
+        }
       }
-      // Guardar/actualizar local de inmediato (UI rápida).
-      // QBO está desactivado temporalmente: no enviar ni marcar columnas qbo_sync_*.
       const merged: Society = { ...society };
       setSocieties(prev => (isEdit ? prev.map(s => s.id === merged.id ? merged : s) : [...prev, merged]));
       return true;
@@ -643,7 +652,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       toast.error(`Error al guardar la sociedad: ${String(e)}`);
       return false;
     }
-  }, [sb]);
+  }, [sb, societies]);
 
   const deleteSociety = useCallback(async (id: string): Promise<boolean> => {
     // Desactivado temporalmente por solicitud: no tocar QuickBooks al borrar sociedades.

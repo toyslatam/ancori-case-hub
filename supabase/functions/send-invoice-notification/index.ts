@@ -11,6 +11,9 @@ const INVOICE_TO    = (Deno.env.get('INVOICE_NOTIFY_TO') ?? 'administracion@anco
   .split(',').map(s => s.trim()).filter(Boolean);
 const INVOICE_CC    = (Deno.env.get('INVOICE_NOTIFY_CC') ?? 'soporte@ancoriyasociados.onmicrosoft.com')
   .split(',').map(s => s.trim()).filter(Boolean);
+// Destinatarios extra solo para notificaciones de QB (separados por coma)
+const QB_NOTIFY_EXTRA = (Deno.env.get('QB_NOTIFY_EXTRA') ?? '')
+  .split(',').map(s => s.trim()).filter(Boolean);
 
 const FUNCTION_SECRET = Deno.env.get('FUNCTION_SECRET') ?? '';
 
@@ -302,7 +305,7 @@ serve(async (req) => {
   const entidad = payload.bill_to_society && payload.society_name ? payload.society_name : payload.client_name;
   const total = esQb ? (payload.qb_total ?? payload.total) : payload.total;
   const subject = esQb
-    ? `[Ancori] Factura QB - Caso #${payload.caso_numero} | ${entidad} - ${fmtMoney(total)}`
+    ? `[Ancori QB] Factura Registrada - Caso #${payload.caso_numero} | ${entidad} - ${fmtMoney(total)}`
     : `[Ancori] Nueva Factura - Caso #${payload.caso_numero} | ${entidad} - ${fmtMoney(total)}`;
 
   if (!SMTP_PASSWORD) {
@@ -322,20 +325,29 @@ serve(async (req) => {
       },
     });
 
+    // Creacion: va a administracion + finanzas con CC soporte
+    // QB: va a ygordon con CC soporte
+    const adminTo = esQb
+      ? (QB_NOTIFY_EXTRA.length > 0 ? QB_NOTIFY_EXTRA : INVOICE_TO)
+      : INVOICE_TO;
+    const adminCc = INVOICE_CC;
+
     await client.send({
       from: `Ancori Plataforma <${MAIL_FROM}>`,
-      to: INVOICE_TO,
-      cc: INVOICE_CC,
+      to: adminTo,
+      cc: adminCc,
       subject,
       html: buildHtml(payload),
       content: buildText(payload),
     });
 
-    console.log('Invoice notification sent', { subject, to: INVOICE_TO, cc: INVOICE_CC });
+    console.log('Invoice notification sent', { subject, to: adminTo, cc: adminCc });
 
+    // Correo personalizado al creador del caso (solo QB)
     if (esQb && payload.creado_por_email?.trim()) {
       const creatorEmail = payload.creado_por_email.trim();
-      const creatorSubject = `✓ Factura QB registrada — Caso #${payload.caso_numero} | ${entidad} - ${fmtMoney(total)}`;
+      // Solo ASCII en el asunto para evitar corrupcion de encoding MIME
+      const creatorSubject = `Factura QB registrada - Caso #${payload.caso_numero} | ${entidad} - ${fmtMoney(total)}`;
       await client.send({
         from: `Ancori Plataforma <${MAIL_FROM}>`,
         to: [creatorEmail],
