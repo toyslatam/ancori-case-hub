@@ -284,28 +284,38 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
       const hasQbId  = Boolean(effectiveInvoice?.qb_invoice_id && effectiveInvoice?.id);
 
       if (hasPdfOk) {
-        // PDF ya guardado → generar URL firmada
+        // PDF ya guardado → generar URL firmada (válida 7 días para que el edge function la descargue)
         const sb = getSupabase();
         if (sb) {
-          const { data } = await sb.storage.from('invoices').createSignedUrl(effectiveInvoice!.pdf_path!, 3600 * 24 * 7);
-          pdfUrl = data?.signedUrl ?? undefined;
+          const { data, error } = await sb.storage.from('invoices').createSignedUrl(effectiveInvoice!.pdf_path!, 3600 * 24 * 7);
+          if (error || !data?.signedUrl) {
+            toast.warning('No se pudo generar la URL del PDF — se enviará sin adjunto');
+          } else {
+            pdfUrl = data.signedUrl;
+          }
         }
       } else if (hasQbId) {
-        // Sin PDF local → sincronizar desde QB primero
+        // Sin PDF local → intentar sincronizar desde QB
         try {
           const syncRes = await fetch(`${SUPABASE_URL}/functions/v1/qbo-invoice-pdf-sync`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-ancori-secret': FUNCTION_SECRET },
             body: JSON.stringify({ invoice_id: effectiveInvoice!.id, force: false }),
           });
-          if (syncRes.ok) {
-            const syncData = await syncRes.json() as { ok?: boolean; signed_url?: string };
-            if (syncData.ok && syncData.signed_url) pdfUrl = syncData.signed_url;
+          const syncData = await syncRes.json() as { ok?: boolean; signed_url?: string; error?: string };
+          if (syncRes.ok && syncData.ok && syncData.signed_url) {
+            pdfUrl = syncData.signed_url;
+          } else {
+            toast.warning(`PDF no disponible (${syncData.error ?? 'sync falló'}) — se enviará sin adjunto`);
           }
-        } catch {
-          // Continuar sin PDF adjunto si la sincronizacion falla
+        } catch (e) {
+          toast.warning(`No se pudo obtener el PDF — se enviará sin adjunto`);
+          console.error('PDF sync error:', e);
         }
+      } else {
+        toast.info('Esta factura no tiene PDF en QuickBooks aún — se enviará sin adjunto');
       }
+
       const res = await fetch(`${SUPABASE_URL}/functions/v1/send-invoice-to-client`, {
         method: 'POST',
         headers: {
@@ -324,11 +334,12 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
           sent_by_nombre: user?.nombre ?? user?.email ?? 'Sistema',
         }),
       });
-      const data = await res.json() as { ok?: boolean; error?: string; detail?: string };
+      const data = await res.json() as { ok?: boolean; pdf_attached?: boolean; error?: string; detail?: string };
       if (!res.ok || !data.ok) {
         toast.error(`Error al enviar: ${data.detail ?? data.error ?? res.status}`);
       } else {
-        toast.success(`Factura enviada a ${sendEmail}`);
+        const pdfMsg = data.pdf_attached ? ' (con PDF adjunto)' : ' (sin PDF)';
+        toast.success(`Factura enviada a ${sendEmail}${pdfMsg}`);
         setShowSendPanel(false);
       }
     } catch (err) {
