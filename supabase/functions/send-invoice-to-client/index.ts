@@ -53,58 +53,42 @@ async function fetchPdfBase64(url: string): Promise<string | null> {
   }
 }
 
-function buildHtml(p: SendInvoicePayload, hasPdf: boolean): string {
-  const total = p.total != null ? fmtMoney(p.total) : null;
-  const greeting = p.client_name ? `Estimado(a) <strong>${p.client_name}</strong>,` : 'Estimado(a) cliente,';
-
-  const rows = [
-    p.invoice_number ? `<tr><td style="color:#666;padding:4px 12px 4px 0;font-size:13px">N. Factura</td><td style="font-weight:600;font-size:13px">${p.invoice_number}</td></tr>` : '',
-    total            ? `<tr><td style="color:#666;padding:4px 12px 4px 0;font-size:13px">Total</td><td style="font-weight:700;font-size:14px">${total}</td></tr>` : '',
-    p.fecha_factura  ? `<tr><td style="color:#666;padding:4px 12px 4px 0;font-size:13px">Fecha</td><td style="font-size:13px">${p.fecha_factura}</td></tr>` : '',
-  ].filter(Boolean).join('');
-
-  const extraBody = p.body
-    ? `<p style="font-size:13px;color:#444;margin:14px 0 0;white-space:pre-wrap">${p.body}</p>`
-    : '';
-
-  const pdfNote = hasPdf
-    ? `<p style="font-size:13px;color:#444;margin:14px 0 0">Encontrara la factura adjunta en este correo.</p>`
-    : '';
-
-  return `<!DOCTYPE html>
-<html lang="es">
-<head><meta charset="utf-8"/></head>
-<body style="font-family:Arial,sans-serif;color:#222;max-width:560px;margin:0 auto;padding:28px 20px;background:#f7f7f7">
-  <div style="background:#fff;border-radius:8px;padding:28px 28px 24px;border:1px solid #e5e7eb">
-    <p style="margin:0 0 14px;font-size:14px">${greeting}</p>
-    <p style="margin:0 0 16px;font-size:13px;color:#444">
-      Le remitimos la factura correspondiente para su revision y pago oportuno.
-    </p>
-    ${rows ? `<table style="border-collapse:collapse;margin-bottom:4px">${rows}</table>` : ''}
-    ${pdfNote}
-    ${extraBody}
-    <hr style="border:none;border-top:1px solid #eee;margin:20px 0 14px"/>
-    <p style="font-size:11px;color:#aaa;margin:0">
-      Ancori y Asociados${p.sent_by_nombre ? ` - Enviado por: ${p.sent_by_nombre}` : ''}
-    </p>
-  </div>
-</body>
-</html>`;
+function nl2br(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br/>');
 }
 
-function buildText(p: SendInvoicePayload, hasPdf: boolean): string {
-  const lines: string[] = [];
-  if (p.client_name) lines.push(`Estimado(a) ${p.client_name},`);
-  else lines.push('Estimado(a) cliente,');
-  lines.push('');
-  lines.push('Le remitimos la factura correspondiente para su revision y pago oportuno.');
-  if (p.invoice_number) lines.push(`N. Factura : ${p.invoice_number}`);
-  if (p.total != null)  lines.push(`Total      : ${fmtMoney(p.total)}`);
-  if (p.fecha_factura)  lines.push(`Fecha      : ${p.fecha_factura}`);
-  if (hasPdf) lines.push('', 'Encontrara la factura adjunta en este correo.');
-  if (p.body) { lines.push('', p.body); }
-  lines.push('', `Ancori y Asociados${p.sent_by_nombre ? ` - Enviado por: ${p.sent_by_nombre}` : ''}`);
-  return lines.join('\n');
+function buildHtml(p: SendInvoicePayload): string {
+  const total    = p.total != null ? fmtMoney(p.total) : null;
+  const greeting = p.client_name
+    ? `Estimado(a) <strong>${p.client_name}</strong>,`
+    : 'Estimado(a) cliente,';
+
+  const rows = [
+    p.invoice_number ? `<tr><td style="color:#666;padding:3px 16px 3px 0;font-size:13px;vertical-align:top">N. Factura</td><td style="font-weight:600;font-size:13px">${p.invoice_number}</td></tr>` : '',
+    total            ? `<tr><td style="color:#666;padding:3px 16px 3px 0;font-size:13px;vertical-align:top">Total</td><td style="font-weight:700;font-size:14px">${total}</td></tr>` : '',
+    p.fecha_factura  ? `<tr><td style="color:#666;padding:3px 16px 3px 0;font-size:13px;vertical-align:top">Fecha</td><td style="font-size:13px">${p.fecha_factura}</td></tr>` : '',
+  ].filter(Boolean).join('');
+
+  const bodyHtml = p.body
+    ? `<p style="font-size:13px;color:#333;margin:18px 0 0;line-height:1.6">${nl2br(p.body)}</p>`
+    : '';
+
+  return [
+    '<!DOCTYPE html>',
+    '<html lang="es"><head><meta charset="utf-8"/></head>',
+    '<body style="font-family:Arial,sans-serif;color:#222;max-width:560px;margin:0 auto;padding:28px 20px;background:#f5f5f5">',
+    '<div style="background:#fff;border-radius:8px;padding:28px;border:1px solid #e5e7eb">',
+    `<p style="margin:0 0 14px;font-size:14px">${greeting}</p>`,
+    rows ? `<table style="border-collapse:collapse;margin:0 0 8px">${rows}</table>` : '',
+    bodyHtml,
+    '<hr style="border:none;border-top:1px solid #eee;margin:22px 0 12px"/>',
+    `<p style="font-size:11px;color:#bbb;margin:0">Ancori y Asociados${p.sent_by_nombre ? ` &mdash; Enviado por: ${p.sent_by_nombre}` : ''}</p>`,
+    '</div></body></html>',
+  ].join('');
 }
 
 serve(async (req) => {
@@ -156,8 +140,7 @@ serve(async (req) => {
       from: `Ancori y Asociados <${MAIL_FROM}>`,
       to: [payload.to_email.trim()],
       subject,
-      html: buildHtml(payload, hasPdf),
-      content: buildText(payload, hasPdf),
+      html: buildHtml(payload),
     };
 
     if (hasPdf) {

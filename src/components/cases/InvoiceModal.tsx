@@ -240,7 +240,20 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
     setSendSubject(
       `Factura${invNum ? ` No. ${invNum}` : ''}${recipient ? ` - ${recipient}` : ''}`,
     );
-    setSendBody('');
+    setSendBody(
+      'Adjunto encontrara la factura correspondiente para su revision y pago.\n' +
+      '\n' +
+      'Una vez realizado el pago, favor enviar confirmacion con el numero de factura o nombre de la sociedad, para identificarlo correctamente en el banco.\n' +
+      '\n' +
+      'Le recordamos que el pago oportuno evita:\n' +
+      '- Recargo de B/.50.00 por sociedad ante la DGI\n' +
+      '- Multa de B/.1,000.00 por morosidad superior a dos anos\n' +
+      '- Restricciones legales a la capacidad juridica de sociedades morosas\n' +
+      '\n' +
+      'Para cualquier consulta, no dude en contactarnos. Estamos a su disposicion para asistirle.\n' +
+      '\n' +
+      'Saludos cordiales,'
+    );
     setShowSendPanel(true);
   };
 
@@ -266,11 +279,31 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
     setSendingToClient(true);
     try {
       let pdfUrl: string | undefined;
-      if (effectiveInvoice?.pdf_path) {
+
+      const hasPdfOk = Boolean(effectiveInvoice?.pdf_path && effectiveInvoice.pdf_status === 'ok');
+      const hasQbId  = Boolean(effectiveInvoice?.qb_invoice_id && effectiveInvoice?.id);
+
+      if (hasPdfOk) {
+        // PDF ya guardado → generar URL firmada
         const sb = getSupabase();
         if (sb) {
-          const { data } = await sb.storage.from('invoices').createSignedUrl(effectiveInvoice.pdf_path, 3600 * 24 * 7);
+          const { data } = await sb.storage.from('invoices').createSignedUrl(effectiveInvoice!.pdf_path!, 3600 * 24 * 7);
           pdfUrl = data?.signedUrl ?? undefined;
+        }
+      } else if (hasQbId) {
+        // Sin PDF local → sincronizar desde QB primero
+        try {
+          const syncRes = await fetch(`${SUPABASE_URL}/functions/v1/qbo-invoice-pdf-sync`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-ancori-secret': FUNCTION_SECRET },
+            body: JSON.stringify({ invoice_id: effectiveInvoice!.id, force: false }),
+          });
+          if (syncRes.ok) {
+            const syncData = await syncRes.json() as { ok?: boolean; signed_url?: string };
+            if (syncData.ok && syncData.signed_url) pdfUrl = syncData.signed_url;
+          }
+        } catch {
+          // Continuar sin PDF adjunto si la sincronizacion falla
         }
       }
       const res = await fetch(`${SUPABASE_URL}/functions/v1/send-invoice-to-client`, {
@@ -953,9 +986,9 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
                           <textarea
                             value={sendBody}
                             onChange={e => setSendBody(e.target.value)}
-                            placeholder="Mensaje adicional para el cliente..."
-                            rows={3}
-                            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-sky-400 resize-none"
+                            placeholder="Mensaje para el cliente..."
+                            rows={8}
+                            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-sky-400 resize-y"
                           />
                         </div>
 
