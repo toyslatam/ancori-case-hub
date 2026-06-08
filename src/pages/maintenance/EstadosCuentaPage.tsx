@@ -68,7 +68,9 @@ export default function EstadosCuentaPage() {
   const [allInvoices, setAllInvoices]   = useState<QboInvoice[]>([]);
   const [customers, setCustomers]       = useState<QboCustomer[]>([]);
   const [selectedId, setSelectedId]     = useState<string>('__all__');
+  const [filterClientId, setFilterClientId] = useState<string>('__all__');
   const [search, setSearch]             = useState('');
+  const [searchClient, setSearchClient] = useState('');
   const [dateFrom, setDateFrom]         = useState('');
   const [dateTo, setDateTo]             = useState('');
   const [viewFilter, setViewFilter]     = useState<ViewFilter>('all');
@@ -238,14 +240,54 @@ export default function EstadosCuentaPage() {
     });
   }, [clientSummary, societies, clients]);
 
-  // ── Totales generales ─────────────────────────────────────────────────────
+  // ── Grupos visibles según filtro de cliente ───────────────────────────────
+  const visibleGroups = useMemo(() =>
+    filterClientId === '__all__'
+      ? groupedSummary
+      : groupedSummary.filter(g => g.clientId === filterClientId),
+  [groupedSummary, filterClientId]);
+
+  // ── App clients con datos QB (para el selector de cliente) ────────────────
+  const appClientsWithData = useMemo(() =>
+    groupedSummary
+      .filter(g => g.clientId !== '__unknown__')
+      .map(g => ({ id: g.clientId, nombre: g.clientName }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre)),
+  [groupedSummary]);
+
+  const filteredAppClients = useMemo(() =>
+    !searchClient.trim()
+      ? appClientsWithData
+      : appClientsWithData.filter(c =>
+          c.nombre.toLowerCase().includes(searchClient.trim().toLowerCase()),
+        ),
+  [appClientsWithData, searchClient]);
+
+  // ── Sociedades para el selector (filtradas por cliente seleccionado) ───────
+  const societiesForSelect = useMemo(() => {
+    if (filterClientId === '__all__') return clientsInFilter;
+    const group = groupedSummary.find(g => g.clientId === filterClientId);
+    if (!group) return [];
+    const itemIds = new Set(group.items.map(i => i.id));
+    return clientsInFilter.filter(c => itemIds.has(c.Id));
+  }, [clientsInFilter, filterClientId, groupedSummary]);
+
+  const filteredSocieties = useMemo(() =>
+    !search.trim()
+      ? societiesForSelect
+      : societiesForSelect.filter(c =>
+          (c.DisplayName ?? c.CompanyName ?? '').toLowerCase().includes(search.trim().toLowerCase()),
+        ),
+  [societiesForSelect, search]);
+
+  // ── Totales generales (sobre grupos visibles) ─────────────────────────────
   const grandTotals = useMemo(() => ({
-    estimatesCount: clientSummary.reduce((s, c) => s + c.estimatesCount, 0),
-    estimatesTotal: clientSummary.reduce((s, c) => s + c.estimatesTotal, 0),
-    invoicesCount:  clientSummary.reduce((s, c) => s + c.invoicesCount,  0),
-    invoicesTotal:  clientSummary.reduce((s, c) => s + c.invoicesTotal,  0),
-    total:          clientSummary.reduce((s, c) => s + c.total,          0),
-  }), [clientSummary]);
+    estimatesCount: visibleGroups.reduce((s, g) => s + g.estimatesCount, 0),
+    estimatesTotal: visibleGroups.reduce((s, g) => s + g.estimatesTotal, 0),
+    invoicesCount:  visibleGroups.reduce((s, g) => s + g.invoicesCount,  0),
+    invoicesTotal:  visibleGroups.reduce((s, g) => s + g.invoicesTotal,  0),
+    total:          visibleGroups.reduce((s, g) => s + g.total,          0),
+  }), [visibleGroups]);
 
   const selectedCustomer = customers.find(c => c.Id === selectedId);
   const customerName = selectedCustomer?.DisplayName ?? selectedCustomer?.CompanyName ?? '';
@@ -287,15 +329,21 @@ export default function EstadosCuentaPage() {
 
       {/* ── Barra de filtros ─────────────────────────────────────── */}
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm px-5 py-4 space-y-4">
-        {/* Fila 1: cliente + botones de acción */}
-        <div className="flex flex-col sm:flex-row items-end gap-3">
-          <div className="w-full sm:w-[420px] space-y-1">
+        {/* Fila 1: cliente + sociedad + botones de acción */}
+        <div className="flex flex-col sm:flex-row items-end gap-3 flex-wrap">
+
+          {/* ── Selector de Cliente ── */}
+          <div className="w-full sm:w-[280px] space-y-1">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-              {loading ? 'Cargando...' : `${clientsInFilter.length} clientes encontrados`}
+              {loading ? 'Cargando...' : `Cliente (${appClientsWithData.length})`}
             </p>
-            <Select value={selectedId} onValueChange={v => { setSelectedId(v); setSearch(''); }}>
+            <Select value={filterClientId} onValueChange={v => {
+              setFilterClientId(v);
+              setSelectedId('__all__');
+              setSearchClient('');
+            }}>
               <SelectTrigger className="h-10 text-sm bg-white">
-                <SelectValue placeholder="Seleccionar cliente..." />
+                <SelectValue placeholder="Todos los clientes" />
               </SelectTrigger>
               <SelectContent>
                 <div className="px-2 py-1.5 border-b border-border">
@@ -304,8 +352,8 @@ export default function EstadosCuentaPage() {
                     <input
                       className="w-full pl-6 pr-2 py-1.5 text-xs border border-border rounded bg-background outline-none focus:ring-1 focus:ring-primary"
                       placeholder="Buscar cliente..."
-                      value={search}
-                      onChange={e => setSearch(e.target.value)}
+                      value={searchClient}
+                      onChange={e => setSearchClient(e.target.value)}
                       onKeyDown={e => e.stopPropagation()}
                     />
                   </div>
@@ -313,18 +361,54 @@ export default function EstadosCuentaPage() {
                 <SelectItem value="__all__">
                   <span className="font-medium">Todos los clientes</span>
                 </SelectItem>
-                {filteredClients.map(c => (
-                  <SelectItem key={c.Id} value={c.Id}>
-                    {c.DisplayName ?? c.CompanyName}
-                  </SelectItem>
+                {filteredAppClients.map(c => (
+                  <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>
                 ))}
-                {filteredClients.length === 0 && search.trim() && (
+                {filteredAppClients.length === 0 && searchClient.trim() && (
                   <div className="px-3 py-2 text-xs text-muted-foreground text-center">Sin resultados</div>
                 )}
               </SelectContent>
             </Select>
           </div>
 
+          {/* ── Selector de Sociedad ── */}
+          <div className="w-full sm:w-[280px] space-y-1">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+              {loading ? 'Cargando...' : `Sociedad (${societiesForSelect.length})`}
+            </p>
+            <Select value={selectedId} onValueChange={v => { setSelectedId(v); setSearch(''); }}>
+              <SelectTrigger className="h-10 text-sm bg-white">
+                <SelectValue placeholder="Todas las sociedades" />
+              </SelectTrigger>
+              <SelectContent>
+                <div className="px-2 py-1.5 border-b border-border">
+                  <div className="relative">
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                    <input
+                      className="w-full pl-6 pr-2 py-1.5 text-xs border border-border rounded bg-background outline-none focus:ring-1 focus:ring-primary"
+                      placeholder="Buscar sociedad..."
+                      value={search}
+                      onChange={e => setSearch(e.target.value)}
+                      onKeyDown={e => e.stopPropagation()}
+                    />
+                  </div>
+                </div>
+                <SelectItem value="__all__">
+                  <span className="font-medium">Todas las sociedades</span>
+                </SelectItem>
+                {filteredSocieties.map(c => (
+                  <SelectItem key={c.Id} value={c.Id}>
+                    {c.DisplayName ?? c.CompanyName}
+                  </SelectItem>
+                ))}
+                {filteredSocieties.length === 0 && search.trim() && (
+                  <div className="px-3 py-2 text-xs text-muted-foreground text-center">Sin resultados</div>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Botones detalle / estado */}
           {!isAll && (
             <div className="flex gap-2">
               <Button variant="outline" size="sm" className="gap-1.5 h-10"
@@ -339,6 +423,16 @@ export default function EstadosCuentaPage() {
                 </Button>
               )}
             </div>
+          )}
+
+          {/* Limpiar filtros de cliente */}
+          {(filterClientId !== '__all__' || selectedId !== '__all__') && isAll && (
+            <button
+              onClick={() => { setFilterClientId('__all__'); setSelectedId('__all__'); }}
+              className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors h-10"
+            >
+              <X className="h-3 w-3" /> Limpiar
+            </button>
           )}
         </div>
 
@@ -418,180 +512,196 @@ export default function EstadosCuentaPage() {
       ) : isAll ? (
         /* ── Vista resumen agrupada por cliente ── */
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-          {/* Encabezado de la tabla */}
-          <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-0 border-b border-gray-100 bg-gray-50">
-            <div className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              Cliente / Sociedad
-            </div>
-            {viewFilter !== 'invoices' && (
-              <div className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide text-center min-w-[160px]">
-                Cotizaciones
-              </div>
-            )}
-            {viewFilter !== 'estimates' && (
-              <div className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide text-center min-w-[160px]">
-                Facturas Abiertas
-              </div>
-            )}
-            <div className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right min-w-[140px]">
-              Total Pendiente
-            </div>
-            <div className="px-5 py-3 min-w-[100px]" />
-          </div>
-
           {clientSummary.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 gap-2 text-muted-foreground">
               <Receipt className="h-8 w-8" />
               <p className="text-sm">Sin registros para los filtros seleccionados</p>
             </div>
           ) : (
-            <>
-              {groupedSummary.map(group => {
-                const isExpanded = expandedGroups.has(group.clientId);
-                return (
-                  <div key={group.clientId}>
-                    {/* Fila de cliente (header del grupo) */}
-                    <button
-                      className="w-full grid grid-cols-[1fr_auto_auto_auto_auto] gap-0 px-0 py-0
-                        bg-orange-50/60 hover:bg-orange-50 border-b border-orange-100/60
-                        transition-colors text-left"
-                      onClick={() => toggleGroup(group.clientId)}
-                    >
-                      <div className="px-5 py-3 flex items-center gap-2">
-                        {isExpanded
-                          ? <ChevronDown className="h-3.5 w-3.5 text-orange-400 flex-shrink-0" />
-                          : <ChevronRight className="h-3.5 w-3.5 text-orange-400 flex-shrink-0" />}
-                        <span className="text-sm font-semibold text-gray-800">{group.clientName}</span>
-                        <span className="text-xs text-gray-400">({group.items.length} soc.)</span>
-                      </div>
-                      {viewFilter !== 'invoices' && (
-                        <div className="px-5 py-3 flex items-center justify-center gap-2 min-w-[160px]">
-                          <span className="inline-flex items-center justify-center rounded-full w-7 h-7 text-sm font-bold bg-amber-200 text-amber-800">
-                            {group.estimatesCount}
-                          </span>
-                          <span className="text-xs font-semibold text-amber-700 tabular-nums">
-                            {fmtMoney(group.estimatesTotal)}
-                          </span>
-                        </div>
-                      )}
-                      {viewFilter !== 'estimates' && (
-                        <div className="px-5 py-3 flex items-center justify-center gap-2 min-w-[160px]">
-                          {group.invoicesCount > 0 ? (
-                            <>
-                              <span className="inline-flex items-center justify-center rounded-full w-7 h-7 text-sm font-bold bg-red-200 text-red-800">
-                                {group.invoicesCount}
-                              </span>
-                              <span className="text-xs font-semibold text-red-700 tabular-nums">
-                                {fmtMoney(group.invoicesTotal)}
-                              </span>
-                            </>
-                          ) : (
-                            <span className="text-xs text-gray-300">—</span>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-full">
+                      Cliente / Sociedad
+                    </th>
+                    {viewFilter !== 'invoices' && (
+                      <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
+                        Cotizaciones
+                      </th>
+                    )}
+                    {viewFilter !== 'estimates' && (
+                      <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
+                        Facturas Abiertas
+                      </th>
+                    )}
+                    <th className="px-5 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
+                      Total Pendiente
+                    </th>
+                    <th className="px-4 py-3 w-[110px]" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleGroups.map(group => {
+                    const isExpanded = expandedGroups.has(group.clientId);
+                    return (
+                      <>
+                        {/* Fila de cliente */}
+                        <tr
+                          key={`g-${group.clientId}`}
+                          className="bg-orange-50/70 hover:bg-orange-50 border-b border-orange-100 cursor-pointer transition-colors"
+                          onClick={() => toggleGroup(group.clientId)}
+                        >
+                          <td className="px-5 py-3">
+                            <div className="flex items-center gap-2">
+                              {isExpanded
+                                ? <ChevronDown className="h-3.5 w-3.5 text-orange-400 flex-shrink-0" />
+                                : <ChevronRight className="h-3.5 w-3.5 text-orange-400 flex-shrink-0" />}
+                              <span className="text-sm font-semibold text-gray-800">{group.clientName}</span>
+                              <span className="text-xs text-gray-400">({group.items.length} soc.)</span>
+                            </div>
+                          </td>
+                          {viewFilter !== 'invoices' && (
+                            <td className="px-5 py-3">
+                              <div className="flex items-center justify-center gap-2">
+                                <span className="inline-flex items-center justify-center rounded-full w-7 h-7 text-sm font-bold bg-amber-200 text-amber-800 flex-shrink-0">
+                                  {group.estimatesCount}
+                                </span>
+                                <span className="text-xs font-semibold text-amber-700 tabular-nums whitespace-nowrap">
+                                  {fmtMoney(group.estimatesTotal)}
+                                </span>
+                              </div>
+                            </td>
                           )}
-                        </div>
-                      )}
-                      <div className="px-5 py-3 text-right min-w-[140px]">
-                        <span className="text-sm font-bold text-orange-600 tabular-nums">
-                          {fmtMoney(group.total)}
-                        </span>
-                      </div>
-                      <div className="px-5 py-3 min-w-[100px]" />
-                    </button>
+                          {viewFilter !== 'estimates' && (
+                            <td className="px-5 py-3">
+                              <div className="flex items-center justify-center gap-2">
+                                {group.invoicesCount > 0 ? (
+                                  <>
+                                    <span className="inline-flex items-center justify-center rounded-full w-7 h-7 text-sm font-bold bg-red-200 text-red-800 flex-shrink-0">
+                                      {group.invoicesCount}
+                                    </span>
+                                    <span className="text-xs font-semibold text-red-700 tabular-nums whitespace-nowrap">
+                                      {fmtMoney(group.invoicesTotal)}
+                                    </span>
+                                  </>
+                                ) : (
+                                  <span className="text-xs text-gray-300 mx-auto">—</span>
+                                )}
+                              </div>
+                            </td>
+                          )}
+                          <td className="px-5 py-3 text-right">
+                            <span className="text-sm font-bold text-orange-600 tabular-nums whitespace-nowrap">
+                              {fmtMoney(group.total)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3" />
+                        </tr>
 
-                    {/* Filas de sociedades (colapsables) */}
-                    {isExpanded && group.items.map((item, idx) => (
-                      <div
-                        key={item.id}
-                        className={cn(
-                          'grid grid-cols-[1fr_auto_auto_auto_auto] gap-0 border-b border-gray-100',
-                          'hover:bg-blue-50/30 cursor-pointer transition-colors',
-                          idx % 2 === 1 && 'bg-gray-50/40',
-                        )}
-                        onClick={() => setSelectedId(item.id)}
-                      >
-                        <div className="px-5 py-3 pl-12 text-sm text-gray-700">{item.name}</div>
-                        {viewFilter !== 'invoices' && (
-                          <div className="px-5 py-3 flex items-center justify-center gap-2 min-w-[160px]">
-                            {item.estimatesCount > 0 ? (
-                              <>
-                                <span className="inline-flex items-center justify-center rounded-full w-7 h-7 text-sm font-semibold bg-amber-100 text-amber-700">
-                                  {item.estimatesCount}
-                                </span>
-                                <span className="text-xs text-amber-700 tabular-nums">
-                                  {fmtMoney(item.estimatesTotal)}
-                                </span>
-                              </>
-                            ) : (
-                              <span className="text-xs text-gray-300">—</span>
+                        {/* Filas de sociedades */}
+                        {isExpanded && group.items.map((item, idx) => (
+                          <tr
+                            key={`s-${item.id}`}
+                            className={cn(
+                              'border-b border-gray-100 hover:bg-sky-50/40 cursor-pointer transition-colors',
+                              idx % 2 === 1 && 'bg-gray-50/50',
                             )}
-                          </div>
-                        )}
-                        {viewFilter !== 'estimates' && (
-                          <div className="px-5 py-3 flex items-center justify-center gap-2 min-w-[160px]">
-                            {item.invoicesCount > 0 ? (
-                              <>
-                                <span className="inline-flex items-center justify-center rounded-full w-7 h-7 text-sm font-semibold bg-red-100 text-red-700">
-                                  {item.invoicesCount}
-                                </span>
-                                <span className="text-xs text-red-700 tabular-nums">
-                                  {fmtMoney(item.invoicesTotal)}
-                                </span>
-                              </>
-                            ) : (
-                              <span className="text-xs text-gray-300">—</span>
+                            onClick={() => setSelectedId(item.id)}
+                          >
+                            <td className="px-5 py-2.5 pl-12 text-sm text-gray-700">{item.name}</td>
+                            {viewFilter !== 'invoices' && (
+                              <td className="px-5 py-2.5">
+                                <div className="flex items-center justify-center gap-2">
+                                  {item.estimatesCount > 0 ? (
+                                    <>
+                                      <span className="inline-flex items-center justify-center rounded-full w-7 h-7 text-sm font-semibold bg-amber-100 text-amber-700 flex-shrink-0">
+                                        {item.estimatesCount}
+                                      </span>
+                                      <span className="text-xs text-amber-700 tabular-nums whitespace-nowrap">
+                                        {fmtMoney(item.estimatesTotal)}
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <span className="text-xs text-gray-300 mx-auto">—</span>
+                                  )}
+                                </div>
+                              </td>
                             )}
-                          </div>
-                        )}
-                        <div className="px-5 py-3 text-right min-w-[140px]">
-                          <span className="text-sm font-semibold text-orange-600 tabular-nums">
-                            {fmtMoney(item.total)}
+                            {viewFilter !== 'estimates' && (
+                              <td className="px-5 py-2.5">
+                                <div className="flex items-center justify-center gap-2">
+                                  {item.invoicesCount > 0 ? (
+                                    <>
+                                      <span className="inline-flex items-center justify-center rounded-full w-7 h-7 text-sm font-semibold bg-red-100 text-red-700 flex-shrink-0">
+                                        {item.invoicesCount}
+                                      </span>
+                                      <span className="text-xs text-red-700 tabular-nums whitespace-nowrap">
+                                        {fmtMoney(item.invoicesTotal)}
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <span className="text-xs text-gray-300 mx-auto">—</span>
+                                  )}
+                                </div>
+                              </td>
+                            )}
+                            <td className="px-5 py-2.5 text-right">
+                              <span className="text-sm font-semibold text-orange-600 tabular-nums whitespace-nowrap">
+                                {fmtMoney(item.total)}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 text-right">
+                              <Button size="sm" variant="outline" className="h-7 px-3 text-xs whitespace-nowrap"
+                                onClick={e => { e.stopPropagation(); setSelectedId(item.id); }}>
+                                Ver detalle →
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-gray-900 text-white">
+                    <td className="px-5 py-4 text-sm font-semibold">
+                      Total General — {visibleGroups.reduce((s, g) => s + g.items.length, 0)} sociedades
+                    </td>
+                    {viewFilter !== 'invoices' && (
+                      <td className="px-5 py-4">
+                        <div className="flex items-center justify-center gap-2">
+                          <span className="inline-flex items-center justify-center rounded-full w-7 h-7 text-sm font-bold bg-amber-400/25 text-amber-300 flex-shrink-0">
+                            {grandTotals.estimatesCount}
+                          </span>
+                          <span className="text-sm font-semibold text-amber-300 tabular-nums whitespace-nowrap">
+                            {fmtMoney(grandTotals.estimatesTotal)}
                           </span>
                         </div>
-                        <div className="px-5 py-3 text-right min-w-[100px]">
-                          <Button size="sm" variant="outline" className="h-7 px-3 text-xs"
-                            onClick={e => { e.stopPropagation(); setSelectedId(item.id); }}>
-                            Ver detalle →
-                          </Button>
+                      </td>
+                    )}
+                    {viewFilter !== 'estimates' && (
+                      <td className="px-5 py-4">
+                        <div className="flex items-center justify-center gap-2">
+                          <span className="inline-flex items-center justify-center rounded-full w-7 h-7 text-sm font-bold bg-red-400/25 text-red-300 flex-shrink-0">
+                            {grandTotals.invoicesCount}
+                          </span>
+                          <span className="text-sm font-semibold text-red-300 tabular-nums whitespace-nowrap">
+                            {fmtMoney(grandTotals.invoicesTotal)}
+                          </span>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })}
-
-              {/* Fila de totales generales */}
-              <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-0 bg-gray-900 text-white">
-                <div className="px-5 py-3.5 text-sm font-semibold">
-                  Total General — {clientSummary.length} sociedades
-                </div>
-                {viewFilter !== 'invoices' && (
-                  <div className="px-5 py-3.5 flex items-center justify-center gap-2 min-w-[160px]">
-                    <span className="inline-flex items-center justify-center rounded-full w-7 h-7 text-sm font-bold bg-amber-400/30 text-amber-300">
-                      {grandTotals.estimatesCount}
-                    </span>
-                    <span className="text-sm font-semibold text-amber-300 tabular-nums">
-                      {fmtMoney(grandTotals.estimatesTotal)}
-                    </span>
-                  </div>
-                )}
-                {viewFilter !== 'estimates' && (
-                  <div className="px-5 py-3.5 flex items-center justify-center gap-2 min-w-[160px]">
-                    <span className="inline-flex items-center justify-center rounded-full w-7 h-7 text-sm font-bold bg-red-400/30 text-red-300">
-                      {grandTotals.invoicesCount}
-                    </span>
-                    <span className="text-sm font-semibold text-red-300 tabular-nums">
-                      {fmtMoney(grandTotals.invoicesTotal)}
-                    </span>
-                  </div>
-                )}
-                <div className="px-5 py-3.5 text-right min-w-[140px]">
-                  <span className="text-base font-bold text-orange-300 tabular-nums">
-                    {fmtMoney(grandTotals.total)}
-                  </span>
-                </div>
-                <div className="px-5 py-3.5 min-w-[100px]" />
-              </div>
-            </>
+                      </td>
+                    )}
+                    <td className="px-5 py-4 text-right">
+                      <span className="text-base font-extrabold text-orange-300 tabular-nums whitespace-nowrap">
+                        {fmtMoney(grandTotals.total)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4" />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
           )}
         </div>
 
