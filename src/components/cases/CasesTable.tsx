@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Case, formatNTarea } from '@/data/mockData';
 import { useApp } from '@/context/AppContext';
 import { MessageSquare, DollarSign, FileText, Trash2, ArrowUpDown } from 'lucide-react';
@@ -50,6 +50,23 @@ export function CasesTable({
   const [page, setPage]           = useState(0);
   const [observacionesModal, setObservacionesModal] = useState<{ caseLabel: string; items: string[] } | null>(null);
   const perPage = 10;
+
+  // ── Scrollbar espejo (superior) ────────────────────────────────────────────
+  const mirrorRef = useRef<HTMLDivElement>(null);
+  const tableRef  = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const mirror = mirrorRef.current;
+    const table  = tableRef.current;
+    if (!mirror || !table) return;
+    const syncFromTable  = () => { mirror.scrollLeft = table.scrollLeft; };
+    const syncFromMirror = () => { table.scrollLeft  = mirror.scrollLeft; };
+    table.addEventListener('scroll',  syncFromTable);
+    mirror.addEventListener('scroll', syncFromMirror);
+    return () => {
+      table.removeEventListener('scroll',  syncFromTable);
+      mirror.removeEventListener('scroll', syncFromMirror);
+    };
+  }, []);
 
   const toggleSort = (field: string) => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -111,11 +128,28 @@ export function CasesTable({
         <span className="text-xs text-gray-400">{cases.length} caso{cases.length !== 1 ? 's' : ''}</span>
       </div>
 
+      {/* ── Scrollbar espejo (arriba) ──────────────────────────────────── */}
       <div
+        ref={mirrorRef}
         className={cn(
-          'w-full overflow-x-auto overflow-y-auto overscroll-contain',
+          'overflow-x-auto overflow-y-hidden',
+          '[&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent',
+          '[&::-webkit-scrollbar-thumb]:rounded-full',
+          READABLE_CASES_TABLE_SAMPLE
+            ? '[&::-webkit-scrollbar-thumb]:bg-orange-200 [&::-webkit-scrollbar-thumb:hover]:bg-orange-300'
+            : '[&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb:hover]:bg-gray-300',
+        )}
+      >
+        <div className={cn(READABLE_CASES_TABLE_SAMPLE ? 'min-w-[1450px]' : 'min-w-[1040px]', 'h-px')} />
+      </div>
+
+      {/* ── Tabla (scrollbar horizontal oculto abajo) ──────────────────── */}
+      <div
+        ref={tableRef}
+        className={cn(
+          'w-full overflow-x-auto overflow-y-auto overscroll-contain hide-x-scrollbar',
           'max-h-[750px]',
-          '[&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar]:w-1.5',
+          '[&::-webkit-scrollbar]:w-1.5',
           '[&::-webkit-scrollbar-track]:bg-transparent',
           '[&::-webkit-scrollbar-thumb]:rounded-full',
           READABLE_CASES_TABLE_SAMPLE

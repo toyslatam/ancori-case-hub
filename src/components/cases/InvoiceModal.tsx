@@ -232,9 +232,14 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
     const defEmail = isSociety
       ? (societies.find(s => s.id === caseData?.society_id)?.correo ?? '')
       : (clients.find(c => c.id === caseData?.client_id)?.email ?? '');
-    const invNum = effectiveInvoice?.numero_factura ?? '';
+    const invNum    = effectiveInvoice?.numero_factura ?? '';
+    const recipient = isSociety
+      ? getSocietyName(caseData?.society_id ?? '')
+      : getClientName(caseData?.client_id ?? '');
     setSendEmail(defEmail);
-    setSendSubject(`Factura${invNum ? ` No. ${invNum}` : ''}`);
+    setSendSubject(
+      `Factura${invNum ? ` No. ${invNum}` : ''}${recipient ? ` - ${recipient}` : ''}`,
+    );
     setSendBody('');
     setShowSendPanel(true);
   };

@@ -6,7 +6,6 @@ const SMTP_PORT     = 587;
 const SMTP_USER     = Deno.env.get('SMTP_USER')     ?? 'ancori@solucionesdetecnologia.com';
 const SMTP_PASSWORD = Deno.env.get('SMTP_PASSWORD') ?? '';
 const MAIL_FROM     = Deno.env.get('MAIL_FROM')     ?? 'ancori@solucionesdetecnologia.com';
-
 const FUNCTION_SECRET = Deno.env.get('FUNCTION_SECRET') ?? '';
 
 const CORS = {
@@ -26,7 +25,7 @@ function fmtMoney(n: number): string {
 
 type SendInvoicePayload = {
   to_email: string;
-  subject: string;
+  subject?: string;
   body?: string;
   pdf_url?: string;
   invoice_number?: string;
@@ -36,79 +35,75 @@ type SendInvoicePayload = {
   sent_by_nombre?: string;
 };
 
-function buildHtml(p: SendInvoicePayload): string {
-  const total = p.total != null ? fmtMoney(p.total) : null;
+/** Descarga el PDF desde la URL firmada y lo devuelve en base64. */
+async function fetchPdfBase64(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const buf   = await res.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let b64 = '';
+    const CHUNK = 8192;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      b64 += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(b64);
+  } catch {
+    return null;
+  }
+}
 
-  const pdfSection = p.pdf_url
-    ? `<div style="margin:20px 0;text-align:center">
-         <a href="${p.pdf_url}" target="_blank"
-            style="display:inline-block;background:#0a7c4d;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:bold;font-size:14px">
-           Ver / Descargar Factura PDF
-         </a>
-       </div>`
+function buildHtml(p: SendInvoicePayload, hasPdf: boolean): string {
+  const total = p.total != null ? fmtMoney(p.total) : null;
+  const greeting = p.client_name ? `Estimado(a) <strong>${p.client_name}</strong>,` : 'Estimado(a) cliente,';
+
+  const rows = [
+    p.invoice_number ? `<tr><td style="color:#666;padding:4px 12px 4px 0;font-size:13px">N. Factura</td><td style="font-weight:600;font-size:13px">${p.invoice_number}</td></tr>` : '',
+    total            ? `<tr><td style="color:#666;padding:4px 12px 4px 0;font-size:13px">Total</td><td style="font-weight:700;font-size:14px">${total}</td></tr>` : '',
+    p.fecha_factura  ? `<tr><td style="color:#666;padding:4px 12px 4px 0;font-size:13px">Fecha</td><td style="font-size:13px">${p.fecha_factura}</td></tr>` : '',
+  ].filter(Boolean).join('');
+
+  const extraBody = p.body
+    ? `<p style="font-size:13px;color:#444;margin:14px 0 0;white-space:pre-wrap">${p.body}</p>`
     : '';
 
-  const bodySection = p.body
-    ? `<div style="margin:12px 0;padding:12px 16px;background:#f5f7fa;border-left:3px solid #0a7c4d;border-radius:4px;font-size:13px;color:#444;white-space:pre-wrap">${p.body}</div>`
+  const pdfNote = hasPdf
+    ? `<p style="font-size:13px;color:#444;margin:14px 0 0">Encontrara la factura adjunta en este correo.</p>`
     : '';
 
   return `<!DOCTYPE html>
 <html lang="es">
-<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
-<body style="font-family:Arial,sans-serif;color:#222;max-width:600px;margin:0 auto;padding:24px;background:#f9f9f9">
-  <div style="background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.1)">
-    <div style="background:#0a7c4d;padding:18px 24px">
-      <p style="margin:0;color:#fff;font-size:17px;font-weight:bold">
-        FACTURA${p.invoice_number ? ` N. ${p.invoice_number}` : ''}
-      </p>
-    </div>
-    <div style="padding:24px">
-      ${p.client_name ? `<p style="font-size:14px;color:#333;margin:0 0 12px">Estimado(a) <strong>${p.client_name}</strong>,</p>` : ''}
-      <p style="font-size:13px;color:#555;margin:0 0 14px">
-        Le remitimos la siguiente factura para su revision y pago correspondiente.
-      </p>
-      ${bodySection}
-      <table style="width:100%;border-collapse:collapse;margin:16px 0">
-        ${p.invoice_number ? `<tr>
-          <td style="padding:5px 0;font-size:13px;color:#666;width:140px">N. Factura</td>
-          <td style="padding:5px 0;font-size:13px;font-weight:bold">${p.invoice_number}</td>
-        </tr>` : ''}
-        ${total ? `<tr>
-          <td style="padding:5px 0;font-size:13px;color:#666">Total</td>
-          <td style="padding:5px 0;font-size:15px;font-weight:bold;color:#0a7c4d">${total}</td>
-        </tr>` : ''}
-        ${p.fecha_factura ? `<tr>
-          <td style="padding:5px 0;font-size:13px;color:#666">Fecha</td>
-          <td style="padding:5px 0;font-size:13px">${p.fecha_factura}</td>
-        </tr>` : ''}
-      </table>
-      ${pdfSection}
-      <hr style="border:none;border-top:1px solid #eee;margin:16px 0"/>
-      <p style="font-size:11px;color:#bbb;margin:0">
-        Sistema Ancori - notificacion automatica${p.sent_by_nombre ? ` | Enviado por: ${p.sent_by_nombre}` : ''}
-      </p>
-    </div>
+<head><meta charset="utf-8"/></head>
+<body style="font-family:Arial,sans-serif;color:#222;max-width:560px;margin:0 auto;padding:28px 20px;background:#f7f7f7">
+  <div style="background:#fff;border-radius:8px;padding:28px 28px 24px;border:1px solid #e5e7eb">
+    <p style="margin:0 0 14px;font-size:14px">${greeting}</p>
+    <p style="margin:0 0 16px;font-size:13px;color:#444">
+      Le remitimos la factura correspondiente para su revision y pago oportuno.
+    </p>
+    ${rows ? `<table style="border-collapse:collapse;margin-bottom:4px">${rows}</table>` : ''}
+    ${pdfNote}
+    ${extraBody}
+    <hr style="border:none;border-top:1px solid #eee;margin:20px 0 14px"/>
+    <p style="font-size:11px;color:#aaa;margin:0">
+      Ancori y Asociados${p.sent_by_nombre ? ` - Enviado por: ${p.sent_by_nombre}` : ''}
+    </p>
   </div>
 </body>
 </html>`;
 }
 
-function buildText(p: SendInvoicePayload): string {
-  const sep = '-'.repeat(50);
-  const lines: string[] = [
-    `FACTURA${p.invoice_number ? ` N. ${p.invoice_number}` : ''}`,
-    sep,
-  ];
+function buildText(p: SendInvoicePayload, hasPdf: boolean): string {
+  const lines: string[] = [];
   if (p.client_name) lines.push(`Estimado(a) ${p.client_name},`);
-  lines.push('Le remitimos la siguiente factura para su revision y pago correspondiente.');
-  if (p.body) { lines.push(''); lines.push(p.body); }
+  else lines.push('Estimado(a) cliente,');
   lines.push('');
+  lines.push('Le remitimos la factura correspondiente para su revision y pago oportuno.');
   if (p.invoice_number) lines.push(`N. Factura : ${p.invoice_number}`);
   if (p.total != null)  lines.push(`Total      : ${fmtMoney(p.total)}`);
   if (p.fecha_factura)  lines.push(`Fecha      : ${p.fecha_factura}`);
-  if (p.pdf_url)        { lines.push(''); lines.push(`Ver PDF: ${p.pdf_url}`); }
-  lines.push('');
-  lines.push(`Sistema Ancori - notificacion automatica${p.sent_by_nombre ? ` | Enviado por: ${p.sent_by_nombre}` : ''}`);
+  if (hasPdf) lines.push('', 'Encontrara la factura adjunta en este correo.');
+  if (p.body) { lines.push('', p.body); }
+  lines.push('', `Ancori y Asociados${p.sent_by_nombre ? ` - Enviado por: ${p.sent_by_nombre}` : ''}`);
   return lines.join('\n');
 }
 
@@ -116,10 +111,8 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });
 
-  if (FUNCTION_SECRET) {
-    if (req.headers.get('x-ancori-secret') !== FUNCTION_SECRET) {
-      return json(401, { error: 'unauthorized' });
-    }
+  if (FUNCTION_SECRET && req.headers.get('x-ancori-secret') !== FUNCTION_SECRET) {
+    return json(401, { error: 'unauthorized' });
   }
 
   let payload: SendInvoicePayload;
@@ -138,7 +131,14 @@ serve(async (req) => {
     return json(500, { error: 'smtp_env_missing' });
   }
 
-  const subject = payload.subject?.trim() || `Factura${payload.invoice_number ? ` No. ${payload.invoice_number}` : ''}`;
+  // Descargar PDF para adjuntar
+  const pdfBase64 = payload.pdf_url ? await fetchPdfBase64(payload.pdf_url) : null;
+  const hasPdf    = pdfBase64 !== null;
+
+  const subject = payload.subject?.trim()
+    || `Factura${payload.invoice_number ? ` No. ${payload.invoice_number}` : ''}${payload.client_name ? ` - ${payload.client_name}` : ''}`;
+
+  const pdfFilename = `Factura${payload.invoice_number ? `-${payload.invoice_number}` : ''}.pdf`;
 
   let client: SMTPClient | null = null;
   try {
@@ -152,15 +152,27 @@ serve(async (req) => {
       },
     });
 
-    await client.send({
-      from: `Ancori Plataforma <${MAIL_FROM}>`,
+    const sendOpts: Record<string, unknown> = {
+      from: `Ancori y Asociados <${MAIL_FROM}>`,
       to: [payload.to_email.trim()],
       subject,
-      html: buildHtml(payload),
-      content: buildText(payload),
-    });
+      html: buildHtml(payload, hasPdf),
+      content: buildText(payload, hasPdf),
+    };
 
-    console.log('Invoice sent to client', { to: payload.to_email, subject });
+    if (hasPdf) {
+      sendOpts.attachments = [
+        {
+          filename: pdfFilename,
+          contentType: 'application/pdf',
+          encoding: 'base64',
+          content: pdfBase64,
+        },
+      ];
+    }
+
+    await client.send(sendOpts as Parameters<typeof client.send>[0]);
+    console.log('Invoice sent to client', { to: payload.to_email, subject, hasPdf });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('SMTP error:', msg);
@@ -171,5 +183,5 @@ serve(async (req) => {
     }
   }
 
-  return json(200, { ok: true });
+  return json(200, { ok: true, pdf_attached: hasPdf });
 });
