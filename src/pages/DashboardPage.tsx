@@ -17,6 +17,7 @@ import {
   Plus, Download, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { exportToExcel } from '@/lib/exportExcel';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
@@ -53,28 +54,6 @@ const ALL = '__all__';
 /*  Helpers                                                            */
 /* ================================================================== */
 
-function exportToCSV(
-  rows: Array<Record<string, string | number>>,
-  headers: { key: string; label: string }[],
-  filename: string,
-) {
-  const BOM = '\uFEFF';
-  const headerLine = headers.map(h => `"${h.label}"`).join(',');
-  const dataLines = rows.map(row =>
-    headers.map(h => {
-      const v = row[h.key] ?? '';
-      return `"${String(v).replace(/"/g, '""')}"`;
-    }).join(','),
-  );
-  const csv = BOM + [headerLine, ...dataLines].join('\r\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 /* ================================================================== */
 /*  StatCard                                                           */
@@ -295,7 +274,7 @@ export default function DashboardPage() {
       responsable: r.responsable,
     }));
     const now = new Date().toISOString().slice(0, 10);
-    exportToCSV(rows, headers, `Casos_Ancori_${now}.csv`);
+    exportToExcel(rows, headers, `Casos_Ancori_${now}`, 'Casos');
   }
 
   const today = new Date().toLocaleDateString('es-PA', {

@@ -17,6 +17,7 @@ import {
 import { PowerBIAreaPanel } from '@/components/reports/PowerBIEmbed';
 import { PBIReportsManager } from '@/components/reports/PBIReportsManager';
 import { fetchPBIReports, PBI_AREA_LABELS, type PBIReportRow } from '@/lib/pbiReportsDb';
+import { exportToExcel } from '@/lib/exportExcel';
 import { cn } from '@/lib/utils';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -75,26 +76,6 @@ function diasVenc(fechaVenc?: string): number | null {
   return Math.ceil((venc.getTime() - hoy.getTime()) / 86400000);
 }
 
-function exportToCSV(
-  rows: Array<Record<string, string | number>>,
-  headers: { key: string; label: string }[],
-  filename: string,
-) {
-  const BOM = '\uFEFF';
-  const headerLine = headers.map(h => `"${h.label}"`).join(',');
-  const dataLines = rows.map(row =>
-    headers.map(h => {
-      const v = row[h.key] ?? '';
-      return `"${String(v).replace(/"/g, '""')}"`;
-    }).join(','),
-  );
-  const csv = BOM + [headerLine, ...dataLines].join('\r\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename; a.click();
-  URL.revokeObjectURL(url);
-}
 
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
@@ -177,7 +158,7 @@ function ReportTable({
       for (const c of columns) r[c.key] = row[c.key] ?? '';
       return r;
     });
-    exportToCSV(rows, headers, exportFilename);
+    exportToExcel(rows, headers, exportFilename, 'Reporte');
   }
 
   return (
@@ -668,7 +649,7 @@ function ReportesPageInner({ embedded = false }: { embedded?: boolean }) {
                   { key: 'fecha_seguimiento', label: 'F. Seguimiento', cls: 'w-[120px] tabular-nums' },
                   { key: 'dias', label: 'Dias Venc.', cls: 'w-[90px] text-center tabular-nums font-medium', render: (v: number | null) => v != null ? <span className={v < 0 ? 'text-red-600' : v <= 7 ? 'text-amber-600' : 'text-green-600'}>{v}</span> : <span>—</span> },
                 ]}
-                exportFilename={`Reporte_Operativo_${new Date().toISOString().slice(0, 10)}.csv`}
+                exportFilename={`Reporte_Operativo_${new Date().toISOString().slice(0, 10)}.xlsx`}
               />
             </CardContent>
           </Card>
@@ -711,7 +692,7 @@ function ReportesPageInner({ embedded = false }: { embedded?: boolean }) {
                   { key: 'completado', label: 'Completados', cls: 'w-[110px] text-center', render: (v: number) => <span className="text-green-600 font-medium">{v}</span> },
                   { key: 'urgente', label: 'Urgentes', cls: 'w-[90px] text-center', render: (v: number) => v > 0 ? <span className="text-red-600 font-bold">{v}</span> : <span className="text-muted-foreground">0</span> },
                 ]}
-                exportFilename={`Reporte_Usuarios_${new Date().toISOString().slice(0, 10)}.csv`}
+                exportFilename={`Reporte_Usuarios_${new Date().toISOString().slice(0, 10)}.xlsx`}
               />
             </CardContent>
           </Card>
@@ -751,7 +732,7 @@ function ReportesPageInner({ embedded = false }: { embedded?: boolean }) {
                   { key: 'urgente', label: 'Urgentes', cls: 'w-[90px] text-center', render: (v: number) => v > 0 ? <span className="text-red-600 font-bold">{v}</span> : <span className="text-muted-foreground">0</span> },
                   { key: 'sociedades', label: 'Sociedades', cls: 'w-[100px] text-center' },
                 ]}
-                exportFilename={`Reporte_Clientes_${new Date().toISOString().slice(0, 10)}.csv`}
+                exportFilename={`Reporte_Clientes_${new Date().toISOString().slice(0, 10)}.xlsx`}
               />
             </CardContent>
           </Card>
@@ -825,7 +806,7 @@ function ReportesPageInner({ embedded = false }: { embedded?: boolean }) {
                   }},
                   { key: 'qb', label: 'QB', cls: 'w-[50px] text-center' },
                 ]}
-                exportFilename={`Reporte_Financiero_${new Date().toISOString().slice(0, 10)}.csv`}
+                exportFilename={`Reporte_Financiero_${new Date().toISOString().slice(0, 10)}.xlsx`}
               />
             </CardContent>
           </Card>
