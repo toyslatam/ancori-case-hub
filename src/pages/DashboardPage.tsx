@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '@/context/AppContext';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -11,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Case, CASE_ESTADOS, formatNTarea } from '@/data/mockData';
+import { CASE_ESTADOS, formatNTarea } from '@/data/mockData';
 import {
   Briefcase, Clock, CheckCircle, AlertTriangle,
   Plus, Download, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, X,
@@ -108,6 +107,33 @@ export default function DashboardPage() {
     cases, clients, services, getClientName, getSocietyName, getServiceName,
     getServiceItemName, getUsuarioName,
   } = useApp();
+
+  // ── Scrollbar espejo para tabla principal ───────────────────────
+  const dashMirrorRef = useRef<HTMLDivElement>(null);
+  const dashTableRef  = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const mirror = dashMirrorRef.current;
+    const table  = dashTableRef.current;
+    if (!mirror || !table) return;
+
+    const spacer = mirror.firstElementChild as HTMLDivElement | null;
+    const updateSpacer = () => {
+      if (spacer) spacer.style.minWidth = `${table.scrollWidth}px`;
+    };
+    updateSpacer();
+    const ro = new ResizeObserver(updateSpacer);
+    ro.observe(table);
+
+    const syncFromTable  = () => { mirror.scrollLeft = table.scrollLeft; };
+    const syncFromMirror = () => { table.scrollLeft  = mirror.scrollLeft; };
+    table.addEventListener('scroll',  syncFromTable);
+    mirror.addEventListener('scroll', syncFromMirror);
+    return () => {
+      table.removeEventListener('scroll',  syncFromTable);
+      mirror.removeEventListener('scroll', syncFromMirror);
+      ro.disconnect();
+    };
+  }, []);
 
   // ── Filtros ──────────────────────────────────────────────────────
   const [filterAnio, setFilterAnio] = useState(ALL);
@@ -425,8 +451,15 @@ export default function DashboardPage() {
           </Button>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          {/* ── Scrollbar espejo (arriba) ─────────────────────────── */}
+          <div
+            ref={dashMirrorRef}
+            className="overflow-x-auto overflow-y-hidden [&::-webkit-scrollbar]:h-3 [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-orange-300 [&::-webkit-scrollbar-thumb:hover]:bg-orange-400"
+          >
+            <div className="min-w-[1275px] h-px" />
+          </div>
+          <div ref={dashTableRef} className="overflow-x-auto [&::-webkit-scrollbar]:h-0">
+            <table className="w-full min-w-[1275px] text-sm">
               <thead>
                 <tr className="bg-muted/50 border-y border-border">
                   {([

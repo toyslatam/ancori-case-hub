@@ -58,6 +58,16 @@ export function CasesTable({
     const mirror = mirrorRef.current;
     const table  = tableRef.current;
     if (!mirror || !table) return;
+
+    // Mantiene el spacer del espejo igual al ancho real del scroll
+    const spacer = mirror.firstElementChild as HTMLDivElement | null;
+    const updateSpacer = () => {
+      if (spacer) spacer.style.minWidth = `${table.scrollWidth}px`;
+    };
+    updateSpacer();
+    const ro = new ResizeObserver(updateSpacer);
+    ro.observe(table);
+
     const syncFromTable  = () => { mirror.scrollLeft = table.scrollLeft; };
     const syncFromMirror = () => { table.scrollLeft  = mirror.scrollLeft; };
     table.addEventListener('scroll',  syncFromTable);
@@ -65,6 +75,7 @@ export function CasesTable({
     return () => {
       table.removeEventListener('scroll',  syncFromTable);
       mirror.removeEventListener('scroll', syncFromMirror);
+      ro.disconnect();
     };
   }, []);
 
@@ -133,14 +144,14 @@ export function CasesTable({
         ref={mirrorRef}
         className={cn(
           'overflow-x-auto overflow-y-hidden',
-          '[&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent',
+          '[&::-webkit-scrollbar]:h-3 [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-track]:rounded-full',
           '[&::-webkit-scrollbar-thumb]:rounded-full',
           READABLE_CASES_TABLE_SAMPLE
-            ? '[&::-webkit-scrollbar-thumb]:bg-orange-200 [&::-webkit-scrollbar-thumb:hover]:bg-orange-300'
-            : '[&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb:hover]:bg-gray-300',
+            ? '[&::-webkit-scrollbar-thumb]:bg-orange-300 [&::-webkit-scrollbar-thumb:hover]:bg-orange-400'
+            : '[&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb:hover]:bg-gray-400',
         )}
       >
-        <div className={cn(READABLE_CASES_TABLE_SAMPLE ? 'min-w-[1450px]' : 'min-w-[1040px]', 'h-px')} />
+        <div className={cn(READABLE_CASES_TABLE_SAMPLE ? 'min-w-[1560px]' : 'min-w-[1080px]', 'h-px')} />
       </div>
 
       {/* ── Tabla (scrollbar horizontal oculto abajo) ──────────────────── */}
@@ -157,7 +168,7 @@ export function CasesTable({
             : '[&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb:hover]:bg-gray-300',
         )}
       >
-        <table className={cn('border-collapse', READABLE_CASES_TABLE_SAMPLE ? 'min-w-[1450px] w-full' : 'min-w-[1040px] w-full')}>
+        <table className={cn('border-collapse', READABLE_CASES_TABLE_SAMPLE ? 'min-w-[1560px] w-full' : 'min-w-[1080px] w-full')}>
           {/* ── THEAD sticky ──────────────────────────────────────────── */}
           <thead className="sticky top-0 z-10">
             <tr className="border-b border-gray-100">
@@ -169,7 +180,7 @@ export function CasesTable({
               {READABLE_CASES_TABLE_SAMPLE && <Th className="min-w-[240px]">Descripción</Th>}
               <SortTh field="estado" className={READABLE_CASES_TABLE_SAMPLE ? 'min-w-[140px]' : 'min-w-[150px]'}>Estado</SortTh>
               <Th className="min-w-[150px]">Responsable</Th>
-              <Th className={READABLE_CASES_TABLE_SAMPLE ? 'w-[145px] min-w-[145px] text-right' : 'w-[170px] min-w-[170px] text-right'}>Acciones</Th>
+              <Th className={READABLE_CASES_TABLE_SAMPLE ? 'min-w-[190px] text-right' : 'min-w-[180px] text-right'}>Acciones</Th>
             </tr>
           </thead>
 
@@ -272,7 +283,7 @@ export function CasesTable({
                   </td>
 
                   {/* ── Acciones ─────────────────────────────────── */}
-                  <td className={cn(tdBase, READABLE_CASES_TABLE_SAMPLE ? 'w-[145px]' : 'w-[170px]')} onClick={e => e.stopPropagation()}>
+                  <td className={cn(tdBase, READABLE_CASES_TABLE_SAMPLE ? 'min-w-[190px]' : 'min-w-[180px]')} onClick={e => e.stopPropagation()}>
                     <div className={cn('flex items-center justify-end', READABLE_CASES_TABLE_SAMPLE ? 'gap-0.5' : 'gap-0.5')}>
                       <button
                         onClick={() => setObservacionesModal({

@@ -98,7 +98,7 @@ function normalizeInvoiceLines(raw: InvoiceLine[] | undefined | null, services: 
 export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalProps) {
   const {
     services, invoiceTerms, qbItems, getClientName, getSocietyName,
-    saveInvoice, patchInvoice, allInvoices, clients, societies,
+    saveInvoice, patchInvoice, allInvoices, clients, societies, usuarios,
   } = useApp();
   const { user } = useAuth();
 
@@ -278,24 +278,38 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
     }
     setSendingToClient(true);
     try {
-      let pdfUrl: string | undefined;
+      let pdfBase64: string | undefined;
 
       const hasPdfOk = Boolean(effectiveInvoice?.pdf_path && effectiveInvoice.pdf_status === 'ok');
       const hasQbId  = Boolean(effectiveInvoice?.qb_invoice_id && effectiveInvoice?.id);
 
+      /** Descarga un PDF desde una URL firmada y lo convierte a base64 en el browser */
+      async function downloadPdfAsBase64(signedUrl: string): Promise<string | undefined> {
+        try {
+          const res = await fetch(signedUrl);
+          if (!res.ok) return undefined;
+          const bytes = new Uint8Array(await res.arrayBuffer());
+          if (bytes.length === 0) return undefined;
+          let bin = '';
+          const CHUNK = 8192;
+          for (let i = 0; i < bytes.length; i += CHUNK) {
+            bin += String.fromCharCode(...bytes.subarray(i, Math.min(i + CHUNK, bytes.length)));
+          }
+          return btoa(bin);
+        } catch { return undefined; }
+      }
+
       if (hasPdfOk) {
-        // PDF ya guardado → generar URL firmada (válida 7 días para que el edge function la descargue)
         const sb = getSupabase();
         if (sb) {
-          const { data, error } = await sb.storage.from('invoices').createSignedUrl(effectiveInvoice!.pdf_path!, 3600 * 24 * 7);
-          if (error || !data?.signedUrl) {
-            toast.warning('No se pudo generar la URL del PDF — se enviará sin adjunto');
-          } else {
-            pdfUrl = data.signedUrl;
+          const { data: urlData } = await sb.storage
+            .from('invoices')
+            .createSignedUrl(effectiveInvoice!.pdf_path!, 300);
+          if (urlData?.signedUrl) {
+            pdfBase64 = await downloadPdfAsBase64(urlData.signedUrl);
           }
         }
       } else if (hasQbId) {
-        // Sin PDF local → intentar sincronizar desde QB
         try {
           const syncRes = await fetch(`${SUPABASE_URL}/functions/v1/qbo-invoice-pdf-sync`, {
             method: 'POST',
@@ -304,16 +318,19 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
           });
           const syncData = await syncRes.json() as { ok?: boolean; signed_url?: string; error?: string };
           if (syncRes.ok && syncData.ok && syncData.signed_url) {
-            pdfUrl = syncData.signed_url;
+            pdfBase64 = await downloadPdfAsBase64(syncData.signed_url);
           } else {
             toast.warning(`PDF no disponible (${syncData.error ?? 'sync falló'}) — se enviará sin adjunto`);
           }
-        } catch (e) {
-          toast.warning(`No se pudo obtener el PDF — se enviará sin adjunto`);
-          console.error('PDF sync error:', e);
+        } catch {
+          toast.warning('No se pudo obtener el PDF — se enviará sin adjunto');
         }
       } else {
         toast.info('Esta factura no tiene PDF en QuickBooks aún — se enviará sin adjunto');
+      }
+
+      if (!pdfBase64 && hasPdfOk) {
+        toast.warning('No se pudo descargar el PDF — se enviará sin adjunto');
       }
 
       const res = await fetch(`${SUPABASE_URL}/functions/v1/send-invoice-to-client`, {
@@ -326,7 +343,7 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
           to_email: sendEmail.trim(),
           subject: sendSubject.trim() || `Factura${effectiveInvoice?.numero_factura ? ` No. ${effectiveInvoice.numero_factura}` : ''}`,
           body: sendBody.trim() || undefined,
-          pdf_url: pdfUrl,
+          pdf_base64: pdfBase64,
           invoice_number: effectiveInvoice?.numero_factura,
           client_name: billToSociety && caseData?.society_id ? getSocietyName(caseData.society_id) : getClientName(caseData?.client_id ?? ''),
           total: effectiveInvoice?.total,
@@ -608,6 +625,13 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
             }
           }
 
+          // Buscar correo del responsable del caso en la lista de usuarios
+          const responsableUser = caseData.responsable
+            ? usuarios.find(u =>
+                u.nombre?.toLowerCase().trim() === caseData.responsable?.toLowerCase().trim()
+              )
+            : undefined;
+
           sendInvoiceNotification({
             tipo: 'enviada_qb',
             caso_numero: caseData.n_tarea != null ? formatNTarea(caseData.n_tarea) : String(caseData.numero_caso ?? caseData.id),
@@ -626,6 +650,8 @@ export function InvoiceModal({ caseData, invoice, open, onClose }: InvoiceModalP
             lines: linesToNotify(lines),
             creado_por_nombre: user?.nombre ?? user?.email ?? 'Sistema',
             creado_por_email: user?.email ?? '',
+            responsable_nombre: caseData.responsable ?? undefined,
+            responsable_email: responsableUser?.correo ?? undefined,
             pdf_url: pdfUrl,
           });
         }

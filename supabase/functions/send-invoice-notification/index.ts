@@ -6,14 +6,11 @@ const SMTP_PORT     = 587;
 const SMTP_USER     = Deno.env.get('SMTP_USER')     ?? 'ancori@solucionesdetecnologia.com';
 const SMTP_PASSWORD = Deno.env.get('SMTP_PASSWORD') ?? '';
 const MAIL_FROM     = Deno.env.get('MAIL_FROM')     ?? 'ancori@solucionesdetecnologia.com';
-// Destinatarios fijos de notificaciones de facturas
-const INVOICE_TO    = (Deno.env.get('INVOICE_NOTIFY_TO') ?? 'administracion@ancori.com,finanzas@ancori.com')
-  .split(',').map(s => s.trim()).filter(Boolean);
-const INVOICE_CC    = (Deno.env.get('INVOICE_NOTIFY_CC') ?? 'soporte@ancoriyasociados.onmicrosoft.com')
-  .split(',').map(s => s.trim()).filter(Boolean);
-// Destinatarios extra solo para notificaciones de QB (separados por coma)
-const QB_NOTIFY_EXTRA = (Deno.env.get('QB_NOTIFY_EXTRA') ?? '')
-  .split(',').map(s => s.trim()).filter(Boolean);
+// Destinatarios de notificaciones (creación y QB usan el mismo grupo admin)
+const INVOICE_TO = (Deno.env.get('INVOICE_NOTIFY_TO') ?? 'administracion@ancori.com,finanzas@ancori.com')
+  .split(',').map((s: string) => s.trim()).filter(Boolean);
+const INVOICE_CC = (Deno.env.get('INVOICE_NOTIFY_CC') ?? 'soporte@ancoriyasociados.onmicrosoft.com')
+  .split(',').map((s: string) => s.trim()).filter(Boolean);
 
 const FUNCTION_SECRET = Deno.env.get('FUNCTION_SECRET') ?? '';
 
@@ -58,6 +55,8 @@ type NotifyPayload = {
   lines: InvoiceLine[];
   creado_por_nombre: string;
   creado_por_email: string;
+  responsable_nombre?: string;
+  responsable_email?: string;
   pdf_url?: string;
 };
 
@@ -325,37 +324,51 @@ serve(async (req) => {
       },
     });
 
-    // Creacion: va a administracion + finanzas con CC soporte
-    // QB: va a ygordon con CC soporte
-    const adminTo = esQb
-      ? (QB_NOTIFY_EXTRA.length > 0 ? QB_NOTIFY_EXTRA : INVOICE_TO)
-      : INVOICE_TO;
-    const adminCc = INVOICE_CC;
-
-    await client.send({
-      from: `Ancori Plataforma <${MAIL_FROM}>`,
-      to: adminTo,
-      cc: adminCc,
-      subject,
-      html: buildHtml(payload),
-      content: buildText(payload),
-    });
-
-    console.log('Invoice notification sent', { subject, to: adminTo, cc: adminCc });
-
-    // Correo personalizado al creador del caso (solo QB)
-    if (esQb && payload.creado_por_email?.trim()) {
-      const creatorEmail = payload.creado_por_email.trim();
-      // Solo ASCII en el asunto para evitar corrupcion de encoding MIME
-      const creatorSubject = `Factura QB registrada - Caso #${payload.caso_numero} | ${entidad} - ${fmtMoney(total)}`;
+    // Tanto creación como QB van al mismo grupo admin (administracion + finanzas)
+    if (!esQb) {
+      // NARANJA — factura creada: notifica al grupo admin (administracion + finanzas)
       await client.send({
         from: `Ancori Plataforma <${MAIL_FROM}>`,
-        to: [creatorEmail],
-        subject: creatorSubject,
-        html: buildCreatorHtml(payload),
-        content: buildCreatorText(payload),
+        to: INVOICE_TO,
+        cc: INVOICE_CC,
+        subject,
+        html: buildHtml(payload),
+        content: buildText(payload),
       });
-      console.log('Creator notification sent', { to: creatorEmail, subject: creatorSubject });
+      console.log('Creacion notification sent', { subject, to: INVOICE_TO });
+    } else {
+      // VERDE — factura enviada a QB: solo al responsable (y al creador si es distinto)
+      const qbSubject = `Factura QB registrada - Caso #${payload.caso_numero} | ${entidad} - ${fmtMoney(total)}`;
+      const responsableEmail = payload.responsable_email?.trim() ?? '';
+      const creadorEmail     = payload.creado_por_email?.trim()  ?? '';
+
+      // Responsable del caso
+      if (responsableEmail) {
+        const responsablePayload = {
+          ...payload,
+          creado_por_nombre: payload.responsable_nombre ?? responsableEmail,
+        };
+        await client.send({
+          from: `Ancori Plataforma <${MAIL_FROM}>`,
+          to: [responsableEmail],
+          subject: qbSubject,
+          html: buildCreatorHtml(responsablePayload),
+          content: buildCreatorText(responsablePayload),
+        });
+        console.log('Responsable QB notification sent', { to: responsableEmail });
+      }
+
+      // Creador (si es distinto del responsable)
+      if (creadorEmail && creadorEmail !== responsableEmail) {
+        await client.send({
+          from: `Ancori Plataforma <${MAIL_FROM}>`,
+          to: [creadorEmail],
+          subject: qbSubject,
+          html: buildCreatorHtml(payload),
+          content: buildCreatorText(payload),
+        });
+        console.log('Creador QB notification sent', { to: creadorEmail });
+      }
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

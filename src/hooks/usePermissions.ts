@@ -3,7 +3,10 @@ import { useAuth } from '@/context/AuthContext';
 import { useApp } from '@/context/AppContext';
 import { APP_MODULES, type AppModule } from '@/data/mockData';
 
-const SUPER_ADMIN = 'auditoria@ctauditores.com';
+const SUPER_ADMINS = [
+  'auditoria@ctauditores.com',
+  'ygordon@ancori.com',
+];
 
 /** Ruta por defecto para cada módulo (la primera sub-ruta accesible). */
 const MODULE_DEFAULT_ROUTE: Record<AppModule, string> = {
@@ -23,7 +26,7 @@ export function usePermissions() {
   const { usuarios } = useApp();
 
   const email = session?.user?.email?.toLowerCase() ?? '';
-  const isSuperAdmin = email === SUPER_ADMIN;
+  const isSuperAdmin = SUPER_ADMINS.includes(email);
 
   const permisos = useMemo<AppModule[] | null>(() => {
     if (isSuperAdmin) return null;
